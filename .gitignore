@@ -1,0 +1,26 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+.vite
+coverage
+*.log
+
+# Electron build output
+release
+
+# Working artifacts
+.playwright-mcp
+review-*.png
+keylit-*.png
+.vercel
+
+# Berkeley Mono is a COMMERCIAL font — do not redistribute its files in this
+# public repo. Supply your own licensed copy in public/fonts/ for the intended
+# look; without it the app falls back to a system monospace. (Fraunces + Space
+# Grotesk are OFL and ship with the repo.)
+public/fonts/BerkeleyMono-*.woff2

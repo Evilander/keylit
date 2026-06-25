@@ -1,0 +1,71 @@
+{
+  "name": "keylit",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "description": "Drop a guitar chord sheet, see it on a piano — lit keys, voice leading, a chord-move lab, and a capo advisor.",
+  "author": "Tyler Eveland <j.tyler.eveland@gmail.com>",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "proxy": "node server.mjs",
+    "electron": "electron .",
+    "electron:dev": "vite",
+    "pack": "vite build && electron-builder --dir",
+    "dist:win": "vite build && electron-builder --win"
+  },
+  "dependencies": {
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tone": "^15.0.4"
+  },
+  "//": "@anthropic-ai/sdk is server-only (api/analyze.js + server.mjs); the browser bundle never imports it.",
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^0.69.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  },
+  "build": {
+    "appId": "com.tylereveland.keylit",
+    "productName": "Keylit",
+    "copyright": "Copyright © 2026 Tyler Eveland",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/icon.*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Keylit",
+      "differentialPackage": false
+    },
+    "publish": null
+  }
+}
