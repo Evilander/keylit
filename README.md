@@ -167,7 +167,7 @@ keylit/
 │       ├── midi.js       # dependency-free MIDI file writer + live note messages
 │       ├── llm.js        # AI-proxy client + chord re-validation safety net
 │       ├── voice.js      # the authored tutor voice (persona, concepts, suggestion chips)
-│       └── *.test.js     # 148 tests
+│       └── *.test.js     # 205 tests
 ```
 
 The `lib/` modules are pure and unit-tested (no React, audio, network, or DOM). Keep them that way — all music logic lives there.

@@ -22,6 +22,14 @@ describe("realizeTemplate", () => {
     const out = realizeTemplate(t, 9, "minor"); // A minor
     expect(chordSymbol(out[out.length - 1])).toBe("E"); // major V, not Em
   });
+  it("gives the jazz turnaround a functional dominant V in a minor key", () => {
+    const out = realizeTemplate(TEMPLATES.jazz[0], 9, "minor"); // A minor ii–V–i–VI
+    expect(chordSymbol(out[1])).toBe("E7"); // dominant V7 with the leading tone, not Em7
+    expect(out[0].quality).toBe("m7♭5");    // iiø7
+  });
+  it("keeps the jazz turnaround unchanged in a major key", () => {
+    expect(syms(realizeTemplate(TEMPLATES.jazz[0], 0, "major"))).toEqual(["Dm7", "G7", "Cmaj7", "A7"]);
+  });
 });
 
 describe("generateProgression", () => {

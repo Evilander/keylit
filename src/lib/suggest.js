@@ -22,8 +22,10 @@ import {
 // V7 chord whose target root is `targetSemi` (a pitch class 0-11).
 export const dominantOf = (targetSemi) => buildChord(((targetSemi + 7) % 12), "7");
 
-// ii-m7 chord for the key whose tonic is `targetSemi`.
-export const iiOf = (targetSemi) => buildChord(((targetSemi + 2) % 12), "m7");
+// The ii chord for the key whose tonic is `targetSemi`. For a MINOR target the
+// supertonic is half-diminished (iiø7 / m7♭5); for a major target it is m7.
+export const iiOf = (targetSemi, minorTarget = false) =>
+  buildChord(((targetSemi + 2) % 12), minorTarget ? "m7b5" : "m7");
 
 // Tritone substitute for a (dominant) chord: same b7, root a tritone away.
 // Always returns a dominant 7. Most musical on actual dominants.
@@ -173,12 +175,12 @@ export function replaceChord(chord, context = {}) {
     if (degIdx === 0) {
       out.push(replace(buildChord((tonic + 0) % 12, "m"),
         "Parallel minor (i for I) — sudden mode change.",
-        { style: "cinematic", boldness: 0.75, tags: ["modal-interchange"] }));
+        { style: "cinematic", boldness: 0.75, tags: ["modal-interchange", "mi-tonic"] }));
     }
     if (degIdx === 5) { // vi → ♭VI (borrowed)
       out.push(replace(buildChord((tonic + 8) % 12, "maj7"),
         "♭VI maj7 for vi — borrowed from parallel minor; lush.",
-        { style: "cinematic", boldness: 0.7, tags: ["modal-interchange"] }));
+        { style: "cinematic", boldness: 0.7, tags: ["modal-interchange", "mi-tonic"] }));
     }
   }
   if (mode === "minor" && degIdx >= 0) {
@@ -186,7 +188,7 @@ export function replaceChord(chord, context = {}) {
       // i → I (Picardy third's bigger cousin: just go to major)
       out.push(replace(buildChord(tonic, ""),
         "Parallel major (I for i) — sudden brightening.",
-        { style: "cinematic", boldness: 0.75, tags: ["modal-interchange"] }));
+        { style: "cinematic", boldness: 0.75, tags: ["modal-interchange", "mi-tonic"] }));
     }
   }
 
@@ -219,8 +221,9 @@ export function insertBeforeChord(chord, context = {}) {
     `Secondary dominant: ${sym(v)} → ${sym(chord)} (V7/${chord.rootName}).`,
     { style: "any", boldness: 0.4, tags: ["secondary-dominant"] }));
 
-  // Relative ii–V (two chords)
-  const ii = iiOf(chord.rootSemitone);
+  // Relative ii–V (two chords). A minor target takes the half-diminished iiø7.
+  const minorTarget = qualClass(chord.quality) === "min" || qualClass(chord.quality) === "dim";
+  const ii = iiOf(chord.rootSemitone, minorTarget);
   out.push(makeSuggestion({
     kind: "insertBefore",
     chords: [ii, v],
@@ -337,7 +340,8 @@ export function suggestProgressionEdits(prog, context = {}) {
       cur.quality !== "7" &&
       i > 0 // don't replace the opening
     ) {
-      const ii = iiOf(next.rootSemitone);
+      const nextMinor = qualClass(next.quality) === "min" || qualClass(next.quality) === "dim";
+      const ii = iiOf(next.rootSemitone, nextMinor);
       const v = dominantOf(next.rootSemitone);
       moves.push({
         atIndex: i,
@@ -453,8 +457,10 @@ export function describeSuggestion(s) {
 export function suggestionFunction(s) {
   const t = s.tags || [];
   if (t.some((x) => ["secondary-dominant", "tritone-sub", "backdoor", "dim-passing", "dom-sub"].includes(x))) return "D";
+  // Tonic-function moves (relative-minor sub, parallel i/I, ♭VI-for-vi) are tonic,
+  // even though some are also modal interchange — check tonic before subdominant.
+  if (t.includes("mi-tonic") || t.includes("tonic-sub")) return "T";
   if (t.some((x) => ["subdom-sub", "modal-interchange"].includes(x))) return "S";
-  if (t.includes("tonic-sub")) return "T";
   if (t.includes("ii-V")) return "D";
   return "color";
 }

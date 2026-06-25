@@ -45,6 +45,20 @@ describe("progressionToMidi", () => {
     const m = progressionToMidi([[60, 64, 67], [62, 65, 69], [64, 67, 71]]);
     expect(m.length).toBeGreaterThan(40);
   });
+
+  it("clamps note-on velocity to 0-127 (every data byte must keep its high bit clear)", () => {
+    const m = progressionToMidi([[60]], { velocity: 200 });
+    const idx = [...m].findIndex((b) => b === 0x90); // first note-on status byte
+    expect(idx).toBeGreaterThan(0);
+    expect(m[idx + 2]).toBe(127); // velocity byte clamped, not 200 (0xC8)
+  });
+
+  it("keeps the tempo meta event within its 24-bit field for tiny tempos", () => {
+    const m = progressionToMidi([[60]], { tempoBpm: 1 });
+    const idx = [...m].findIndex((b, i) => b === 0xff && m[i + 1] === 0x51);
+    const us = (m[idx + 3] << 16) | (m[idx + 4] << 8) | m[idx + 5];
+    expect(us).toBeLessThanOrEqual(0xffffff);
+  });
 });
 
 describe("live MIDI messages", () => {

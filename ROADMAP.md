@@ -17,7 +17,7 @@ A full UI re-identity (away from a generic card stack) and the first slice of th
 - **The Bench look**: warm analog-instrument design (`ui/bench.css`, `ui/Bench.jsx`) — recessed decks, raised faceplates, tube-glow keys, VU-style T/S/D meters, tape-strip progression. One shared `Keyboard` instrument.
 - **Three rooms** in `App.jsx`: **Learn** (tutor), **Write** (Chord Lab + Capo), **Play** (chord-sheet playback).
 - **Tutor (Learn room)**: `NumbersRail` (live Nashville↔Roman↔Notes), `ScaleBuilder` (W-W-H-W-W-W-H made physical + the 7 diatonic chords), `DegreeFinder` (the "what's the 4th/6th/7th" drill). New pure helpers `spellScale`/`degreeOf`/`pedalRelation` and an authored tutor voice (`lib/voice.js`).
-- Verified: 148 lib tests green; production build clean.
+- Verified: 205 lib tests green; production build clean.
 
 **Next tutor slices** (specs ready): Pedal-Point Lab, Meter Feel Trainer (4/4 vs 3/4 vs 6/8), opinion-mode Chord Lab, and wiring the authored voice into the Claude proxy. Then resume Phase 0 (extract the audio engine out of `App.jsx`) and Phase 1 (audio-in via `@spotify/basic-pitch`, client-side).
 

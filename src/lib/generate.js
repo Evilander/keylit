@@ -20,9 +20,9 @@ export const TEMPLATES = {
     { name: "I–iii–IV–V", steps: [{ d: 0 }, { d: 2 }, { d: 3 }, { d: 4 }] },
   ],
   jazz: [
-    { name: "ii–V–I–VI (turnaround)", steps: [{ d: 1, seventh: true }, { d: 4, seventh: true }, { d: 0, seventh: true }, { d: 5, q: "7" }] },
-    { name: "I–vi–ii–V (rhythm changes)", steps: [{ d: 0, seventh: true }, { d: 5, seventh: true }, { d: 1, seventh: true }, { d: 4, seventh: true }] },
-    { name: "iii–VI–ii–V–I", steps: [{ d: 2, seventh: true }, { d: 5, q: "7" }, { d: 1, seventh: true }, { d: 4, seventh: true }, { d: 0, seventh: true }] },
+    { name: "ii–V–I–VI (turnaround)", steps: [{ d: 1, seventh: true }, { d: 4, q: "7" }, { d: 0, seventh: true }, { d: 5, q: "7" }] },
+    { name: "I–vi–ii–V (rhythm changes)", steps: [{ d: 0, seventh: true }, { d: 5, seventh: true }, { d: 1, seventh: true }, { d: 4, q: "7" }] },
+    { name: "iii–VI–ii–V–I", steps: [{ d: 2, seventh: true }, { d: 5, q: "7" }, { d: 1, seventh: true }, { d: 4, q: "7" }, { d: 0, seventh: true }] },
   ],
   soul: [
     { name: "I–iii–IV–iv (cry)", steps: [{ d: 0, seventh: true }, { d: 2, seventh: true }, { d: 3, seventh: true }, { d: 3, q: "m" }] },
