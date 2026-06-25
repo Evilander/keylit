@@ -4,6 +4,7 @@ import {
   dominantOf, iiOf, tritoneSubOf, passingDimBetween,
   replaceChord, insertBeforeChord, insertAfterChord,
   suggestProgressionEdits, suggestionsFor, KNOWN_STYLES, simplify,
+  suggestionFunction,
 } from "./suggest.js";
 
 const sym = (c) => chordSymbol(c);
@@ -186,6 +187,50 @@ describe("KNOWN_STYLES sanity", () => {
     expect(KNOWN_STYLES).toEqual(
       expect.arrayContaining(["any", "pop", "jazz", "soul", "gospel"]),
     );
+  });
+});
+
+describe("iiOf — quality-aware", () => {
+  it("returns m7♭5 for a minor target (relative minor ii–V)", () => {
+    expect(iiOf(9, true).quality).toBe("m7♭5"); // Bø7 into A minor
+    expect(sym(iiOf(0, true))).toBe("Dm7♭5");
+  });
+  it("defaults to m7 for a major target", () => {
+    expect(sym(iiOf(0))).toBe("Dm7");
+  });
+});
+
+describe("minor relative ii–V uses the half-diminished ii", () => {
+  it("ii–V into a minor target gives iiø7 – V7", () => {
+    const before = insertBeforeChord(parseChord("Am"), { tonic: 9, mode: "minor" });
+    const iiV = before.find((s) => s.tags.includes("ii-V"));
+    expect(iiV).toBeTruthy();
+    expect(iiV.chords[0].quality).toBe("m7♭5"); // Bø7
+    expect(sym(iiV.chords[1])).toBe("E7");        // V7
+  });
+  it("ii–V into a major target still gives m7 – V7", () => {
+    const before = insertBeforeChord(parseChord("F"));
+    const iiV = before.find((s) => s.tags.includes("ii-V"));
+    expect(sym(iiV.chords[0])).toBe("Gm7");
+  });
+});
+
+describe("suggestionFunction", () => {
+  it("buckets parallel minor (i for I) as Tonic, not Subdominant", () => {
+    const subs = replaceChord(parseChord("C"), { tonic: 0, mode: "major" });
+    const par = subs.find((s) => /Parallel minor/.test(s.why));
+    expect(par).toBeTruthy();
+    expect(suggestionFunction(par)).toBe("T");
+  });
+  it("still buckets borrowed iv (for IV) as Subdominant", () => {
+    const subs = replaceChord(parseChord("F"), { tonic: 0, mode: "major" });
+    const iv = subs.find((s) => /iv for IV/.test(s.why));
+    expect(suggestionFunction(iv)).toBe("S");
+  });
+  it("buckets a secondary dominant as Dominant", () => {
+    const before = insertBeforeChord(parseChord("F"));
+    const sec = before.find((s) => s.tags.includes("secondary-dominant"));
+    expect(suggestionFunction(sec)).toBe("D");
   });
 });
 

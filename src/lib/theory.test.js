@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   parseChord, parseSheet, transposeChord, chordSymbol,
-  nashville, detectKey, harmonicFunction, CIRCLE_OF_FIFTHS,
+  nashville, romanNumeral, detectKey, harmonicFunction, CIRCLE_OF_FIFTHS,
   shapeForCapo, shapeEase, suggestCapo, normalizeChart,
-  spellScale, degreeOf, pedalRelation, buildChord,
+  spellScale, degreeOf, pedalRelation, buildChord, qualClass, isDominantQuality,
 } from "./theory.js";
 
 describe("parseChord", () => {
@@ -242,6 +242,48 @@ describe("degreeOf", () => {
   });
 });
 
+describe("spellScale — diatonic letter integrity", () => {
+  const LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
+
+  it("spells Gb major's 4th as Cb (not B)", () => {
+    const names = spellScale(6, "major").map((d) => d.name);
+    expect(names).toEqual(["Gb", "Ab", "Bb", "Cb", "Db", "Eb", "F"]);
+    expect(degreeOf(6, 4, "major")).toBe("Cb");
+  });
+
+  it("spells Eb minor's 6th as Cb (not B)", () => {
+    const names = spellScale(3, "minor").map((d) => d.name);
+    expect(names).toEqual(["Eb", "F", "Gb", "Ab", "Bb", "Cb", "Db"]);
+    expect(degreeOf(3, 6, "minor")).toBe("Cb");
+  });
+
+  it("uses each letter A–G exactly once for every major key", () => {
+    for (let tonic = 0; tonic < 12; tonic++) {
+      const letters = spellScale(tonic, "major").map((d) => d.name[0]);
+      expect(new Set(letters).size).toBe(7);
+    }
+  });
+
+  it("uses each letter A–G exactly once for every minor key", () => {
+    for (let tonic = 0; tonic < 12; tonic++) {
+      const letters = spellScale(tonic, "minor").map((d) => d.name[0]);
+      expect(new Set(letters).size).toBe(7);
+    }
+  });
+
+  it("keeps the pitch classes correct while fixing the letters", () => {
+    // Gb major pitch classes are unchanged by the spelling fix.
+    expect(spellScale(6, "major").map((d) => d.semitone)).toEqual([6, 8, 10, 11, 1, 3, 5]);
+  });
+
+  it("still spells the common keys conventionally", () => {
+    expect(spellScale(0, "major").map((d) => d.name)).toEqual(["C", "D", "E", "F", "G", "A", "B"]);
+    expect(spellScale(7, "major").map((d) => d.name)).toEqual(["G", "A", "B", "C", "D", "E", "F#"]);
+    expect(spellScale(5, "major").map((d) => d.name)).toEqual(["F", "G", "A", "Bb", "C", "D", "E"]);
+    expect(spellScale(11, "major").map((d) => d.name)).toEqual(["B", "C#", "D#", "E", "F#", "G#", "A#"]);
+  });
+});
+
 describe("pedalRelation", () => {
   it("calls a tonic pedal consonant under the I chord", () => {
     expect(pedalRelation(0, parseChord("C"))).toBe("consonant"); // C under C major
@@ -330,5 +372,114 @@ describe("suggestCapo", () => {
   it("returns one entry per fret up to maxFret", () => {
     const { progression } = parseSheet("[X]\nC G Am F");
     expect(suggestCapo(progression, { maxFret: 5 })).toHaveLength(6);
+  });
+});
+
+describe("parseChord — 6/9, parenthesized alterations, extra qualities", () => {
+  it("parses C6/9 (the slash is part of the quality, not a bass)", () => {
+    const c = parseChord("C6/9");
+    expect(c).not.toBeNull();
+    expect(c.quality).toBe("6/9");
+    expect(c.bassSemitone).toBeNull();
+    expect(c.intervals).toEqual([0, 4, 7, 9, 14]);
+  });
+
+  it("still parses real slash chords", () => {
+    expect(parseChord("C/E").bassName).toBe("E");
+    expect(parseChord("Cm7/Bb").quality).toBe("m7");
+    expect(parseChord("Cm7/Bb").bassName).toBe("A#"); // Bb spelled sharp in the raw parse
+  });
+
+  it("parses parenthesized alterations the same as the bare form", () => {
+    expect(parseChord("C7(b9)").quality).toBe(parseChord("C7b9").quality);
+    expect(parseChord("C(add9)").quality).toBe("add9");
+    expect(parseChord("Cm7(b5)").quality).toBe("m7♭5");
+    expect(parseChord("C7(#9)").quality).toBe("7♯9");
+  });
+
+  it("parses maj7#11 (the lydian chord)", () => {
+    const c = parseChord("Cmaj7#11");
+    expect(c).not.toBeNull();
+    expect(c.quality).toBe("maj7♯11");
+    expect(c.intervals).toEqual([0, 4, 7, 11, 18]);
+  });
+
+  it("still rejects lyric words", () => {
+    expect(parseChord("And")).toBeNull();
+    expect(parseChord("Be")).toBeNull();
+  });
+});
+
+describe("normalizeChart — lone ChordPro chord vs section header", () => {
+  it("treats a lone [C] line as a chord, not a section", () => {
+    const { progression } = parseSheet("[C]\n[G]\n[Am]");
+    expect(progression.map((c) => c.raw)).toEqual(["C", "G", "Am"]);
+  });
+  it("still treats [Verse] / [Bridge] as section headers", () => {
+    const { progression } = parseSheet("[Verse]\nC G\n[Bridge]\nF G");
+    expect(progression[0].section).toBe("Verse");
+    expect(progression.map((c) => c.raw)).toEqual(["C", "G", "F", "G"]);
+  });
+});
+
+describe("qualClass", () => {
+  it("classes m7♭5 as the diminished (half-diminished) family", () => {
+    expect(qualClass("m7♭5")).toBe("dim");
+    expect(qualClass(parseChord("Bm7b5").quality)).toBe("dim");
+  });
+  it("keeps dominant 7♭5 in the major/dominant family", () => {
+    expect(qualClass("7♭5")).toBe("maj");
+  });
+  it("classes plain minor and major correctly", () => {
+    expect(qualClass("m7")).toBe("min");
+    expect(qualClass("maj7")).toBe("maj");
+    expect(qualClass("dim7")).toBe("dim");
+    expect(qualClass("aug")).toBe("aug");
+  });
+});
+
+describe("romanNumeral", () => {
+  it("numbers a diatonic major progression in C", () => {
+    expect(romanNumeral(parseChord("C"), 0)).toBe("I");
+    expect(romanNumeral(parseChord("Dm"), 0)).toBe("ii");
+    expect(romanNumeral(parseChord("G7"), 0)).toBe("V7");
+    expect(romanNumeral(parseChord("Am"), 0)).toBe("vi");
+  });
+  it("renders a half-diminished as viiø7 (not vii7♭5)", () => {
+    expect(romanNumeral(parseChord("Bm7b5"), 0)).toBe("viiø7");
+  });
+  it("renders fully-diminished with °", () => {
+    expect(romanNumeral(parseChord("Bdim"), 0)).toBe("vii°");
+    expect(romanNumeral(parseChord("Bdim7"), 0)).toBe("vii°7");
+  });
+  it("renders augmented with +", () => {
+    expect(romanNumeral(parseChord("Caug"), 0)).toBe("I+");
+  });
+});
+
+describe("harmonicFunction — secondary dominants & minor ♭VII", () => {
+  it("labels secondary/applied dominants as D in major", () => {
+    expect(harmonicFunction(parseChord("A7"), 0, "major")).toBe("D"); // V7/ii
+    expect(harmonicFunction(parseChord("D7"), 0, "major")).toBe("D"); // V7/V
+    expect(harmonicFunction(parseChord("E7"), 0, "major")).toBe("D"); // V7/vi
+    expect(harmonicFunction(parseChord("Eb7"), 0, "major")).toBe("D"); // chromatic dom
+  });
+  it("still labels the plain diatonic triads", () => {
+    expect(harmonicFunction(parseChord("C"), 0, "major")).toBe("T");
+    expect(harmonicFunction(parseChord("F"), 0, "major")).toBe("S");
+    expect(harmonicFunction(parseChord("G"), 0, "major")).toBe("D");
+    expect(harmonicFunction(parseChord("Am"), 0, "major")).toBe("T");
+  });
+  it("gives diatonic ♭VII in minor a function instead of '?'", () => {
+    expect(harmonicFunction(parseChord("G"), 9, "minor")).toBe("S"); // ♭VII in A minor
+    expect(harmonicFunction(parseChord("G7"), 9, "minor")).toBe("D"); // backdoor ♭VII7
+  });
+  it("isDominantQuality recognizes the dom7 family only", () => {
+    expect(isDominantQuality("7")).toBe(true);
+    expect(isDominantQuality("9")).toBe(true);
+    expect(isDominantQuality("13")).toBe(true);
+    expect(isDominantQuality("maj7")).toBe(false);
+    expect(isDominantQuality("m7")).toBe(false);
+    expect(isDominantQuality("m7♭5")).toBe(false);
   });
 });

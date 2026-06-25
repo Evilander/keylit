@@ -22,22 +22,23 @@ function u16(n) { return [(n >>> 8) & 0xff, n & 0xff]; }
  */
 export function progressionToMidi(voicings, opts = {}) {
   const { tempoBpm = 90, beatsPerChord = 2, ticksPerBeat = 480, velocity = 80 } = opts;
+  const vel = Math.max(0, Math.min(127, velocity | 0)); // data bytes must be 0-127
   const chordTicks = Math.round(beatsPerChord * ticksPerBeat);
 
   const track = [];
-  // tempo meta: microseconds per quarter note
-  const usPerBeat = Math.round(60000000 / tempoBpm);
+  // tempo meta: microseconds per quarter note (24-bit field, so cap at 0xFFFFFF)
+  const usPerBeat = Math.min(0xffffff, Math.max(1, Math.round(60000000 / tempoBpm)));
   track.push(...vlq(0), 0xff, 0x51, 0x03, (usPerBeat >> 16) & 0xff, (usPerBeat >> 8) & 0xff, usPerBeat & 0xff);
 
   for (const notes of voicings) {
-    const safe = (notes || []).filter((n) => Number.isFinite(n) && n >= 0 && n <= 127);
+    const safe = (notes || []).map((n) => Math.round(n)).filter((n) => Number.isFinite(n) && n >= 0 && n <= 127);
     if (!safe.length) {
       // a rest: still advance time via the next note's delta
       track.push(...vlq(chordTicks), 0xb0, 0x7b, 0x00); // all-notes-off as a time filler
       continue;
     }
     // note-ons at delta 0
-    safe.forEach((n, i) => track.push(...vlq(0), 0x90, n, velocity));
+    safe.forEach((n) => track.push(...vlq(0), 0x90, n, vel));
     // note-offs: first after chordTicks, rest at delta 0
     safe.forEach((n, i) => track.push(...vlq(i === 0 ? chordTicks : 0), 0x80, n, 0x00));
   }

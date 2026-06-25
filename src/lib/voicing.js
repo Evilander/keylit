@@ -25,7 +25,11 @@ export function reduceVoicing(intervals) {
   if (intervals.length <= 4) return [...intervals];
   const has = (x) => intervals.includes(x);
   const sel = new Set([0]);
-  for (const t of [3, 4, 2, 5]) if (has(t)) { sel.add(t); break; }
+  // The chord's "third". A dominant/major 11th (interval 17) clashes a minor 9th
+  // against the major 3rd, so when an 11 is present the major 3rd is dropped
+  // (a minor 3rd, 2 or 4 doesn't clash and is kept).
+  const thirdPrefs = has(17) ? [3, 2, 5] : [3, 4, 2, 5];
+  for (const t of thirdPrefs) if (has(t)) { sel.add(t); break; }
   for (const t of [11, 10, 9]) if (has(t)) { sel.add(t); break; }
   const tensions = intervals.filter((i) => i >= 13).sort((a, b) => b - a);
   if (tensions.length) sel.add(tensions[0]);
@@ -36,10 +40,18 @@ export function reduceVoicing(intervals) {
 
 export function addBass(notes, chord) {
   if (chord.bassSemitone === null || chord.bassSemitone === chord.rootSemitone) return notes;
-  let bassMidi = 36 + chord.bassSemitone;
-  const lo = Math.min(...notes);
-  while (bassMidi >= lo && bassMidi - 12 >= LOW_MIDI) bassMidi -= 12;
-  return [bassMidi, ...notes];
+  const b = ((chord.bassSemitone % 12) + 12) % 12;
+  // Lowest in-range MIDI note carrying the bass pitch class.
+  const bass = LOW_MIDI + (((b - LOW_MIDI) % 12) + 12) % 12;
+  // The slash bass MUST be the lowest sounding note: lift any chord tone that
+  // would otherwise sit at or below it (so the bass isn't deduped away when the
+  // upper voicing is already near the bottom of the keyboard).
+  const upper = notes.map((n) => {
+    let m = n;
+    while (m <= bass) m += 12;
+    return m;
+  });
+  return [bass, ...upper];
 }
 
 export function rootPositionUpper(chord) {

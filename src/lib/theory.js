@@ -43,6 +43,7 @@ export const QUALITIES = {
   "7b9": { name: "7\u266d9", intervals: [0, 4, 7, 10, 13] },
   "7#9": { name: "7\u266f9", intervals: [0, 4, 7, 10, 15] },
   "7#11": { name: "7\u266f11", intervals: [0, 4, 7, 10, 18] },
+  "maj7#11": { name: "maj7\u266f11", intervals: [0, 4, 7, 11, 18] },
   "9": { name: "9", intervals: [0, 4, 7, 10, 14] },
   maj9: { name: "maj9", intervals: [0, 4, 7, 11, 14] },
   M9: { name: "maj9", intervals: [0, 4, 7, 11, 14] },
@@ -78,19 +79,30 @@ export function parseChord(rawToken) {
   if (!token) return null;
   const m = token.match(/^([A-G])([#b]?)(.*)$/);
   if (!m) return null;
-  const [, letter, acc, rest] = m;
+  const [, letter, acc, rawRest] = m;
   const rootSemitone = noteToSemitone(letter, acc);
   if (rootSemitone === undefined) return null;
 
-  const [qualityStr, bassStr] = rest.split("/");
+  // Musicians bracket alterations/additions: C7(b9) means C7b9, C(add9) means
+  // Cadd9. Strip the parentheses so the inner quality is looked up directly.
+  const rest = rawRest.replace(/[()]/g, "");
+
+  // A "/" introduces a slash bass ONLY when what follows it is a note name.
+  // Otherwise the slash belongs to the quality itself (e.g. the "6/9" chord),
+  // which must not be mistaken for a chord over a "9" bass.
+  let qualityStr = rest, bassStr;
+  const slash = rest.lastIndexOf("/");
+  if (slash !== -1 && /^[A-G][#b]?$/.test(rest.slice(slash + 1))) {
+    qualityStr = rest.slice(0, slash);
+    bassStr = rest.slice(slash + 1);
+  }
+
   const qDef = QUALITIES[qualityStr];
   if (!qDef) return null;
 
   let bassSemitone = null, bassName = null;
   if (bassStr !== undefined) {
-    const bm = bassStr.match(/^([A-G])([#b]?)$/);
-    if (!bm) return null;
-    bassSemitone = noteToSemitone(bm[1], bm[2]);
+    bassSemitone = noteToSemitone(bassStr[0], bassStr.slice(1));
     if (bassSemitone === undefined) return null;
     bassName = SHARP_NAMES[bassSemitone];
   }
@@ -124,7 +136,14 @@ export function normalizeChart(text) {
     // so "Tuning: E A D G B E" and "Key: C" don't pollute the progression.
     if (/^(tuning|key|capo|tempo|artist|title|album|composer|difficulty|author|tabbed|time|bpm|track|year|genre|chords?|strumming|arranged|transcribed)\b[^:]*:/i.test(trimmed)) continue;
     if (/^\d+\s+of\s+\d+$/i.test(trimmed)) continue;         // "1 of 27" page indicator
-    if (/^\[[^\]]+\]$/.test(trimmed)) { out.push(line); continue; } // section header
+    const lone = trimmed.match(/^\[([^\]]+)\]$/);
+    if (lone) {
+      // A lone bracket whose content is a chord (ChordPro "[C]" on its own line)
+      // is a chord, not a section header. Section names like [Verse]/[Bridge]
+      // don't parse as chords and stay section headers.
+      if (parseChord(lone[1])) { out.push(lone[1]); continue; }
+      out.push(line); continue; // section header
+    }
     const brackets = line.match(/\[[^\]]+\]/g);
     if (brackets && brackets.some((b) => parseChord(b.slice(1, -1)))) {
       const chords = brackets.map((b) => b.slice(1, -1)).filter((t) => parseChord(t)).join("  ");
@@ -190,9 +209,19 @@ export const ROMAN = ["I", "\u266dII", "II", "\u266dIII", "III", "IV", "\u266dV"
 export const qualClass = (name) => {
   if (name.includes("dim")) return "dim";
   if (name === "aug") return "aug";
-  if (name.startsWith("m") && !name.startsWith("maj")) return "min";
+  const minorish = name.startsWith("m") && !name.startsWith("maj");
+  // Half-diminished (m7♭5) is a diminished-triad-plus-minor-7th: it belongs to
+  // the diminished family, not plain minor (so it renders as ø and counts as the
+  // diatonic vii/ii in key detection). A dominant 7♭5 stays "maj" — handled below.
+  if (minorish && (name.includes("♭5") || name.includes("b5"))) return "dim";
+  if (minorish) return "min";
   return "maj";
 };
+
+// Is this quality a dominant-7 family chord (7, 9, 11, 13 and their altered
+// forms), as opposed to maj7/min7? Used to label (secondary) dominants.
+export const isDominantQuality = (q) =>
+  !q.startsWith("m") && (q.startsWith("7") || q === "9" || q === "11" || q === "13");
 
 export function nashville(ch, tonic) {
   const d = ((ch.rootSemitone - tonic) % 12 + 12) % 12;
@@ -209,10 +238,14 @@ export function romanNumeral(ch, tonic) {
   const cls = qualClass(ch.quality);
   let r = ROMAN[d];
   if (cls === "min" || cls === "dim") r = r.toLowerCase();
+  if (cls === "dim") {
+    // Half-diminished (m7\u266d5) gets the \u00f8 symbol; a fully-diminished triad/7th gets \u00b0.
+    if (ch.quality.includes("\u266d5") || ch.quality.includes("b5")) return r + "\u00f87";
+    return r + "\u00b0" + (ch.quality.includes("7") ? "7" : "");
+  }
+  if (cls === "aug") return r + "+";
   let ext = symFromName(ch.quality);
   if (cls === "min") ext = ext.replace(/^m/, "");
-  if (cls === "dim") { r += "\u00b0"; ext = ext.replace("dim", ""); }
-  if (cls === "aug") { r += "+"; ext = ""; }
   return r + ext.replace("maj", "M");
 }
 
@@ -224,20 +257,42 @@ export const MINOR_QUAL = ["min", "dim", "maj", "min", "min", "maj", "maj"];
 
 /* ---- scale spelling + degree lookup (for the tutor's scale view) ---- */
 
+// Letter names in scale order, and the pitch class of each natural letter.
+const LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
+const LETTER_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+
+// Spell pitch class `pc` using a SPECIFIC letter, choosing the accidental that
+// makes the math work — so a diatonic scale gets one letter per degree even when
+// that means Cb, Fb, E#, B#, or a double sharp/flat. (The 12-name sharp/flat
+// arrays can't express those; letter-cycling can.)
+function spellAsLetter(pc, letter) {
+  const p = (((pc % 12) + 12) % 12);
+  let acc = (((p - LETTER_PC[letter]) % 12) + 12) % 12; // 0..11
+  if (acc > 6) acc -= 12;                               // nearest signed: -5..6
+  const mark = acc === 0 ? "" : acc > 0 ? "#".repeat(acc) : "b".repeat(-acc);
+  return letter + mark;
+}
+
 // Walk the scale and report each degree key-aware: its pitch class, the name a
-// musician would write in this key (sharps vs flats), its 1-based degree number,
-// and the step ("W"/"H") taken FROM this degree TO the next. The 7th's step lands
-// on the octave (tonic + 12). Major -> WWHWWWH; natural minor -> WHWWHWW.
+// musician would write in this key (proper diatonic spelling — one letter per
+// degree, so Gb major's 4th is Cb, not B), its 1-based degree number, and the
+// step ("W"/"H") taken FROM this degree TO the next. The 7th's step lands on the
+// octave (tonic + 12). Major -> WWHWWWH; natural minor -> WHWWHWW.
 export function spellScale(tonic, mode = "major") {
   const scale = mode === "minor" ? MINOR_SCALE : MAJOR_SCALE;
-  const ctx = { tonic, mode };
+  const t = (((tonic % 12) + 12) % 12);
+  // Pick the tonic's letter from the key's sharp/flat preference (Gb not F#, etc.),
+  // then cycle letters from there so every degree lands on the next letter.
+  const tonicName = spellPc(t, { tonic: t, mode });
+  const tonicLetterIdx = LETTERS.indexOf(tonicName[0]);
   return scale.map((iv, i) => {
-    const semitone = (((tonic + iv) % 12) + 12) % 12;
+    const semitone = (t + iv) % 12;
+    const letter = LETTERS[(tonicLetterIdx + i) % 7];
     const nextIv = i === scale.length - 1 ? 12 : scale[i + 1];
     const step = nextIv - iv; // 1 = half step, 2 = whole step
     return {
       semitone,
-      name: spellPc(semitone, ctx),
+      name: spellAsLetter(semitone, letter),
       degree: i + 1,
       stepType: step === 1 ? "H" : "W",
     };
@@ -245,12 +300,10 @@ export function spellScale(tonic, mode = "major") {
 }
 
 // The key-aware note NAME at a 1-based scale degree. Returns null if degree is
-// outside 1..7.
+// outside 1..7. Uses the same diatonic letter-cycling as spellScale.
 export function degreeOf(tonic, degree, mode = "major") {
   if (!Number.isInteger(degree) || degree < 1 || degree > 7) return null;
-  const scale = mode === "minor" ? MINOR_SCALE : MAJOR_SCALE;
-  const semitone = (((tonic + scale[degree - 1]) % 12) + 12) % 12;
-  return spellPc(semitone, { tonic, mode });
+  return spellScale(tonic, mode)[degree - 1].name;
 }
 
 // Is a held pedal tone (a pitch class 0-11) a chord tone of `chord`? A pedal
@@ -411,19 +464,23 @@ export const CIRCLE_OF_FIFTHS = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];
 export function harmonicFunction(chord, tonic, mode = "major") {
   const deg = ((chord.rootSemitone - tonic) % 12 + 12) % 12;
   const cls = qualClass(chord.quality);
+  // A dominant-7-family chord is functioning as a dominant — the diatonic V7, or
+  // a secondary/applied dominant (A7→ii, D7→V, etc.) or a backdoor ♭VII7.
+  if (isDominantQuality(chord.quality)) return "D";
   if (mode === "minor") {
-    // i, III, VI = tonic;  iv, ii° = subdominant;  V, vii° = dominant
+    // i, ♭III, ♭VI = tonic;  iv, ii°, ♭VII (subtonic, pre-dominant) = subdominant;
+    // V, vii° = dominant
     if (deg === 0 || deg === 3 || deg === 8) return "T";
-    if (deg === 5 || deg === 2) return "S";
+    if (deg === 5 || deg === 2 || deg === 10) return "S";
     if (deg === 7 || deg === 11) return "D";
+    if (cls === "dim") return "D"; // applied leading-tone
     return "?";
   }
   // major: I, iii, vi = tonic;  ii, IV = subdominant;  V, vii° = dominant
   if (deg === 0 || deg === 4 || deg === 9) return "T";
   if (deg === 2 || deg === 5) return "S";
   if (deg === 7 || deg === 11) return "D";
-  // dominant-7 quality on a non-diatonic root is almost always a (secondary) dominant
-  if (cls === "dim") return "D";
+  if (cls === "dim") return "D"; // applied/secondary leading-tone chord
   return "?";
 }
 

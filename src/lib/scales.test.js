@@ -44,4 +44,29 @@ describe("scalesForChord", () => {
       expect(p.pcs.length).toBeGreaterThan(0);
     }
   });
+
+  it("recommends whole-tone over an augmented chord and includes the ♯5", () => {
+    const picks = scalesForChord(parseChord("Caug"));
+    expect(picks[0].shape).toBe("whole tone");
+    expect(picks[0].pcs).toContain(8); // G# — the #5 of C+
+  });
+
+  it("recommends locrian (half-diminished) over m7♭5, not the diminished scale", () => {
+    const shapes = scalesForChord(parseChord("Bm7b5")).map((x) => x.shape);
+    expect(shapes).toContain("locrian");
+    expect(shapes).not.toContain("whole-half dim");
+  });
+
+  it("uses whole-tone (not lydian dominant) for a ♯5 altered dominant", () => {
+    const shapes = scalesForChord(parseChord("C7#5")).map((x) => x.shape);
+    expect(shapes).toContain("altered");
+    expect(shapes).toContain("whole tone");
+    expect(shapes).not.toContain("lydian dominant");
+  });
+});
+
+describe("scalePitchClasses — new shapes", () => {
+  it("builds a whole-tone scale", () => {
+    expect(scalePitchClasses(0, "whole tone")).toEqual([0, 2, 4, 6, 8, 10]);
+  });
 });
