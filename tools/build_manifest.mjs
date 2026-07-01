@@ -11,6 +11,11 @@ import { getTuning } from "../src/lib/tuning.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public", "corpus");
 
+// Owner explicitly excluded these — keep them out of the browse index no matter
+// what lands on disk (a stray scraper kept re-adding Duster).
+const EXCLUDE_ARTISTS = new Set(["Duster", "Damien Jurado"]);
+const EXCLUDE_ID = /^(duster|damien-jurado)--/;
+
 const FIX = {
   "CHERYL CROW": "Sheryl Crow",
   "Dan Folgerberg": "Dan Fogelberg",
@@ -40,6 +45,7 @@ for (const src of fs.readdirSync(ROOT)) {
     let s;
     try { s = JSON.parse(fs.readFileSync(fp, "utf8")); } catch { continue; }
     if (!s.id || !s.title) continue;
+    if (EXCLUDE_ID.test(s.id) || EXCLUDE_ARTISTS.has(s.artist)) continue;
     const na = normArtist(s.artist);
     if (na !== s.artist) { s.artist = na; fs.writeFileSync(fp, JSON.stringify(s), "utf8"); fixedArtists++; }
     const t = getTuning(s.tuning);
