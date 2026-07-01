@@ -22,7 +22,7 @@ import ScaleBuilder from "./components/ScaleBuilder.jsx";
 import DegreeFinder from "./components/DegreeFinder.jsx";
 import ChordLab from "./components/ChordLab.jsx";
 import KeyWheel from "./components/KeyWheel.jsx";
-import CapoAdvisor from "./components/CapoAdvisor.jsx";
+import CapoTuning from "./components/CapoTuning.jsx";
 import SongTools from "./components/SongTools.jsx";
 import ImportModal from "./components/ImportModal.jsx";
 import ChartView from "./components/ChartView.jsx";
@@ -603,7 +603,7 @@ export default function App() {
               {theoryTab === "circle" ? (
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 240px", gap: 24, marginTop: 18, alignItems: "start" }} className="bench-cols">
                   <div className="flex justify-center">
-                    <KeyWheel prog={view.prog} activeKey={activeKey} currentIdx={currentIdx} onPickTonic={(pc) => setKeyOverride({ tonic: pc, mode: activeKey.mode })} />
+                    <KeyWheel prog={view.prog} activeKey={activeKey} currentIdx={currentIdx} onPickTonic={(pc, m) => setKeyOverride({ tonic: pc, mode: m || activeKey.mode })} />
                   </div>
                   <div>
                     <div className="kl-eyebrow">Key of {keyName}</div>
@@ -616,7 +616,7 @@ export default function App() {
                 </div>
               ) : (
                 <div style={{ marginTop: 18 }}>
-                  <CapoAdvisor prog={view.prog} capo={capo} setCapo={setCapo} keyCtx={activeKey} />
+                  <CapoTuning prog={view.prog} />
                 </div>
               )}
             </div>
