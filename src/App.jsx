@@ -28,6 +28,7 @@ import ImportModal from "./components/ImportModal.jsx";
 import ChartView from "./components/ChartView.jsx";
 import Library from "./components/Library.jsx";
 import Practice from "./components/Practice.jsx";
+import TabKeys from "./components/TabKeys.jsx";
 
 const SALAMANDER = {
   A0: "A0.mp3", C1: "C1.mp3", "D#1": "Ds1.mp3", "F#1": "Fs1.mp3",
@@ -536,6 +537,7 @@ export default function App() {
                   activeSymbol={current ? displaySymbol(current, 0) : null}
                   onChordClick={(ch) => { arm(); selectUnique(ch); }} />
               </section>
+              <TabKeys sheet={sheet} onPlay={(midis) => { arm(); ensureAndPlay(midis, 1.2); }} />
               {chartInput}
             </div>
           )}
