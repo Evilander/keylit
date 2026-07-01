@@ -25,14 +25,16 @@ function chordLineInfo(line) {
 }
 
 export default function ChartView({ text, activeKey, transpose = 0, onChordClick, activeSymbol }) {
-  const lines = useMemo(() => String(text || "").split(/\r?\n/), [text]);
+  // Strip Ultimate-Guitar [ch]/[tab] wrappers so pasted UG charts render clean.
+  const clean = useMemo(() => String(text || "").replace(/\[\/?(ch|tab)\]/g, ""), [text]);
+  const lines = useMemo(() => clean.split(/\r?\n/), [clean]);
   const tabRanges = useMemo(() => {
     const set = new Set();
-    for (const b of findTabBlocks(text)) {
+    for (const b of findTabBlocks(clean)) {
       for (let i = 0; i < b.lines.length; i++) set.add(b.startLine + i);
     }
     return set;
-  }, [text]);
+  }, [clean]);
 
   const tonic = activeKey?.tonic ?? 0;
   const mode = activeKey?.mode ?? "major";
