@@ -1,54 +1,33 @@
-/* Minimal reset + the handful of layout utilities App.jsx relies on. */
+/* Minimal reset + base + self-hosted fonts. Files live in /public/fonts. */
 
-/* Self-hosted fonts: Berkeley Mono (the technical hero) + Fraunces (warm serif
-   wordmark/headings). Files live in /public/fonts. */
-@font-face {
-  font-family: "Berkeley Mono";
-  src: url("/fonts/BerkeleyMono-Regular.woff2") format("woff2");
-  font-weight: 400; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "Berkeley Mono";
-  src: url("/fonts/BerkeleyMono-SemiBold.woff2") format("woff2");
-  font-weight: 600; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "Berkeley Mono";
-  src: url("/fonts/BerkeleyMono-Bold.woff2") format("woff2");
-  font-weight: 700; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "Fraunces";
-  src: url("/fonts/Fraunces-SemiBold.woff2") format("woff2");
-  font-weight: 600; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "Fraunces";
-  src: url("/fonts/Fraunces-Black.woff2") format("woff2");
-  font-weight: 900; font-style: normal; font-display: swap;
-}
-/* Space Grotesk — the UI/body voice (technical, mechanical; pairs with the
-   Berkeley Mono readouts and the Fraunces display). Replaces system-ui so no
-   surface falls back to a default "AI tell" font. */
-@font-face {
-  font-family: "Space Grotesk";
-  src: url("/fonts/SpaceGrotesk-Regular.woff2") format("woff2");
-  font-weight: 400; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "Space Grotesk";
-  src: url("/fonts/SpaceGrotesk-Medium.woff2") format("woff2");
-  font-weight: 500; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "Space Grotesk";
-  src: url("/fonts/SpaceGrotesk-Bold.woff2") format("woff2");
-  font-weight: 700; font-style: normal; font-display: swap;
-}
+/* Berkeley Mono — the data/notation hero (tab & chord alignment needs monospace). */
+@font-face { font-family: "Berkeley Mono"; src: url("/fonts/BerkeleyMono-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Berkeley Mono"; src: url("/fonts/BerkeleyMono-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Berkeley Mono"; src: url("/fonts/BerkeleyMono-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+
+/* Bricolage Grotesque — the UI/body voice (characterful grotesque, not an AI-default sans). */
+@font-face { font-family: "Bricolage Grotesque"; src: url("/fonts/BricolageGrotesque-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Bricolage Grotesque"; src: url("/fonts/BricolageGrotesque-Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Bricolage Grotesque"; src: url("/fonts/BricolageGrotesque-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Bricolage Grotesque"; src: url("/fonts/BricolageGrotesque-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Bricolage Grotesque"; src: url("/fonts/BricolageGrotesque-ExtraBold.woff2") format("woff2"); font-weight: 800; font-style: normal; font-display: swap; }
+
+/* Newsreader — the editorial serif for song/artist titles & literary copy (roman + italic). */
+@font-face { font-family: "Newsreader"; src: url("/fonts/Newsreader-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Newsreader"; src: url("/fonts/Newsreader-Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Newsreader"; src: url("/fonts/Newsreader-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Newsreader"; src: url("/fonts/Newsreader-Italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Newsreader"; src: url("/fonts/Newsreader-MediumItalic.woff2") format("woff2"); font-weight: 500; font-style: italic; font-display: swap; }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { background: #14110f; -webkit-font-smoothing: antialiased; }
+body {
+  background: #FAFAF8;
+  color: #2A2521;
+  font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
 
 .flex { display: flex; }
 .items-center { align-items: center; }
@@ -58,5 +37,5 @@ body { background: #14110f; -webkit-font-smoothing: antialiased; }
 .justify-center { justify-content: center; }
 
 @media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; }
+  * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

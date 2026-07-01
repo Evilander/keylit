@@ -1,231 +1,227 @@
 /* ================================================================== *
- * bench.css — "The Bench" material layer.
- * Keylit as a piece of warm analog gear: recessed decks, raised
- * faceplates, engraved labels, tube-glow, spring motion. Structural
- * look lives here as single-class selectors; content color stays in
- * theme.js `C`. Mirrors the theme tokens as CSS variables.
+ * bench.css — "The Fretboard Press" material layer (LIGHT).
+ * Warm near-white surfaces, hairline rules (not cards), warm-brown ink.
+ * The ONE dark element is the keyboard deck (.deck/.key-felt), where the
+ * saturated T/S/D hues glow as lit keys. Content color stays in theme.js `C`.
  * ================================================================== */
 
 :root {
-  --kl-bench: #14110f;
-  --kl-deck: #0d0b09;
-  --kl-face: #221d18;
-  --kl-face2: #2a241d;
-  --kl-rail: #191510;
-  --kl-edge-hi: #4a443c;
-  --kl-edge: #352e27;
-  --kl-edge-soft: #2a241d;
-  --kl-edge-deep: #0a0807;
-  --kl-ink: #ece6dd;
-  --kl-muted: #9a9082;
-  --kl-faint: #6b6256;
-  --kl-amber: #f0b429;
-  --kl-amber-glow: #f6c95a;
-  --kl-teal: #46cfc2;
-  --kl-teal-glow: #74e3d8;
-  --kl-coral: #f08a5d;
-  --kl-coral-glow: #f6a982;
-  --kl-purple: #b48ef0;
+  --kl-base: #FAFAF8;
+  --kl-raised: #FFFFFF;
+  --kl-sunken: #F2EFEA;
+  --kl-hair: #E5E0D8;
+  --kl-line: #D2CABE;
+  --kl-ink: #2A2521;
+  --kl-muted: #6B645C;
+  --kl-faint: #9A938A;
+  --kl-shadow: rgba(42, 37, 33, 0.08);
+  --kl-shadow-soft: rgba(42, 37, 33, 0.05);
+  --kl-amber: #f0b429; --kl-amber-text: #966C0B; --kl-amber-ui: #BD880D;
+  --kl-teal: #46cfc2;  --kl-teal-text: #218178;  --kl-teal-ui: #2AA296;
+  --kl-coral: #f08a5d; --kl-coral-text: #C94A13; --kl-coral-ui: #EC6B32;
   --kl-mono: "Berkeley Mono", ui-monospace, Menlo, Consolas, monospace;
-  --kl-display: "Fraunces", Georgia, "Times New Roman", serif;
-  --kl-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --kl-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --kl-sans: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-/* ---- the canvas: a warm deck lit from above, faint brushed grain ---- */
-.bench-root {
+/* ---- app shell: persistent left sidebar + content column ---- */
+.kl-app {
   min-height: 100%;
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  background: var(--kl-base);
   color: var(--kl-ink);
   font-family: var(--kl-sans);
-  position: relative;
-  background:
-    radial-gradient(130% 70% at 50% -10%, #271d13 0%, rgba(20, 17, 15, 0) 52%),
-    linear-gradient(180deg, #181410 0%, #14110f 28%, #100c0a 100%);
 }
-.bench-root::before { /* brushed metal grain, barely there */
-  content: "";
-  position: fixed; inset: 0; z-index: 0; pointer-events: none;
-  opacity: 0.04; mix-blend-mode: overlay;
-  background-image: repeating-linear-gradient(90deg, #fff 0 1px, transparent 1px 3px);
+.kl-sidebar {
+  position: sticky; top: 0; align-self: start;
+  height: 100vh; overflow-y: auto;
+  background: var(--kl-raised);
+  border-right: 1px solid var(--kl-hair);
+  padding: 20px 14px;
+  display: flex; flex-direction: column; gap: 4px;
 }
-.bench-shell { position: relative; z-index: 1; }
+.kl-brand { padding: 4px 10px 18px; }
+.kl-brand .mark {
+  font-family: var(--kl-display); font-style: italic; font-weight: 500;
+  font-size: 27px; letter-spacing: -0.01em; color: var(--kl-ink); line-height: 1;
+}
+.kl-brand .kicker {
+  font-family: var(--kl-sans); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.04em; color: var(--kl-faint); margin-top: 5px;
+}
+.kl-nav { display: flex; flex-direction: column; gap: 1px; }
+.kl-nav-item {
+  position: relative; display: flex; align-items: center; gap: 11px;
+  font-family: var(--kl-sans); font-size: 14.5px; font-weight: 500;
+  color: var(--kl-muted); background: transparent; border: 0;
+  border-radius: 9px; padding: 9px 11px; cursor: pointer; text-align: left;
+  transition: background 140ms ease, color 140ms ease;
+}
+.kl-nav-item:hover { background: var(--kl-sunken); color: var(--kl-ink); }
+.kl-nav-item .ico { color: var(--kl-faint); display: inline-flex; transition: color 140ms ease; }
+.kl-nav-item:hover .ico { color: var(--kl-muted); }
+.kl-nav-item[aria-current="true"] {
+  color: var(--kl-ink); font-weight: 700; background: var(--kl-sunken);
+}
+.kl-nav-item[aria-current="true"] .ico { color: var(--kl-ink); }
+.kl-nav-item[aria-current="true"]::before {
+  content: ""; position: absolute; left: -14px; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 0 3px 3px 0; background: var(--kl-ink);
+}
+.kl-nav-sep { height: 1px; background: var(--kl-hair); margin: 8px 8px; }
+.kl-side-foot { margin-top: auto; padding: 10px; color: var(--kl-faint); font-size: 11px; }
 
-/* ---- raised module faceplate (the default surface for panels) ---- */
+.kl-main { min-width: 0; display: flex; flex-direction: column; }
+.kl-topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 14px;
+  min-height: 56px; padding: 0 26px;
+  background: rgba(250, 250, 248, 0.86); backdrop-filter: saturate(1.2) blur(8px);
+  border-bottom: 1px solid var(--kl-hair);
+}
+.kl-crumb { font-family: var(--kl-mono); font-size: 12.5px; color: var(--kl-faint); display: flex; align-items: center; gap: 7px; }
+.kl-crumb .cur { color: var(--kl-ink); }
+.kl-crumb .sep { color: var(--kl-line); }
+.kl-content { padding: 26px 26px 64px; max-width: 1080px; width: 100%; }
+.kl-content.wide { max-width: 1280px; }
+
+/* ---- editorial type helpers ---- */
+.kl-eyebrow {
+  font-family: var(--kl-sans); text-transform: uppercase;
+  letter-spacing: 0.09em; font-size: 11px; font-weight: 700; color: var(--kl-muted);
+}
+.kl-title { font-family: var(--kl-display); font-style: italic; font-weight: 500; font-size: 32px; line-height: 1.12; letter-spacing: -0.01em; color: var(--kl-ink); margin: 0; }
+.kl-h2 { font-family: var(--kl-sans); font-weight: 700; font-size: 19px; line-height: 1.3; color: var(--kl-ink); margin: 0; }
+.kl-prose { font-family: var(--kl-display); font-size: 17px; line-height: 1.55; color: var(--kl-ink); }
+.kl-rule { height: 1px; background: var(--kl-hair); border: 0; margin: 18px 0; }
+.kl-meta { font-family: var(--kl-mono); font-size: 12px; color: var(--kl-muted); letter-spacing: 0.01em; }
+
+/* ---- hairline rows (replaces the old card stack) ---- */
+.kl-rows { display: flex; flex-direction: column; }
+.kl-row { display: flex; align-items: center; gap: 14px; padding: 12px 4px; border-bottom: 1px solid var(--kl-hair); }
+.kl-row:first-child { border-top: 1px solid var(--kl-hair); }
+
+/* a soft raised panel — used sparingly (the Bench faceplate, now light) */
 .faceplate {
-  position: relative;
-  background: linear-gradient(180deg, var(--kl-face2) 0%, var(--kl-face) 38%, #1d1813 100%);
-  border: 1px solid var(--kl-edge);
-  border-top-color: var(--kl-edge-hi);
-  border-radius: 14px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    inset 0 -16px 26px rgba(0, 0, 0, 0.26),
-    0 10px 24px rgba(0, 0, 0, 0.42);
+  position: relative; background: var(--kl-raised);
+  border: 1px solid var(--kl-hair); border-radius: 14px; padding: 16px;
+  box-shadow: 0 1px 2px var(--kl-shadow-soft);
 }
-/* corner screws — used sparingly (masthead). Decorative, aria-hidden. */
-.plate-screws::before, .plate-screws::after {
-  content: ""; position: absolute; width: 7px; height: 7px; border-radius: 50%;
-  top: 9px;
-  background: radial-gradient(circle at 35% 30%, #4a443c, #15110d 70%);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
-}
-.plate-screws::before { left: 10px; }
-.plate-screws::after { right: 10px; }
+.plate-screws::before, .plate-screws::after { content: none; }
 
-/* ---- recessed well: where the keyboard (the instrument) sits ---- */
+/* ---- the recessed DARK keyboard stage (the one dark element) ---- */
 .deck {
-  background: radial-gradient(130% 110% at 50% 0%, #15110c 0%, var(--kl-deck) 72%);
-  border: 1px solid var(--kl-edge-deep);
-  border-radius: 16px;
-  box-shadow:
-    inset 0 3px 12px rgba(0, 0, 0, 0.7),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.02);
+  background: radial-gradient(130% 120% at 50% 0%, #1d1711 0%, var(--kl-deck, #171310) 74%);
+  border: 1px solid #0d0a08; border-radius: 16px;
+  box-shadow: inset 0 3px 14px rgba(0, 0, 0, 0.55), 0 1px 2px var(--kl-shadow);
 }
-/* felt strip behind the keys */
-.key-felt {
-  background:
-    linear-gradient(180deg, #3a1714 0%, #2a100e 100%);
-  border-radius: 8px 8px 3px 3px;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.03);
-}
+.key-felt { background: linear-gradient(180deg, #3a1714 0%, #2a100e 100%); border-radius: 8px 8px 3px 3px; box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5); }
 
-/* ---- engraved / debossed label ---- */
+/* ---- engraved label → light eyebrow ---- */
 .engraved {
-  font-family: var(--kl-mono);
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  font-size: 10px;
-  color: var(--kl-faint);
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.045);
+  font-family: var(--kl-sans); text-transform: uppercase;
+  letter-spacing: 0.09em; font-size: 11px; font-weight: 700; color: var(--kl-muted);
 }
 
-/* ---- hardware readout (dark inset display) ---- */
+/* ---- light inset well (readouts, inputs) ---- */
 .readout {
-  background: linear-gradient(180deg, #0b0908, #100d0b);
-  border: 1px solid #0a0807;
-  border-radius: 8px;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.015);
-  font-family: var(--kl-mono);
+  background: var(--kl-sunken); border: 1px solid var(--kl-hair);
+  border-radius: 9px; box-shadow: inset 0 1px 2px var(--kl-shadow-soft);
+  font-family: var(--kl-mono); padding: 8px 12px;
 }
 
-/* ---- hardware button ---- */
+/* ---- buttons ---- */
 .bench-btn {
-  font-family: var(--kl-mono);
+  font-family: var(--kl-sans);
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  background: linear-gradient(180deg, #2b251e, #1d1813);
-  border: 1px solid var(--kl-edge);
-  border-top-color: var(--kl-edge-hi);
-  border-radius: 10px;
-  color: var(--kl-ink);
-  padding: 9px 14px;
-  font-size: 13px; font-weight: 600;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 6px rgba(0, 0, 0, 0.36);
-  cursor: pointer;
+  background: var(--kl-raised); border: 1px solid var(--kl-line);
+  border-radius: 10px; color: var(--kl-ink);
+  padding: 9px 15px; font-size: 14px; font-weight: 600; cursor: pointer;
+  box-shadow: 0 1px 2px var(--kl-shadow-soft);
   transition: transform 80ms ease, box-shadow 120ms ease, background 140ms ease, border-color 140ms ease;
 }
-.bench-btn:hover { background: linear-gradient(180deg, #332b22, #221c16); }
-.bench-btn:active { transform: translateY(1px); box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5); }
+.bench-btn:hover { background: var(--kl-sunken); border-color: var(--kl-line); }
+.bench-btn:active { transform: translateY(1px); }
 .bench-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
 .bench-btn.primary {
-  background: linear-gradient(180deg, var(--kl-amber-glow), var(--kl-amber));
-  border-color: var(--kl-amber);
-  color: #1c1305;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0 18px rgba(240, 180, 41, 0.32);
+  background: var(--kl-ink); border-color: var(--kl-ink); color: #FAFAF8;
+  box-shadow: 0 1px 3px var(--kl-shadow);
 }
-.bench-btn.primary:hover { filter: brightness(1.06); }
+.bench-btn.primary:hover { filter: brightness(1.12); background: var(--kl-ink); }
 
-/* ---- room tabs (Learn / Write / Play) — a recessed switch bank ---- */
-.room-tabs {
-  display: inline-flex; gap: 4px; padding: 5px;
-  border-radius: 12px;
-  background: var(--kl-deck);
-  border: 1px solid var(--kl-edge-deep);
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
+/* ---- segmented / pill toggle ---- */
+.kl-seg { display: inline-flex; gap: 3px; padding: 3px; border-radius: 10px; background: var(--kl-sunken); border: 1px solid var(--kl-hair); }
+.kl-seg button {
+  font-family: var(--kl-sans); font-size: 13px; font-weight: 600; color: var(--kl-muted);
+  background: transparent; border: 0; border-radius: 7px; padding: 6px 13px; cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
 }
-.room-tab {
-  display: inline-flex; align-items: center; gap: 7px;
-  font-family: var(--kl-mono);
-  font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
-  color: var(--kl-faint);
-  background: transparent; border: 1px solid transparent;
-  border-radius: 9px; padding: 7px 14px; cursor: pointer;
-  transition: color 140ms ease, background 160ms ease, box-shadow 160ms ease;
-}
-.room-tab:hover { color: var(--kl-muted); }
-.room-tab[aria-selected="true"] {
-  color: var(--kl-ink);
-  background: linear-gradient(180deg, #2d261d, #221c16);
-  border-color: var(--kl-edge);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 4px rgba(0, 0, 0, 0.3);
-}
-.room-tab .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 7px currentColor; }
+.kl-seg button:hover { color: var(--kl-ink); }
+.kl-seg button[aria-selected="true"] { background: var(--kl-raised); color: var(--kl-ink); box-shadow: 0 1px 2px var(--kl-shadow-soft); }
+
+/* legacy room-tabs (kept for compatibility, light styling) */
+.room-tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 11px; background: var(--kl-sunken); border: 1px solid var(--kl-hair); }
+.room-tab { display: inline-flex; align-items: center; gap: 7px; font-family: var(--kl-sans); font-size: 13px; font-weight: 600; color: var(--kl-muted); background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 6px 13px; cursor: pointer; transition: color 140ms ease, background 160ms ease; }
+.room-tab:hover { color: var(--kl-ink); }
+.room-tab[aria-selected="true"] { color: var(--kl-ink); background: var(--kl-raised); box-shadow: 0 1px 2px var(--kl-shadow-soft); }
+.room-tab .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
 /* ---- VU meter (Tonic / Subdominant / Dominant presence) ---- */
 .vu { display: inline-flex; gap: 3px; align-items: flex-end; height: 16px; }
-.vu i { width: 4px; height: 30%; border-radius: 1px; background: #2a241d; transition: height 220ms cubic-bezier(.22,1,.36,1), box-shadow 220ms ease; }
-.vu i.on { background: currentColor; box-shadow: 0 0 7px currentColor; }
+.vu i { width: 4px; height: 30%; border-radius: 1px; background: var(--kl-hair); transition: height 220ms cubic-bezier(.22,1,.36,1); }
+.vu i.on { background: currentColor; }
 
-/* ---- a small "now" chip / pill ---- */
-.eng-pill {
-  display: inline-flex; align-items: center; gap: 7px;
-  font-family: var(--kl-mono); font-size: 11px; letter-spacing: 0.06em;
-  color: var(--kl-muted);
-  background: var(--kl-deck); border: 1px solid var(--kl-edge-deep);
-  border-radius: 999px; padding: 5px 11px;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
-}
+/* ---- now chip / pill ---- */
+.eng-pill { display: inline-flex; align-items: center; gap: 7px; font-family: var(--kl-sans); font-size: 12px; color: var(--kl-muted); background: var(--kl-sunken); border: 1px solid var(--kl-hair); border-radius: 999px; padding: 5px 11px; }
 
-/* ---- suggestion chip (the proactive "next rung") ---- */
-.chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-family: var(--kl-mono); font-size: 12px; font-weight: 600;
-  color: var(--kl-ink);
-  background: linear-gradient(180deg, #241f19, #1b1712);
-  border: 1px solid var(--kl-edge); border-radius: 999px;
-  padding: 6px 12px; cursor: pointer;
-  transition: transform 90ms ease, border-color 140ms ease, background 140ms ease;
-}
-.chip:hover { border-color: var(--kl-teal); background: linear-gradient(180deg, #2a241d, #201a14); }
+/* ---- suggestion chip ---- */
+.chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--kl-sans); font-size: 13px; font-weight: 600; color: var(--kl-ink); background: var(--kl-raised); border: 1px solid var(--kl-line); border-radius: 999px; padding: 6px 13px; cursor: pointer; transition: transform 90ms ease, border-color 140ms ease, background 140ms ease; }
+.chip:hover { border-color: var(--kl-teal-ui); background: var(--kl-sunken); }
 .chip:active { transform: translateY(1px); }
-.chip .lead { color: var(--kl-teal); }
+.chip .lead { color: var(--kl-teal-text); }
 
 /* ---- focus visibility (a11y floor) ---- */
-.bench-root :focus-visible {
-  outline: 2px solid var(--kl-teal);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
+:focus-visible { outline: 2px solid var(--kl-teal-ui); outline-offset: 2px; border-radius: 4px; }
 
 /* ================================================================== *
- * MOTION — springy, deliberate, on panels/keys not type.
- * (index.css already disables all animation/transition under
- *  prefers-reduced-motion; base styles never hide content, so disabling
- *  motion safely reverts to the resting state.)
+ * MOTION — springy, on panels/keys/reveals, never type.
  * ================================================================== */
-@keyframes kl-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-@keyframes kl-pop  { 0% { opacity: 0; transform: translateY(6px) scale(.96); } 100% { opacity: 1; transform: none; } }
+@keyframes kl-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes kl-pop  { 0% { opacity: 0; transform: translateY(6px) scale(.97); } 100% { opacity: 1; transform: none; } }
 @keyframes kl-snap { 0% { transform: translateX(-9px) scale(1.04); } 60% { transform: translateX(2px); } 100% { transform: none; } }
 @keyframes kl-spin { to { transform: rotate(360deg); } }
 @keyframes kl-breathe { 0%, 100% { filter: drop-shadow(0 0 6px currentColor); } 50% { filter: drop-shadow(0 0 13px currentColor); } }
+@keyframes kl-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-.kl-rise { animation: kl-rise 380ms cubic-bezier(.22, 1, .36, 1) both; }
-.kl-pop  { animation: kl-pop 320ms cubic-bezier(.34, 1.56, .64, 1) both; }
-.kl-snap { animation: kl-snap 360ms cubic-bezier(.34, 1.56, .64, 1) both; }
+.kl-rise { animation: kl-rise 360ms cubic-bezier(.22, 1, .36, 1) both; }
+.kl-pop  { animation: kl-pop 300ms cubic-bezier(.34, 1.56, .64, 1) both; }
+.kl-snap { animation: kl-snap 340ms cubic-bezier(.34, 1.56, .64, 1) both; }
 .kl-spin { animation: kl-spin 1s linear infinite; }
 .kl-breathe { animation: kl-breathe 2.4s ease-in-out infinite; }
+.kl-section { animation: kl-fade 280ms cubic-bezier(.22, 1, .36, 1) both; }
 
-/* staggered reveal for lists of modules/cells */
-.kl-stagger > * { animation: kl-rise 420ms cubic-bezier(.22, 1, .36, 1) both; }
-.kl-stagger > *:nth-child(1) { animation-delay: 0ms; }
-.kl-stagger > *:nth-child(2) { animation-delay: 45ms; }
-.kl-stagger > *:nth-child(3) { animation-delay: 90ms; }
-.kl-stagger > *:nth-child(4) { animation-delay: 135ms; }
-.kl-stagger > *:nth-child(5) { animation-delay: 180ms; }
-.kl-stagger > *:nth-child(6) { animation-delay: 225ms; }
-.kl-stagger > *:nth-child(7) { animation-delay: 270ms; }
-.kl-stagger > *:nth-child(8) { animation-delay: 315ms; }
+.kl-stagger > * { animation: kl-rise 380ms cubic-bezier(.22, 1, .36, 1) both; }
+.kl-stagger > *:nth-child(1){animation-delay:0ms}.kl-stagger > *:nth-child(2){animation-delay:40ms}
+.kl-stagger > *:nth-child(3){animation-delay:80ms}.kl-stagger > *:nth-child(4){animation-delay:120ms}
+.kl-stagger > *:nth-child(5){animation-delay:160ms}.kl-stagger > *:nth-child(6){animation-delay:200ms}
+.kl-stagger > *:nth-child(7){animation-delay:240ms}.kl-stagger > *:nth-child(8){animation-delay:280ms}
 
-/* responsive: collapse the side rails on narrow screens */
-@media (max-width: 880px) {
+/* ---- responsive: sidebar -> top bar on narrow screens ---- */
+@media (max-width: 920px) {
+  .kl-app { grid-template-columns: 1fr; }
+  .kl-sidebar {
+    position: sticky; top: 0; height: auto; flex-direction: row; align-items: center;
+    gap: 6px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--kl-hair);
+    padding: 10px 14px; z-index: 30;
+  }
+  .kl-brand { padding: 0 12px 0 4px; }
+  .kl-brand .kicker { display: none; }
+  .kl-brand .mark { font-size: 20px; }
+  .kl-nav { flex-direction: row; gap: 2px; }
+  .kl-nav-item { padding: 8px 11px; white-space: nowrap; }
+  .kl-nav-item[aria-current="true"]::before { left: 0; right: 0; top: auto; bottom: -10px; width: auto; height: 2px; border-radius: 2px; }
+  .kl-nav-sep, .kl-side-foot { display: none; }
+  .kl-content { padding: 20px 16px 56px; }
   .bench-cols { grid-template-columns: 1fr !important; }
-  .bench-side { order: 2; }
 }
