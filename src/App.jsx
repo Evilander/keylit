@@ -661,7 +661,7 @@ export default function App() {
             </div>
           )}
 
-          {section === "practice" && <Practice onPlayNote={(m) => { arm(); ensureAndPlay([m], 1.0); }} />}
+          {section === "practice" && <Practice onPlay={(midis) => { arm(); midis.forEach((m, i) => setTimeout(() => ensureAndPlay([m], 0.9), i * 460)); }} />}
         </div>
       </main>
 
