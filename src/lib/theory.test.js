@@ -4,6 +4,7 @@ import {
   nashville, romanNumeral, detectKey, harmonicFunction, CIRCLE_OF_FIFTHS,
   shapeForCapo, shapeEase, suggestCapo, normalizeChart,
   spellScale, degreeOf, pedalRelation, buildChord, qualClass, isDominantQuality,
+  sameChordSound,
 } from "./theory.js";
 
 describe("parseChord", () => {
@@ -481,5 +482,24 @@ describe("harmonicFunction — secondary dominants & minor ♭VII", () => {
     expect(isDominantQuality("maj7")).toBe(false);
     expect(isDominantQuality("m7")).toBe(false);
     expect(isDominantQuality("m7♭5")).toBe(false);
+  });
+});
+
+describe("sameChordSound — spelling-proof chord identity", () => {
+  it("treats enharmonic spellings as the same chord", () => {
+    expect(sameChordSound(parseChord("A#m7"), parseChord("Bbm7"))).toBe(true);
+    expect(sameChordSound(parseChord("C#"), parseChord("Db"))).toBe(true);
+  });
+  it("distinguishes quality and bass", () => {
+    expect(sameChordSound(parseChord("C"), parseChord("Cm"))).toBe(false);
+    expect(sameChordSound(parseChord("C/E"), parseChord("C"))).toBe(false);
+    expect(sameChordSound(parseChord("C/E"), parseChord("C/Fb"))).toBe(true);
+  });
+  it("survives transposition round trips", () => {
+    const a = transposeChord(parseChord("Gm"), 3);
+    expect(sameChordSound(a, parseChord("Bbm"))).toBe(true);
+  });
+  it("is falsy on missing input", () => {
+    expect(sameChordSound(null, parseChord("C"))).toBe(false);
   });
 });

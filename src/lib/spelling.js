@@ -27,13 +27,28 @@ export function spellPc(pc, keyCtx) {
   return (flats ? FLAT_NAMES : SHARP_NAMES)[p];
 }
 
+// Chromatic pitch classes (relative to the tonic) that the app's whole number
+// language reads as FLAT degrees: ♭2 ♭3 ♭5 ♭6 ♭7 (see theory.MAJOR_DEGREE).
+const FLAT_DEGREES = new Set([1, 3, 6, 8, 10]);
+
+// Spell a pitch class by its DEGREE FUNCTION in the key: if the number rail
+// calls it ♭3, the note must read E♭ — even in a sharps key like C or G.
+// Diatonic notes keep the key-signature spelling.
+export function spellDegreePc(pc, keyCtx) {
+  const p = (((pc % 12) + 12) % 12);
+  if (!keyCtx) return SHARP_NAMES[p];
+  const rel = (((p - keyCtx.tonic) % 12) + 12) % 12;
+  if (FLAT_DEGREES.has(rel)) return FLAT_NAMES[p];
+  return spellPc(p, keyCtx);
+}
+
 // Display string for a chord, spelled for the key. Mirrors theory.chordSymbol
 // but key-aware. Quality + slash bass handled the same way.
 export function spellChord(chord, keyCtx) {
   if (!chord) return "";
-  const root = spellPc(chord.rootSemitone, keyCtx);
+  const root = spellDegreePc(chord.rootSemitone, keyCtx);
   const bass = chord.bassSemitone === null || chord.bassSemitone === undefined
-    ? "" : "/" + spellPc(chord.bassSemitone, keyCtx);
+    ? "" : "/" + spellDegreePc(chord.bassSemitone, keyCtx);
   return root + symFromName(chord.quality) + bass;
 }
 
@@ -42,9 +57,9 @@ export function spellChord(chord, keyCtx) {
 // chord.rootName / chordSymbol() is automatically key-correct.
 export function respell(chord, keyCtx) {
   if (!chord) return chord;
-  const rootName = spellPc(chord.rootSemitone, keyCtx);
+  const rootName = spellDegreePc(chord.rootSemitone, keyCtx);
   const bassName = chord.bassSemitone === null || chord.bassSemitone === undefined
-    ? null : spellPc(chord.bassSemitone, keyCtx);
+    ? null : spellDegreePc(chord.bassSemitone, keyCtx);
   return {
     ...chord,
     rootName,

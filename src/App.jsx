@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import {
   SHARP_NAMES, parseSheet, transposeChord, chordSymbol, displaySymbol,
-  nashville, romanNumeral, detectKey, CIRCLE_OF_FIFTHS,
+  nashville, romanNumeral, detectKey, CIRCLE_OF_FIFTHS, sameChordSound,
 } from "./lib/theory.js";
 import { rootPositionFull, smoothUpper, addBass, clampVoicing } from "./lib/voicing.js";
 import { analyzeSheet } from "./lib/llm.js";
@@ -87,7 +87,6 @@ export default function App() {
   const [ai, setAi] = useState({ open: false, loading: false, data: null, error: null, raw: null });
   const [labProg, setLabProg] = useState(null);
   const [labHistory, setLabHistory] = useState([]);
-  const [capo, setCapo] = useState(0);
   const [section, setSection] = useState("library");
   const [theoryTab, setTheoryTab] = useState("circle");
   const [lessonHL, setLessonHL] = useState(null);
@@ -129,7 +128,7 @@ export default function App() {
   const openSong = useCallback(async (entry) => {
     const song = await loadSong(entry);
     if (!song) return;
-    setLoaded({ title: song.title, artist: song.artist, source: song.source, sourceUrl: song.sourceUrl, tuning: song.tuning, capo: song.capo, key: song.key, format: song.format });
+    setLoaded({ title: song.title, artist: song.artist, source: song.source, sourceUrl: song.sourceUrl, tuning: song.tuning, tuningRaw: song.tuningRaw, capo: song.capo, key: song.key, format: song.format });
     loadSheet(song.body || "");
     setSection("song");
   }, []);
@@ -137,7 +136,7 @@ export default function App() {
   const { progression: baseProg } = useMemo(() => parseSheet(sheet), [sheet]);
   const sourceProg = labProg || baseProg;
 
-  useEffect(() => { setLabProg(null); setLabHistory([]); setCapo(0); }, [sheet]);
+  useEffect(() => { setLabProg(null); setLabHistory([]); }, [sheet]);
 
   const view = useMemo(() => {
     const raw = sourceProg.map((ch) => transposeChord(ch, transpose));
@@ -257,7 +256,8 @@ export default function App() {
   const selectIdx = (i) => { arm(); setIsPlaying(false); setCurrentIdx(i); };
   const selectUnique = (ch) => {
     arm(); setIsPlaying(false);
-    const i = view.prog.findIndex((c) => chordSymbol(c) === chordSymbol(ch));
+    // Match by SOUND, not by symbol string — respelling (A# vs B♭) must not break it.
+    const i = view.prog.findIndex((c) => sameChordSound(c, ch));
     if (i >= 0) setCurrentIdx(i); else ensureAndPlay(rootPositionFull(ch));
   };
   const step = (d) => { arm(); setIsPlaying(false); setCurrentIdx((i) => Math.max(0, Math.min(view.prog.length - 1, i + d))); };
@@ -295,7 +295,7 @@ export default function App() {
   const resetLab = () => { setLabProg(null); setLabHistory([]); };
 
   const loadProgression = (chords) => {
-    arm(); setTranspose(0); setCapo(0); setKeyOverride(null);
+    arm(); setTranspose(0); setKeyOverride(null);
     setLabHistory([]); setLabProg(chords); setCurrentIdx(0); setIsPlaying(false);
   };
 
@@ -365,17 +365,39 @@ export default function App() {
   };
 
   /* ---------- shared bits ---------- */
+  // Picking a new tonic CHANGES THE KEY: it transposes the whole song there
+  // (chart, numbers, piano, tab all follow). The mode select is a lens — it
+  // renumbers/respells without moving pitches.
+  const changeKeyTonic = (target) => {
+    let delta = (target - activeKey.tonic + 12) % 12;
+    if (delta > 6) delta -= 12;
+    if (delta) {
+      arm();
+      setTranspose((t) => {
+        let n = t + delta;
+        if (n > 11) n -= 12;
+        if (n < -11) n += 12;
+        return n;
+      });
+    }
+    if (keyOverride) setKeyOverride({ tonic: target, mode: keyOverride.mode });
+  };
   const keyPicker = (
     <Readout style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
       <EngLabel>key</EngLabel>
-      <select value={activeKey.tonic} onChange={(e) => setKeyOverride({ tonic: Number(e.target.value), mode: activeKey.mode })} style={selStyle} aria-label="key">
+      <select value={activeKey.tonic} onChange={(e) => changeKeyTonic(Number(e.target.value))} style={selStyle} aria-label="key"
+        title="Change the song's key — the chart, numbers, piano and tab all move with it">
         {SHARP_NAMES.map((n, i) => <option key={i} value={i}>{spellPc(i, activeKey)}</option>)}
       </select>
-      <select value={activeKey.mode} onChange={(e) => setKeyOverride({ tonic: activeKey.tonic, mode: e.target.value })} style={selStyle} aria-label="mode">
+      <select value={activeKey.mode} onChange={(e) => setKeyOverride({ tonic: activeKey.tonic, mode: e.target.value })} style={selStyle} aria-label="mode"
+        title="Read the same chords through the major or minor lens — nothing moves">
         <option value="major">major</option>
         <option value="minor">minor</option>
       </select>
-      {keyOverride ? (<button onClick={() => setKeyOverride(null)} style={{ ...miniBtn, width: "auto", padding: "0 8px", fontSize: 11 }}>auto</button>) : (<span style={{ fontSize: 11, color: C.faint }}>auto</span>)}
+      {(keyOverride || transpose !== 0) ? (
+        <button onClick={() => { setKeyOverride(null); setTranspose(0); }} style={{ ...miniBtn, width: "auto", padding: "0 8px", fontSize: 11 }}
+          title="Back to the song's own key">auto</button>
+      ) : (<span style={{ fontSize: 11, color: C.faint }}>auto</span>)}
     </Readout>
   );
 
@@ -385,7 +407,6 @@ export default function App() {
       <button onClick={() => setTranspose((t) => Math.max(-11, t - 1))} style={miniBtn} aria-label="Transpose down"><Minus size={14} /></button>
       <span style={{ fontFamily: MONO, fontSize: 14, minWidth: 34, textAlign: "center", color: transpose ? C.toneText : C.muted }}>{transpose > 0 ? "+" : ""}{transpose}</span>
       <button onClick={() => setTranspose((t) => Math.min(11, t + 1))} style={miniBtn} aria-label="Transpose up"><Plus size={14} /></button>
-      {transpose !== 0 && (<button onClick={() => setTranspose(0)} style={{ ...miniBtn, width: "auto", padding: "0 8px", fontSize: 11 }}>reset</button>)}
     </div>
   );
 
@@ -407,6 +428,14 @@ export default function App() {
         <span style={{ fontSize: 11, color: C.faint }}>fast</span>
       </div>
     </div>
+  );
+
+  // Tab → piano is tuning-, capo- and key-aware: the loaded song's metadata
+  // feeds the parser, and transpose moves the lit keys with the rest of the app.
+  const tabKeysPanel = (
+    <TabKeys sheet={sheet} tuning={loaded?.tuning} tuningRaw={loaded?.tuningRaw}
+      capo={loaded?.capo} shift={transpose}
+      onPlay={(midis) => { arm(); ensureAndPlay(midis, 1.2); }} />
   );
 
   const numbersRailPanel = view.prog.length > 0 && (
@@ -518,7 +547,11 @@ export default function App() {
         </div>
 
         <div className={`kl-content${section === "library" || section === "song" ? "" : " wide"}`}>
-          {section === "library" && <Library onOpen={openSong} />}
+          {section === "library" && (
+            <Library onOpen={openSong}
+              onPaste={() => { setSection("song"); setImportOpen(true); }}
+              onDemo={() => { setLoaded(null); loadSheet(DEFAULT_SHEET); setSection("song"); }} />
+          )}
 
           {section === "song" && (
             <div className="kl-section">
@@ -532,12 +565,12 @@ export default function App() {
               </div>
               {numbersRailPanel}
               {aiPanel}
+              {tabKeysPanel}
               <section style={{ marginTop: 18 }}>
                 <ChartView text={sheet} activeKey={activeKey} transpose={transpose}
-                  activeSymbol={current ? displaySymbol(current, 0) : null}
+                  activeChord={current}
                   onChordClick={(ch) => { arm(); selectUnique(ch); }} />
               </section>
-              <TabKeys sheet={sheet} onPlay={(midis) => { arm(); ensureAndPlay(midis, 1.2); }} />
               {chartInput}
             </div>
           )}
@@ -563,7 +596,15 @@ export default function App() {
                           <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#8b8378", marginTop: 6 }}>{current.section || "now playing"} · {currentIdx + 1}/{view.prog.length}</div>
                         </div>
                       </div>
-                    ) : <div style={{ color: "#8b8378", fontFamily: MONO }}>Load a song to light the keys.</div>}
+                    ) : (
+                      <div style={{ color: "#8b8378", fontFamily: MONO }}>
+                        <div>Nothing loaded yet.</div>
+                        <div className="flex items-center" style={{ gap: 8, marginTop: 10 }}>
+                          <BenchButton onClick={() => setSection("library")}>Pick from the Library</BenchButton>
+                          <BenchButton onClick={() => setImportOpen(true)}>Paste a chart or tab</BenchButton>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <Segmented label="Keys" value={mode} onChange={(v) => { arm(); setMode(v); }}
                     options={[{ v: "shape", t: "Shape" }, { v: "voicing", t: "Voicing" }, { v: "smooth", t: "Smooth" }]} dark />
@@ -590,6 +631,7 @@ export default function App() {
               <p style={{ color: C.faint, fontSize: 12, marginTop: 14, maxWidth: 620 }}>
                 <b style={{ color: C.muted }}>Shape</b> lights every note in the chord. <b style={{ color: C.muted }}>Voicing</b> shows one close hand position. <b style={{ color: C.muted }}>Smooth</b> voice-leads from the chord before it.
               </p>
+              {tabKeysPanel}
             </div>
           )}
 

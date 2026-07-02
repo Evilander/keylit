@@ -3,8 +3,9 @@
 // Lines are classified: section header, ASCII tab block, chord-over-lyric, or
 // lyric. Chord tokens are colored by harmonic function (T/S/D) and clickable.
 import { useMemo } from "react";
-import { parseChord, transposeChord, displaySymbol, harmonicFunction } from "../lib/theory.js";
-import { findTabBlocks } from "../lib/tab.js";
+import { parseChord, transposeChord, harmonicFunction, sameChordSound } from "../lib/theory.js";
+import { spellChord } from "../lib/spelling.js";
+import { findTabBlocks, unwrapTab } from "../lib/tab.js";
 import { C, FUNCTION_COLOR, MONO } from "../ui/theme.js";
 
 const isSectionHeader = (line) => {
@@ -24,9 +25,10 @@ function chordLineInfo(line) {
   return hits >= 1 && hits / words.length >= 0.5 ? { tokens } : null;
 }
 
-export default function ChartView({ text, activeKey, transpose = 0, onChordClick, activeSymbol }) {
-  // Strip Ultimate-Guitar [ch]/[tab] wrappers so pasted UG charts render clean.
-  const clean = useMemo(() => String(text || "").replace(/\[\/?(ch|tab)\]/g, ""), [text]);
+export default function ChartView({ text, activeKey, transpose = 0, onChordClick, activeChord }) {
+  // Strip Ultimate-Guitar [ch]/[tab] wrappers so pasted UG charts render clean,
+  // and rejoin tab lines the scraper hard-wrapped (same lines the parser sees).
+  const clean = useMemo(() => unwrapTab(String(text || "").replace(/\[\/?(ch|tab)\]/g, "")), [text]);
   const lines = useMemo(() => clean.split(/\r?\n/), [clean]);
   const tabRanges = useMemo(() => {
     const set = new Set();
@@ -65,8 +67,11 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
                 const view = transpose ? transposeChord(parsed, transpose) : parsed;
                 const fn = harmonicFunction(view, tonic, mode);
                 const color = FUNCTION_COLOR[fn] || C.ink;
-                const label = transpose ? displaySymbol(parsed, transpose) : tok;
-                const active = activeSymbol && displaySymbol(view, 0) === activeSymbol;
+                // When transposed, the label is the TRANSPOSED chord, spelled
+                // for the active key (was showing the original, untransposed name).
+                const label = transpose ? spellChord(view, activeKey) : tok;
+                // Sound-based match: survives respelling (A# vs B♭) and transposition.
+                const active = activeChord && sameChordSound(view, activeChord);
                 return (
                   <span key={j} role="button" tabIndex={0}
                     onClick={() => onChordClick?.(view)}
