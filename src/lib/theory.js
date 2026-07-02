@@ -199,6 +199,22 @@ export const chordSymbol = (ch) =>
   ch.rootName + symFromName(ch.quality) + (ch.bassName ? "/" + ch.bassName : "");
 export const displaySymbol = (ch, t) => (t === 0 ? ch.raw : chordSymbol(ch));
 
+/** Capo declared in the first lines of a chart ("Capo: 2", "capo on 3rd
+ *  fret", "Capo: No capo"). Returns 0–11; 0 when absent or nonsense. */
+export function detectCapo(text) {
+  const lines = String(text || "").split(/\r?\n/).slice(0, 40);
+  for (const line of lines) {
+    if (!/\bcapo\b/i.test(line)) continue;
+    if (/\bno\s+capo\b/i.test(line)) return 0;
+    const m = /\bcapo\b[^0-9\n]{0,12}(\d{1,2})/i.exec(line);
+    if (m) {
+      const n = Number(m[1]);
+      if (n >= 1 && n <= 11) return n;
+    }
+  }
+  return 0;
+}
+
 /** True when two parsed chords SOUND the same — same root pitch class,
  *  interval content, and bass — regardless of spelling (A#m7 ≡ B♭m7). */
 export const sameChordSound = (a, b) => {

@@ -4,7 +4,7 @@ import {
   nashville, romanNumeral, detectKey, harmonicFunction, CIRCLE_OF_FIFTHS,
   shapeForCapo, shapeEase, suggestCapo, normalizeChart,
   spellScale, degreeOf, pedalRelation, buildChord, qualClass, isDominantQuality,
-  sameChordSound,
+  sameChordSound, detectCapo,
 } from "./theory.js";
 
 describe("parseChord", () => {
@@ -501,5 +501,24 @@ describe("sameChordSound — spelling-proof chord identity", () => {
   });
   it("is falsy on missing input", () => {
     expect(sameChordSound(null, parseChord("C"))).toBe(false);
+  });
+});
+
+describe("detectCapo — capo declared in the chart text", () => {
+  it("reads common header forms", () => {
+    expect(detectCapo("Capo: 2\nC G Am F")).toBe(2);
+    expect(detectCapo("capo 4")).toBe(4);
+    expect(detectCapo("Capo on 3rd fret\nchords")).toBe(3);
+    expect(detectCapo("CAPO: 7th fret")).toBe(7);
+  });
+  it("treats 'no capo' and silence as zero", () => {
+    expect(detectCapo("Capo: No capo\nC F G")).toBe(0);
+    expect(detectCapo("just a chart\nC F G")).toBe(0);
+    expect(detectCapo("")).toBe(0);
+  });
+  it("ignores absurd numbers and lyric mentions deep in the song", () => {
+    expect(detectCapo("capo 15")).toBe(0);
+    const deep = Array(45).fill("la la line").join("\n") + "\ncapo 2";
+    expect(detectCapo(deep)).toBe(0);
   });
 });

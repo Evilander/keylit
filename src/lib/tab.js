@@ -135,15 +135,18 @@ export function parseTabBlock(lines, opts = {}) {
   let tuning;
   let orientation = "highOnTop"; // bottom line = lowest string (the convention)
 
+  let tuningFromLabels = false;
   if (opts.tuning) {
     tuning = getTuning(opts.tuning);
   } else if (labels.every(Boolean) && (n === 6 || n === 4)) {
     const lowToHigh = [...labels].reverse().join(" ");
     if (parseTuning(lowToHigh)) {
       tuning = getTuning(lowToHigh);
+      tuningFromLabels = true;
     } else if (parseTuning(labels.join(" "))) {
       tuning = getTuning(labels.join(" "));
       orientation = "lowOnTop";
+      tuningFromLabels = true;
     }
   }
   if (!tuning) tuning = getTuning(opts.defaultTuning ?? null);
@@ -170,7 +173,7 @@ export function parseTabBlock(lines, opts = {}) {
     .sort((a, b) => a[0] - b[0])
     .map(([col, notes]) => ({ col, notes: notes.sort((x, y) => x.midi - y.midi) }));
 
-  return { tuning, capo, orientation, labels, events, lines };
+  return { tuning, tuningFromLabels, capo, orientation, labels, events, lines };
 }
 
 /** Parse a whole document: all blocks + a flat, ordered event stream. */
