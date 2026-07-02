@@ -133,7 +133,7 @@ export default function Library({ onOpen, onPaste, onDemo }) {
                   <ChevronRight size={15} style={{ color: C.faint, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
                   <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 500, fontSize: 21, color: C.ink, flex: 1 }}>{g.artist}</span>
                   <span className="kl-meta">{g.count} {g.count === 1 ? "song" : "songs"}</span>
-                  <span className="kl-meta" style={{ color: C.faint, minWidth: 110, textAlign: "right" }}>{sources.join(" · ")}</span>
+                  <span className="kl-meta kl-hide-sm" style={{ color: C.faint, minWidth: 110, textAlign: "right" }}>{sources.join(" · ")}</span>
                 </button>
                 {isOpen && (
                   <div style={{ paddingBottom: 10 }}>
@@ -173,7 +173,7 @@ function SongRow({ s, onOpen, onTuning }) {
         title={`Filter by ${s.tuningName}`}
         style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, color: C.toneText, border: `1px solid ${C.toneText}66`, borderRadius: 5, padding: "1px 6px", cursor: "pointer" }}>{s.tuningName}</span>}
       {s.capo ? <Tag color={C.rootText}>capo {s.capo}</Tag> : null}
-      {s.key ? <span className="kl-meta" style={{ minWidth: 42, textAlign: "right" }}>{s.key}</span> : null}
+      {s.key ? <span className="kl-meta kl-hide-sm" style={{ minWidth: 42, textAlign: "right" }}>{s.key}</span> : null}
     </button>
   );
 }

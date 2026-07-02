@@ -88,7 +88,7 @@ export default function Keyboard({ roleFor, onKey, flash, ariaLabel = "piano key
   return (
     <div style={{ width: "100%", overflowX: "auto" }}>
       <svg viewBox={`0 0 ${KEYS.width} ${KEY_H + 8}`} width="100%"
-        style={{ display: "block", maxWidth: KEYS.width, margin: "0 auto", minWidth: 560 }}
+        style={{ display: "block", maxWidth: KEYS.width, margin: "0 auto", minWidth: 470 }}
         role="img" aria-label={ariaLabel}>
         <defs>
           <linearGradient id="klWhite" x1="0" y1="0" x2="0" y2="1">

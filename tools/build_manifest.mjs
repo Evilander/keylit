@@ -9,6 +9,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getTuning, canonicalTuning, detectDeclaredTuning } from "../src/lib/tuning.js";
 import { findTabBlocks, parseTabBlock } from "../src/lib/tab.js";
+import { TUNING_OVERRIDES } from "./tuning_overrides.mjs";
+
+const normKey = (a, t) => `${a}::${t}`.toLowerCase().replace(/['’`]/g, "").replace(/[^a-z0-9:]+/g, " ").trim();
+const OVERRIDE_MAP = new Map(TUNING_OVERRIDES.map(([a, t, id]) => [normKey(a, t), id]));
 
 // The strongest per-song evidence: the tab's own string labels (C|G|C|E|G|C).
 // Only FULL 6-line systems count — 4-line riff excerpts label a string subset
@@ -77,15 +81,22 @@ for (const src of fs.readdirSync(ROOT)) {
     const cur = canonicalTuning(s.tuning);
     const polluted = !s.tuningSource && conv && cur.id === conv; // earlier blanket pass
     let t = cur;
-    // Evidence-derived tags (labels/declared/convention) re-derive EVERY run —
-    // recorded sources exist precisely so better evidence rules can heal old
-    // results. Only original scraper metadata is immutable.
+    // Evidence-derived tags re-derive EVERY run — recorded sources exist
+    // precisely so better evidence rules can heal old results. Only original
+    // scraper metadata is immutable.
     const rederive = s.tuningSource && s.tuningSource !== "meta";
-    if (cur.id === "standard" || polluted || rederive) {
+    const ovr = OVERRIDE_MAP.get(normKey(s.artist || "", s.title || ""));
+    if (cur.id === "standard" || polluted || rederive || ovr) {
+      // Precedence: the transcription's own string labels (they describe THIS
+      // arrangement) > documented per-song overrides (they describe the
+      // recording) > declarations in the chart text > scraper metadata >
+      // site convention.
       const lab = labelsTuning(s.body);
       let pickT = null, pickSrc = null;
       if (lab && lab.id !== "standard") {
         pickT = lab; pickSrc = "labels";
+      } else if (ovr) {
+        pickT = canonicalTuning(ovr); pickSrc = "override";
       } else {
         // tuningRaw is only scraper-original on unstamped files; stamped files
         // carry a spelling my own pass wrote, which is not evidence.
@@ -120,6 +131,16 @@ for (const src of fs.readdirSync(ROOT)) {
     });
   }
 }
+// Owner call: Ultimate Guitar beats hyperrust on accuracy for Neil Young —
+// when the same song exists in both, index only the UG version. Hyperrust
+// still carries the deep cuts UG doesn't have.
+const normTitle = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const ugNeil = new Set(out.filter((r) => r.source === "ultimateguitar" && r.artist === "Neil Young").map((r) => normTitle(r.title)));
+const indexed = out.filter((r) => !(r.source === "hyperrust" && r.artist === "Neil Young" && ugNeil.has(normTitle(r.title))));
+if (indexed.length !== out.length) console.log("hyperrust Neil rows superseded by UG:", out.length - indexed.length);
+out.length = 0;
+out.push(...indexed);
+
 fs.writeFileSync(path.join(ROOT, "manifest.json"), JSON.stringify(out), "utf8");
 const tunings = {};
 out.forEach((s) => { if (s.tuningId !== "standard") tunings[s.tuningName] = (tunings[s.tuningName] || 0) + 1; });

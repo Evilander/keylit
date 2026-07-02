@@ -1,0 +1,74 @@
+// tuning_overrides.mjs — per-song tunings documented OUTSIDE the charts
+// themselves (curated tuning archives, artist interviews, corroborated tabs).
+// Researched 2026-07-02; every entry carries its source. Applied by
+// build_manifest.mjs BELOW tab-label evidence (a transcription's own labels
+// describe that arrangement) but ABOVE prose declarations, scraper metadata,
+// and site conventions.
+//
+// Primary sources:
+//   NY  = https://hyperrust.org/Music/NeilTunings.html (curated master list —
+//         authoritative even though hyperrust's chart pages are weak)
+//   Entries marked with other URLs cite interviews/corroborated tabs.
+
+// [artist, title (library exact), tuningId or spelling, note]
+export const TUNING_OVERRIDES = [
+  // --- Neil Young (source: NY unless noted) ---
+  ["Neil Young", "Albuquerque", "dropD", ""],
+  ["Neil Young", "Already One", "dropD", ""],
+  ["Neil Young", "Ambulance Blues", "dStandard", ""],
+  ["Neil Young", "Bandit", "A# F A# D# G A#", "Greendale — 2 steps below double drop D"],
+  ["Neil Young", "Captain Kennedy", "doubleDropD", ""],
+  ["Neil Young", "Cinnamon Girl", "doubleDropD", ""],
+  ["Neil Young", "Cortez The Killer", "doubleDropD", ""],
+  ["Neil Young", "Cowgirl In The Sand", "dStandard", "acoustic arrangement"],
+  ["Neil Young", "Dance Dance Dance", "dStandard", ""],
+  ["Neil Young", "Deep Forbidden Lake", "dStandard", ""],
+  ["Neil Young", "Dont Be Denied", "dStandard", "acoustic arrangement"],
+  ["Neil Young", "Dont Let It Bring You Down", "C G C F A C", "step below double drop D"],
+  ["Neil Young", "Down By The River", "doubleDropD", "disputed: lesson sites vs hyperrust omission"],
+  ["Neil Young", "Dreamin Man", "doubleDropD", ""],
+  ["Neil Young", "Expecting To Fly", "dStandard", ""],
+  ["Neil Young", "Give Me Strength", "dropD", ""],
+  ["Neil Young", "Goin Back", "doubleDropD", ""],
+  ["Neil Young", "Hangin On A Limb", "D G C F A A", "1st string up to match 2nd"],
+  ["Neil Young", "Harvest Moon", "dropD", "also acousticguitar.com lesson"],
+  ["Neil Young", "Mr Soul", "doubleDropD", "https://hyperrust.org/OLD-ChordTab/MrSoul.html"],
+  ["Neil Young", "The Last Trip To Tulsa", "dStandard", ""],
+  ["Neil Young", "Little Wing", "dStandard", "Neil's arrangement"],
+  ["Neil Young", "Long May You Run", "dStandard", ""],
+  ["Neil Young", "Love Is A Rose", "dStandard", ""],
+  ["Neil Young", "Motion Pictures For Carrie", "dStandard", ""],
+  ["Neil Young", "Natural Beauty", "doubleDropD", ""],
+  ["Neil Young", "Ohio", "doubleDropD", ""],
+  ["Neil Young", "Old Man", "dStandard", ""],
+  ["Neil Young", "On The Beach", "dStandard", "acoustic arrangement"],
+  ["Neil Young", "On The Way Home", "dStandard", "acoustic arrangement"],
+  ["Neil Young", "One Of These Days", "doubleDropD", ""],
+  ["Neil Young", "Pardon My Heart", "C G C F A C", "https://hyperrust.org/OLD-ChordTab/PardonHeart.html + gtdb.org/cgcfac"],
+  ["Neil Young", "Pocahontas", "C G C F A D", "'Slack D' live arrangement"],
+  ["Neil Young", "Powderfinger", "dStandard", "acoustic arrangement"],
+  ["Neil Young", "Revolution Blues", "dStandard", ""],
+  ["Neil Young", "Rockin In The Free World", "dStandard", "acoustic arrangement"],
+  ["Neil Young", "Roll Another Number", "dStandard", ""],
+  ["Neil Young", "Round And Round", "dStandard", ""],
+  ["Neil Young", "Someday", "dStandard", ""],
+  ["Neil Young", "Southern Man", "dStandard", ""],
+  ["Neil Young", "Star Of Bethlehem", "dropD", ""],
+  ["Neil Young", "Sugar Mountain", "dStandard", ""],
+  ["Neil Young", "Tell Me Why", "dStandard", "the one that started this pass"],
+  ["Neil Young", "Tonights The Night", "dropD", ""],
+  ["Neil Young", "War Of Man", "doubleDropD", ""],
+  ["Neil Young", "When You Dance I Can Really Love", "doubleDropD", ""],
+  ["Neil Young", "You And Me", "dropD", ""],
+  ["Neil Young", "Lets Roll", "standard", "repairs garbage metadata (letters were fret symbols)"],
+
+  // --- indie lane (sources per entry) ---
+  ["Big Thief", "Simulation Swarm", "C# G# C# F A# C#", "https://gtdb.org/csascsfgscs"],
+  ["Big Thief", "Watering", "Eb A D G B E", "only the low string drops — corrects Eb Standard"],
+  ["Adrianne Lenker", "Anything", "D# A# D# G A# D#", "open D shifted up a half step"],
+  ["Kurt Vile", "Wakin On A Pretty Day", "ebStandard", "3+ independent sources"],
+  ["Kurt Vile", "Girl Called Alex", "standard", "documented plain standard — corrects D Standard"],
+  ["MJ Lenderman", "You Are Every Girl To Me", "C G D G G E", "https://guitar.com/features/interviews/mj-lenderman-interview-manning-fireworks/"],
+  ["Alex G", "Harvey", "dropD", "multiple UG tabs agree — corrects D Standard"],
+  ["Alex G", "Memory", "C G C G B E", "https://www.e-chords.com/en/tabs/alex-g/memory"],
+];
