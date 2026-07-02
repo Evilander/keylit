@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PERSONA, CONCEPTS, reaction, buildSuggestionChips } from "./voice.js";
+import { PERSONA, CONCEPTS, reaction, buildSuggestionChips, wheelMoves } from "./voice.js";
 import { buildChord, parseChord } from "./theory.js";
 
 const REQUIRED_CONCEPT_KEYS = [
@@ -129,5 +129,30 @@ describe("buildSuggestionChips", () => {
     const chips = buildSuggestionChips();
     expect(chips.length).toBeGreaterThan(0);
     expect(chips.some((c) => c.intent === "diatonic")).toBe(true);
+  });
+});
+
+describe("wheelMoves — the circle as songwriting moves", () => {
+  it("gives G major its real neighborhood", () => {
+    const m = wheelMoves({ tonic: 7, mode: "major" });
+    expect(m.home.line).toContain("G · C · D");
+    expect(m.home.chords.map((c) => c.raw)).toEqual(["G", "C", "D", "G"]);
+    expect(m.pull.chords.map((c) => c.raw)).toEqual(["Bm", "Em", "Am", "D", "G"]);
+    expect(m.borrow.chords.map((c) => c.raw)[1]).toBe("F"); // bVII of G
+    expect(m.pivot.pivotTonic).toBe(4); // E minor
+    expect(m.pivot.pivotMode).toBe("minor");
+  });
+  it("spells flat keys flat", () => {
+    const m = wheelMoves({ tonic: 5, mode: "major" });
+    expect(m.home.line).toContain("F · Bb · C");
+    expect(m.borrow.line).toContain("Eb"); // bVII of F
+  });
+  it("handles minor with the Autumn Leaves cycle", () => {
+    const m = wheelMoves({ tonic: 2, mode: "minor" }); // D minor
+    expect(m.pull.chords.map((c) => c.raw)).toEqual(["Gm", "C", "F", "A#", "A", "Dm"]);
+    expect(m.pivot.pivotTonic).toBe(5); // F major
+  });
+  it("is deterministic", () => {
+    expect(JSON.stringify(wheelMoves({ tonic: 0, mode: "major" }))).toBe(JSON.stringify(wheelMoves({ tonic: 0, mode: "major" })));
   });
 });

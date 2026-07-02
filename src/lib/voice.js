@@ -6,6 +6,7 @@
 // deterministic so they're testable and render identically every time.
 
 import { spellPc, spellChord } from "./spelling.js";
+import { buildChord } from "./theory.js";
 
 // System-prompt-ready spec for the tutor voice. Concise on purpose: it's a
 // character brief, not a manual. Edit the principles, not the framing.
@@ -144,4 +145,66 @@ export function buildSuggestionChips(context = {}) {
   }
 
   return chips.slice(0, 4);
+}
+
+/* ---- the circle of fifths as songwriting moves --------------------------
+ * What the wheel is FOR, as playable data. Each move: a title, one line of
+ * bandmate-voice explanation, and the chords to audition. Deterministic and
+ * key-aware; the Theory room renders + plays these. */
+export function wheelMoves(activeKey) {
+  const tonic = ((activeKey?.tonic ?? 0) % 12 + 12) % 12;
+  const minor = activeKey?.mode === "minor";
+  const keyCtx = { tonic, mode: minor ? "minor" : "major" };
+  const N = (pc) => spellPc(((pc % 12) + 12) % 12, keyCtx);
+  const C = (pc, q) => buildChord(((pc % 12) + 12) % 12, q);
+
+  if (!minor) {
+    const rel = (tonic + 9) % 12;
+    return {
+      home: {
+        title: "Stay home",
+        line: `${N(tonic)} · ${N(tonic + 5)} · ${N(tonic + 7)} and ${N(tonic + 9)}m · ${N(tonic + 2)}m · ${N(tonic + 4)}m — the six chords under the wedge always fit. Most songs never leave.`,
+        chords: [C(tonic, "maj"), C(tonic + 5, "maj"), C(tonic + 7, "maj"), C(tonic, "maj")],
+      },
+      pull: {
+        title: "Pull home",
+        line: `Counter-clockwise is gravity: every step down a fifth pulls harder toward ${N(tonic)}. Chain it — ${N(tonic + 4)}m → ${N(tonic + 9)}m → ${N(tonic + 2)}m → ${N(tonic + 7)} → ${N(tonic)} — and you've written a bridge.`,
+        chords: [C(tonic + 4, "m"), C(tonic + 9, "m"), C(tonic + 2, "m"), C(tonic + 7, "maj"), C(tonic, "maj")],
+      },
+      borrow: {
+        title: "Borrow color",
+        line: `${N(tonic + 10)} sits one step past the wedge's flat edge — the ♭VII. Drop it between ${N(tonic)} and ${N(tonic + 5)} for the move every Neil and Beatles song knows.`,
+        chords: [C(tonic, "maj"), C(tonic + 10, "maj"), C(tonic + 5, "maj"), C(tonic, "maj")],
+      },
+      pivot: {
+        title: "Same chords, sadder door",
+        line: `${N(rel)} minor lives inside the wedge — the same six chords with ${N(rel)}m as home. Recenter there and the song turns melancholy for free.`,
+        pivotTonic: rel, pivotMode: "minor",
+      },
+    };
+  }
+
+  const rel = (tonic + 3) % 12;
+  return {
+    home: {
+      title: "Stay home",
+      line: `${N(tonic)}m · ${N(tonic + 5)}m · ${N(tonic + 7)}m and ${N(tonic + 3)} · ${N(tonic + 8)} · ${N(tonic + 10)} — natural minor's six. Brood inside the wedge.`,
+      chords: [C(tonic, "m"), C(tonic + 5, "m"), C(tonic + 10, "maj"), C(tonic, "m")],
+    },
+    pull: {
+      title: "Pull home",
+      line: `The minor cycle of fifths — ${N(tonic + 5)}m → ${N(tonic + 10)} → ${N(tonic + 3)} → ${N(tonic + 8)} → ${N(tonic + 7)} → ${N(tonic)}m — is Autumn Leaves, and it still works.`,
+      chords: [C(tonic + 5, "m"), C(tonic + 10, "maj"), C(tonic + 3, "maj"), C(tonic + 8, "maj"), C(tonic + 7, "maj"), C(tonic, "m")],
+    },
+    borrow: {
+      title: "Borrow color",
+      line: `Raise the fourth into ${N(tonic + 5)} major — the Dorian move — and the gloom gets a window. ${N(tonic)}m → ${N(tonic + 5)} → ${N(tonic + 10)} → ${N(tonic)}m.`,
+      chords: [C(tonic, "m"), C(tonic + 5, "maj"), C(tonic + 10, "maj"), C(tonic, "m")],
+    },
+    pivot: {
+      title: "Same chords, brighter door",
+      line: `${N(rel)} major shares all six chords — recenter there and the same hands sound hopeful.`,
+      pivotTonic: rel, pivotMode: "major",
+    },
+  };
 }
