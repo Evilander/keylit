@@ -87,30 +87,31 @@ for (const src of fs.readdirSync(ROOT)) {
     const rederive = s.tuningSource && s.tuningSource !== "meta";
     const ovr = OVERRIDE_MAP.get(normKey(s.artist || "", s.title || ""));
     if (cur.id === "standard" || polluted || rederive || ovr) {
-      // Precedence: the transcription's own string labels (they describe THIS
-      // arrangement) > documented per-song overrides (they describe the
-      // recording) > declarations in the chart text > scraper metadata >
-      // site convention.
+      // Owner's rule: the sheet itself always wins. Precedence: the
+      // transcription's string labels > its own text declaration > scraper
+      // metadata > documented per-song overrides (for sheets that say
+      // NOTHING) > site convention.
       const lab = labelsTuning(s.body);
       let pickT = null, pickSrc = null;
+      const scanText = polluted ? (s.body || "") : [s.tuningRaw, s.body].filter(Boolean).join("\n");
+      const dec = detectDeclaredTuning(scanText);
+      // tuningRaw is only scraper-original on unstamped files; stamped files
+      // carry a spelling my own pass wrote, which is not evidence.
+      const rawT = (!polluted && !s.tuningSource && s.tuningRaw) ? canonicalTuning(s.tuningRaw) : null;
       if (lab && lab.id !== "standard") {
         pickT = lab; pickSrc = "labels";
+      } else if (dec && dec !== "standard") {
+        pickT = canonicalTuning(dec); pickSrc = "declared";
+      } else if (dec === "standard") {
+        pickT = getTuning("standard"); pickSrc = "declared";
+      } else if (rawT && rawT.id !== "standard" && rawT.family !== "custom") {
+        pickT = rawT; pickSrc = "meta";
       } else if (ovr) {
         pickT = canonicalTuning(ovr); pickSrc = "override";
+      } else if (conv) {
+        pickT = canonicalTuning(conv); pickSrc = "convention";
       } else {
-        // tuningRaw is only scraper-original on unstamped files; stamped files
-        // carry a spelling my own pass wrote, which is not evidence.
-        const rawT = (!polluted && !s.tuningSource && s.tuningRaw) ? canonicalTuning(s.tuningRaw) : null;
-        if (rawT && rawT.id !== "standard" && rawT.family !== "custom") {
-          pickT = rawT; pickSrc = "meta";
-        } else {
-          const scanText = polluted ? (s.body || "") : [s.tuningRaw, s.body].filter(Boolean).join("\n");
-          const dec = detectDeclaredTuning(scanText);
-          if (dec && dec !== "standard") { pickT = canonicalTuning(dec); pickSrc = "declared"; }
-          else if (dec === "standard") { pickT = getTuning("standard"); pickSrc = "declared"; }
-          else if (conv) { pickT = canonicalTuning(conv); pickSrc = "convention"; }
-          else { pickT = getTuning("standard"); pickSrc = "meta"; }
-        }
+        pickT = getTuning("standard"); pickSrc = "meta";
       }
       if (pickT.id !== cur.id) retuned++;
       if (pickT.id !== s.tuning || s.tuningSource !== pickSrc) {

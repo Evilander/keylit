@@ -139,21 +139,24 @@ export default function App() {
 
   useEffect(() => { setLabProg(null); setLabHistory([]); }, [sheet]);
 
-  // The capo moves REAL PITCH: a chart in E shapes with capo 2 sounds in F#.
-  // Song metadata wins; pasted charts fall back to a "Capo: N" header line.
+  // The capo is real: a chart in C shapes with capo 5 SOUNDS in F. But the
+  // paper is the guitarist's document — so the READING surfaces (chart,
+  // rail, key picker) stay as written, while the PLAYING surfaces (piano
+  // lights, playback, tab→piano) speak sounding pitch. "Change the key from
+  // there" = the transpose/key controls move the written document itself.
   const capoShift = useMemo(() => {
     const meta = Number(loaded?.capo);
     if (Number.isFinite(meta) && meta > 0) return Math.min(11, Math.round(meta));
     return detectCapo(sheet);
   }, [loaded, sheet]);
-  // Everything downstream (piano lights, numbers, key, playback, chart labels)
-  // speaks SOUNDING pitch: shapes + capo + the user's transpose.
   const pitchShift = transpose + capoShift;
 
-  const view = useMemo(() => {
-    const raw = sourceProg.map((ch) => transposeChord(ch, pitchShift));
+  const computeView = (shift) => {
+    const raw = sourceProg.map((ch) => transposeChord(ch, shift));
     const detected = detectKey(raw);
-    const keyCtx = keyOverride || { tonic: detected.tonic, mode: detected.mode };
+    const keyCtx = keyOverride
+      ? { tonic: (keyOverride.tonic + (shift - transpose)) % 12, mode: keyOverride.mode }
+      : { tonic: detected.tonic, mode: detected.mode };
     const prog = raw.map((ch) => respell(ch, keyCtx));
     const uniqMap = new Map();
     for (const ch of prog) { const k = chordSymbol(ch); if (!uniqMap.has(k)) uniqMap.set(k, ch); }
@@ -167,27 +170,39 @@ export default function App() {
       prevUp = up;
     }
     return { prog, unique, rootFull, smoothFull, detected };
-  }, [sourceProg, pitchShift, keyOverride]);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const view = useMemo(() => computeView(transpose), [sourceProg, transpose, keyOverride]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const sounding = useMemo(
+    () => (capoShift ? computeView(pitchShift) : null),
+    [sourceProg, pitchShift, keyOverride, capoShift]
+  );
+  const soundingView = sounding || view;
 
   useEffect(() => {
     setCurrentIdx((i) => (view.prog.length ? Math.min(i, view.prog.length - 1) : 0));
   }, [view.prog.length]);
 
   const current = view.prog[currentIdx] || null;
+  const soundingCurrent = soundingView.prog[currentIdx] || null;
   const activeKey = keyOverride || { tonic: view.detected.tonic, mode: view.detected.mode };
-  const audioVoicings = mode === "smooth" ? view.smoothFull : view.rootFull;
+  const soundingKey = { tonic: soundingView.detected.tonic, mode: soundingView.detected.mode };
+  // The piano PLAYS sounding pitch (shapes + capo + transpose).
+  const audioVoicings = mode === "smooth" ? soundingView.smoothFull : soundingView.rootFull;
   audioVoicingRef.current = audioVoicings;
 
   const highlight = useMemo(() => {
-    if (!current) return { kind: "none" };
+    const ch = soundingCurrent;
+    if (!ch) return { kind: "none" };
     if (mode === "shape") {
-      const pcs = new Set(current.intervals.map((i) => (current.rootSemitone + i) % 12));
-      if (current.bassSemitone !== null) pcs.add(current.bassSemitone);
-      return { kind: "pcs", pcs, root: current.rootSemitone % 12, bass: current.bassSemitone };
+      const pcs = new Set(ch.intervals.map((i) => (ch.rootSemitone + i) % 12));
+      if (ch.bassSemitone !== null) pcs.add(ch.bassSemitone);
+      return { kind: "pcs", pcs, root: ch.rootSemitone % 12, bass: ch.bassSemitone };
     }
-    const notes = (mode === "smooth" ? view.smoothFull : view.rootFull)[currentIdx] || [];
-    return { kind: "midi", set: new Set(notes), root: current.rootSemitone % 12, bass: current.bassSemitone, notes };
-  }, [current, mode, view, currentIdx]);
+    const notes = (mode === "smooth" ? soundingView.smoothFull : soundingView.rootFull)[currentIdx] || [];
+    return { kind: "midi", set: new Set(notes), root: ch.rootSemitone % 12, bass: ch.bassSemitone, notes };
+  }, [soundingCurrent, mode, soundingView, currentIdx]);
 
   /* ---------- audio ---------- */
   const buildInstrument = () => {
@@ -266,10 +281,10 @@ export default function App() {
   /* ---------- handlers ---------- */
   const arm = () => { armedRef.current = true; initAudioOnce(); };
   const selectIdx = (i) => { arm(); setIsPlaying(false); setCurrentIdx(i); };
-  const selectUnique = (ch) => {
+  const selectUnique = (ch, progList = view.prog) => {
     arm(); setIsPlaying(false);
     // Match by SOUND, not by symbol string — respelling (A# vs B♭) must not break it.
-    const i = view.prog.findIndex((c) => sameChordSound(c, ch));
+    const i = progList.findIndex((c) => sameChordSound(c, ch));
     if (i >= 0) setCurrentIdx(i); else ensureAndPlay(rootPositionFull(ch));
   };
   const step = (d) => { arm(); setIsPlaying(false); setCurrentIdx((i) => Math.max(0, Math.min(view.prog.length - 1, i + d))); };
@@ -286,7 +301,7 @@ export default function App() {
   const applyLab = (s) => {
     const idx = currentIdx;
     const sectionTag = sourceProg[idx]?.section || "";
-    const canon = s.chords.map((ch) => ({ ...transposeChord(ch, -pitchShift), section: sectionTag }));
+    const canon = s.chords.map((ch) => ({ ...transposeChord(ch, -transpose), section: sectionTag }));
     const next = sourceProg.slice();
     if (s.kind === "replace") next.splice(idx, 1, ...canon);
     else if (s.kind === "insertBefore") next.splice(idx, 0, ...canon);
@@ -345,6 +360,9 @@ export default function App() {
     return null;
   };
   const keyName = `${spellPc(activeKey.tonic, activeKey)} ${activeKey.mode}`;
+  const soundingKeyName = `${spellPc(soundingKey.tonic, soundingKey)} ${soundingKey.mode}`;
+  // e.g. "D major · capo 5 sounds in F major" — the paper vs the air.
+  const keyNameFull = capoShift ? `${keyName} · capo ${capoShift} sounds in ${soundingKeyName}` : keyName;
   const roleForKeyboard = (midi) => {
     if (section === "learn" && lessonHL) {
       const e = lessonHL.get(((midi % 12) + 12) % 12);
@@ -555,7 +573,7 @@ export default function App() {
             )}
           </div>
           <div style={{ marginLeft: "auto" }} className="flex items-center">
-            <span className="kl-meta">Key of {keyName}</span>
+            <span className="kl-meta">Key of {keyNameFull}</span>
           </div>
         </div>
 
@@ -568,14 +586,14 @@ export default function App() {
 
           {section === "song" && (
             <div className="kl-section">
-              <SongHeader loaded={loaded} keyName={keyName} />
+              <SongHeader loaded={loaded} keyName={keyNameFull} />
               <div className="flex items-center" style={{ gap: 12, flexWrap: "wrap", margin: "14px 0 4px" }}>
                 {transposeCtl}
                 {capoShift > 0 && (
                   <Readout style={{ display: "inline-flex", alignItems: "center", gap: 7 }}
-                    title={`The chart's shapes sound ${capoShift} semitone${capoShift > 1 ? "s" : ""} higher with the capo — everything here speaks sounding pitch`}>
-                    <EngLabel>capo</EngLabel>
-                    <span style={{ fontFamily: MONO, fontSize: 14, color: C.rootText }}>+{capoShift}</span>
+                    title={`The chart reads as written; with the capo it SOUNDS in ${soundingKeyName}. The Piano room and playback use the sounding pitch.`}>
+                    <EngLabel>capo {capoShift}</EngLabel>
+                    <span style={{ fontFamily: MONO, fontSize: 13, color: C.rootText }}>sounds in {soundingKeyName}</span>
                   </Readout>
                 )}
                 {keyPicker}
@@ -587,7 +605,7 @@ export default function App() {
               {aiPanel}
               {tabKeysPanel}
               <section style={{ marginTop: 18 }}>
-                <ChartView text={sheet} activeKey={activeKey} transpose={pitchShift}
+                <ChartView text={sheet} activeKey={activeKey} transpose={transpose}
                   activeChord={current}
                   onChordClick={(ch) => { arm(); selectUnique(ch); }} />
               </section>
@@ -605,15 +623,18 @@ export default function App() {
               <div className="deck" style={{ padding: "16px 16px 14px" }}>
                 <div className="flex items-center justify-between" style={{ gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
                   <div style={{ minWidth: 200 }}>
-                    {current ? (
+                    {soundingCurrent ? (
                       <div className="flex items-center" style={{ gap: 16 }}>
-                        <div key={currentIdx + chordSymbol(current)} className="kl-pop" style={{ fontFamily: MONO, fontSize: 42, fontWeight: 700, lineHeight: 1, color: "#f3ede2" }}>{displaySymbol(current, transpose)}</div>
+                        <div key={currentIdx + chordSymbol(soundingCurrent)} className="kl-pop" style={{ fontFamily: MONO, fontSize: 42, fontWeight: 700, lineHeight: 1, color: "#f3ede2" }}>{displaySymbol(soundingCurrent, pitchShift)}</div>
                         <div>
                           <div className="flex items-center" style={{ gap: 8 }}>
-                            <span style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700, color: C.rootGlow }}>{nashville(current, activeKey.tonic)}</span>
-                            <span style={{ fontFamily: MONO, fontSize: 13, color: "#b8b0a4" }}>{romanNumeral(current, activeKey.tonic)}</span>
+                            <span style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700, color: C.rootGlow }}>{nashville(soundingCurrent, soundingKey.tonic)}</span>
+                            <span style={{ fontFamily: MONO, fontSize: 13, color: "#b8b0a4" }}>{romanNumeral(soundingCurrent, soundingKey.tonic)}</span>
                           </div>
-                          <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#8b8378", marginTop: 6 }}>{current.section || "now playing"} · {currentIdx + 1}/{view.prog.length}</div>
+                          <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#8b8378", marginTop: 6 }}>
+                            {soundingCurrent.section || "now playing"} · {currentIdx + 1}/{view.prog.length}
+                            {capoShift > 0 && current && <> · written {displaySymbol(current, transpose)} (capo {capoShift})</>}
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -634,15 +655,15 @@ export default function App() {
                 </div>
                 <div style={{ marginTop: 14 }}>{transport}</div>
               </div>
-              {view.unique.length > 0 && (
+              {soundingView.unique.length > 0 && (
                 <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {view.unique.map((ch, i) => {
-                    const active = current && chordSymbol(current) === chordSymbol(ch);
+                  {soundingView.unique.map((ch, i) => {
+                    const active = soundingCurrent && chordSymbol(soundingCurrent) === chordSymbol(ch);
                     return (
-                      <button key={i} onClick={() => selectUnique(ch)}
+                      <button key={i} onClick={() => selectUnique(ch, soundingView.prog)}
                         style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "7px 12px", borderRadius: 9, cursor: "pointer", background: active ? C.panel2 : C.panel, border: `1px solid ${active ? C.toneUi : C.line}` }}>
-                        <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.ink }}>{displaySymbol(ch, transpose)}</span>
-                        <span style={{ fontFamily: MONO, fontSize: 10, color: C.faint }}>{nashville(ch, activeKey.tonic)}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.ink }}>{displaySymbol(ch, pitchShift)}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 10, color: C.faint }}>{nashville(ch, soundingKey.tonic)}</span>
                       </button>
                     );
                   })}
