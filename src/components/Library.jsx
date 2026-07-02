@@ -20,8 +20,7 @@ export default function Library({ onOpen, onPaste, onDemo }) {
     const by = new Map();
     for (const r of rows) {
       const id = r.tuningId || "standard";
-      if (id === "standard") continue;
-      if (!by.has(id)) by.set(id, { id, name: r.tuningName || id, count: 0 });
+      if (!by.has(id)) by.set(id, { id, name: r.tuningName || (id === "standard" ? "Standard" : id), count: 0 });
       by.get(id).count++;
     }
     return [...by.values()].filter((t) => t.count >= 2).sort((a, b) => b.count - a.count);
