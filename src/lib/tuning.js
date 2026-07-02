@@ -36,12 +36,13 @@ function tokenizeNotes(str) {
   return pcs;
 }
 
-// Assign octaves so the strings ascend, anchoring the lowest string near E2.
+// Assign octaves so the strings ascend, anchoring the lowest string in the
+// real guitar bass register (A1..G#2) — a low B/A string is B1/A1, not B2/A2.
 function assignOctaves(pcs) {
   const notes = [];
   let first = pcs[0];
-  while (first < 36) first += 12; // lowest reasonable bass string ~ C2
-  while (first - 12 >= 36) first -= 12; // smallest midi >= 36 for this pc
+  while (first < 33) first += 12; // lowest reasonable bass string ~ A1
+  while (first - 12 >= 33) first -= 12; // smallest midi >= 33 for this pc
   notes.push(first);
   for (let i = 1; i < pcs.length; i++) {
     let m = pcs[i];

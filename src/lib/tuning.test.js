@@ -66,6 +66,11 @@ describe("parseTuning", () => {
     expect(parseTuning("not a tuning")).toBeNull();
     expect(parseTuning("")).toBeNull();
   });
+
+  it("anchors low A/B strings at A1/B1 instead of an octave up", () => {
+    expect(parseTuning("B F# B F# B D#")[0]).toBe(35); // open B low string = B1
+    expect(parseTuning("A E A E A C#")[0]).toBe(33);   // drop-A-ish low string = A1
+  });
 });
 
 describe("getTuning", () => {
