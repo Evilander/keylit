@@ -62,6 +62,8 @@ export function parseTuning(str) {
 // id → [spelling, display name, family]
 const SPELLINGS = {
   standard: ["E A D G B E", "Standard", "standard"],
+  ebStandard: ["Eb Ab Db Gb Bb Eb", "Eb Standard", "down"],
+  dStandard: ["D G C F A D", "D Standard", "down"],
   dropD: ["D A D G B E", "Drop D", "drop"],
   doubleDropD: ["D A D G B D", "Double Drop D", "drop"],
   dropC: ["C G C F A D", "Drop C", "drop"],
@@ -105,6 +107,17 @@ export function getTuning(idOrSpelling) {
   return TUNINGS.standard;
 }
 
+/** Resolve like getTuning, then fold by NOTES to the first canonical entry —
+ *  twin names (DADGBD ≡ doubleDropD, CGCGCD ≡ openCsus2) unify for data
+ *  tagging while the Tunings UI keeps both lineages. */
+export function canonicalTuning(idOrSpelling) {
+  const t = getTuning(idOrSpelling);
+  const folded = Object.values(TUNINGS).find(
+    (k) => k.notes.length === t.notes.length && k.notes.every((n, i) => n === t.notes[i])
+  );
+  return folded || t;
+}
+
 /** MIDI note sounded by a fret on a string (0 = low string). null = muted. */
 export function fretToMidi(notes, string, fret) {
   if (fret == null || fret < 0) return null;
@@ -129,6 +142,57 @@ export function tuningSpelling(notes) {
 /** Per-string semitone offset vs standard tuning (negative = tuned down). */
 export function relativeToStandard(notes) {
   return notes.map((m, i) => m - STANDARD_TUNING[i]);
+}
+
+/* ---- tuning declared in the chart text ---------------------------------
+ * Real charts carry their tuning as prose ("Tuning: 1 step down", "drop d,
+ * half step down") that scrapers store as metadata "standard". This reads
+ * the first lines of a chart and returns a tuning id, or null. Conservative:
+ * quarter-steps and lyric-looking lines are ignored. Pure. */
+const DOWN_WHOLE = /\b(?:whole|full|one|1)\s+(?:whole\s+|full\s+)?step\s+down\b|\bdown\s+(?:a\s+|one\s+|1\s+)?(?:whole|full)\s+step\b|\bd\s+standard\b|\bdgcfad\b/i;
+const DOWN_HALF = /\b(?:half|1\/2)\s+(?:a\s+)?step\s+down\b|\bdown\s+(?:a\s+|one\s+)?(?:half|1\/2)\s+step\b|\beb?\s*flat\s+standard\b|\beb\s+standard\b/i;
+const DROP_D_RE = /\bdrop(?:ped)?[\s-]*d\b(?!\s*(?:#|sharp))/i;
+// A spelling candidate is note letters + accidentals + separators only —
+// this rejects words like "standard" (whose a/d letters would false-parse).
+const SPELLING_CHARS = /^[\sA-Ga-g#b♭♯,./|–-]+$/;
+
+// A compact all-caps spelling like DGCFAD or DADGBE glued into prose.
+const COMPACT_SPELLING = /\b(?:[A-G][#b]?){6}\b/;
+
+export function detectDeclaredTuning(text) {
+  const lines = String(text || "").split(/\r?\n/).slice(0, 40);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const tuney = /tun/i.test(line);
+    const standalone = line.length <= 24 && /step/i.test(line) && /down/i.test(line);
+    const compact = COMPACT_SPELLING.exec(line);
+    if (!tuney && !standalone && !compact) continue;
+    if (/1\/4|quarter/i.test(line)) continue; // not representable — leave standard
+    const whole = DOWN_WHOLE.test(line);
+    const half = DOWN_HALF.test(line);
+    const dropD = DROP_D_RE.test(line);
+    if (dropD && (whole || half)) return whole ? "dropC" : "dropCsharp";
+    // a compact spelling is the most explicit statement on the line
+    if (compact) {
+      const t = canonicalTuning(compact[0]);
+      if (t.id !== "standard" || /\btun/i.test(line) || /dropped|version/i.test(line)) return t.id;
+    }
+    if (dropD) return "dropD";
+    if (whole) return "dStandard";
+    if (half) return "ebStandard";
+    // explicit spelling after "Tuning:" / "Tuning -" — e.g. "Tuning: D-G-C-F-A-D"
+    if (tuney && /[:\-–]/.test(line)) {
+      const rest = line.slice(line.search(/[:\-–]/) + 1).trim();
+      if (rest && SPELLING_CHARS.test(rest)) {
+        const notes = parseTuning(rest.replace(/[,./|–-]+/g, " "));
+        if (notes) return canonicalTuning(rest.replace(/[,./|–-]+/g, " ")).id;
+      }
+      // an EXPLICIT "standard" is information too — it blocks per-site defaults
+      if (/\bstandard\b/i.test(rest) || /\beadgbe\b/i.test(rest)) return "standard";
+    }
+  }
+  return null;
 }
 
 /** Pitch class (0–11) of an open string. */

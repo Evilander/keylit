@@ -7,7 +7,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getTuning } from "../src/lib/tuning.js";
+import { getTuning, canonicalTuning, detectDeclaredTuning } from "../src/lib/tuning.js";
+
+// Site-wide tuning conventions the per-song metadata never states.
+// sweetadeline.net documents that Elliott Smith plays a whole step down
+// (owner-confirmed); a song's own declaration always wins over this.
+const SOURCE_DEFAULT_TUNING = { sweetadeline: "dStandard" };
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public", "corpus");
 
@@ -35,6 +40,7 @@ const titleCase = (s) => s.toLowerCase().split(/\s+/).map((w, i) => (w === "&" ?
 const normArtist = (a) => (!a ? a : FIX[a] ? FIX[a] : a === a.toUpperCase() && /[A-Z]/.test(a) ? titleCase(a) : a);
 
 let fixedArtists = 0;
+let retuned = 0;
 const out = [];
 for (const src of fs.readdirSync(ROOT)) {
   const dir = path.join(ROOT, src);
@@ -47,8 +53,28 @@ for (const src of fs.readdirSync(ROOT)) {
     if (!s.id || !s.title) continue;
     if (EXCLUDE_ID.test(s.id) || EXCLUDE_ARTISTS.has(s.artist)) continue;
     const na = normArtist(s.artist);
-    if (na !== s.artist) { s.artist = na; fs.writeFileSync(fp, JSON.stringify(s), "utf8"); fixedArtists++; }
-    const t = getTuning(s.tuning);
+    let dirty = na !== s.artist;
+    if (dirty) s.artist = na;
+    let t = canonicalTuning(s.tuning);
+    if (t.id === "standard") {
+      // Metadata says standard — try tuningRaw as a spelling ("D-A-D-G-B-D"),
+      // then prose declarations in raw/body, then the site convention.
+      const rawTuning = s.tuningRaw ? canonicalTuning(s.tuningRaw) : null;
+      const declared = (rawTuning && rawTuning.id !== "standard" && rawTuning.family !== "custom")
+        ? rawTuning.id
+        : detectDeclaredTuning([s.tuningRaw, s.body].filter(Boolean).join("\n"));
+      const resolved = declared || SOURCE_DEFAULT_TUNING[s.source || src] || null;
+      if (resolved && resolved !== "standard") {
+        t = canonicalTuning(resolved);
+        if (s.tuning !== t.id) {
+          s.tuning = t.id;
+          s.tuningRaw = t.spelling; // resolvable by the tab→piano player
+          dirty = true;
+          retuned++;
+        }
+      }
+    }
+    if (dirty) fs.writeFileSync(fp, JSON.stringify(s), "utf8");
     out.push({
       id: s.id, artist: s.artist || null, title: s.title,
       album: s.album || null, albumOrder: s.albumOrder ?? 9999,
@@ -61,6 +87,6 @@ for (const src of fs.readdirSync(ROOT)) {
 fs.writeFileSync(path.join(ROOT, "manifest.json"), JSON.stringify(out), "utf8");
 const tunings = {};
 out.forEach((s) => { if (s.tuningId !== "standard") tunings[s.tuningName] = (tunings[s.tuningName] || 0) + 1; });
-console.log("artist names fixed:", fixedArtists);
+console.log("artist names fixed:", fixedArtists, "| songs retuned from chart text/conventions:", retuned);
 console.log("manifest:", out.length, "songs,", new Set(out.map((s) => s.artist || "Various")).size, "artists");
 console.log("alt tunings:", Object.entries(tunings).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([n, c]) => `${n} (${c})`).join(" · "));
