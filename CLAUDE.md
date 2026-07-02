@@ -24,7 +24,10 @@ npm run test:watch   # vitest watch
 - `spelling.js` key-aware enharmonics · `suggest.js` reharmonization · `generate.js` progression templates · `scales.js` chord→scale · `midi.js` Standard MIDI File writer · `llm.js` AI-proxy client · `voice.js` the authored tutor voice (PERSONA, CONCEPTS, `reaction`, `buildSuggestionChips`).
 
 **UI — `src/`:**
-- `App.jsx` — root state + the inline Tone.js audio engine (sampler + synth fallback + reverb) + the layout. Organised into **three rooms** (Learn / Write / Play) around one shared `Keyboard`. *Still holds the audio engine — extracting it into `src/audio/` remains the open Phase-0 item.*
+- `App.jsx` — root state + the inline Tone.js audio engine (sampler + synth fallback + reverb) + the layout. A light **"Fretboard Press"** sidebar app-shell with **seven rooms** (Library / Song / Piano / Theory / Learn / Write / Practice) around one shared `Keyboard`. *Still holds the audio engine — extracting it into `src/audio/` remains the open Phase-0 item.*
+- `lib/tab.js` (tab→note events, tuning/capo/unwrap-aware) · `lib/tuning.js` (fretboard→MIDI) · `lib/fingering.js` (five-finger-position piano fingering) · `lib/capo.js` (capo/open-tuning advisor) — all pure, all tested.
+- The key picker in Song TRANSPOSES the song (pitches move, numbers stay); the mode select is a relabel lens. `spellDegreePc` keeps flat degrees spelled flat (♭3 in C = E♭, never D#).
+- Deploy: Vercel static + `api/analyze.js` serverless; `.vercelignore` excludes `public/corpus` (personal-use tabs must never ship publicly).
 - `ui/theme.js` (palette + "Bench" tokens) · `ui/bench.css` (the analog-instrument material layer) · `ui/Bench.jsx` (Faceplate/Deck/Readout/Vu/RoomTabs/SuggestionChips primitives) · `index.css` (fonts + reset + reduced-motion).
 - `components/` — `Keyboard` (the shared lit instrument), `NumbersRail` (live Nashville↔Roman↔Notes), `ScaleBuilder` + `DegreeFinder` (the Learn tutor), `ChordLab`, `CapoAdvisor`, `KeyWheel`, `SongTools`, `ImportModal`.
 
