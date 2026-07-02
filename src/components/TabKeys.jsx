@@ -106,7 +106,7 @@ export default function TabKeys({ sheet, tuning, tuningRaw, capo, shift = 0, onP
       <div className="deck" style={{ padding: "14px 12px" }}>
         <div className="key-felt" style={{ padding: "12px 10px" }}>
           <div style={{ width: "100%", overflowX: "auto" }}>
-            <svg viewBox={`0 0 ${geom.width} ${WKH + 4}`} width="100%" style={{ maxWidth: geom.width, minWidth: 560, display: "block" }} role="img"
+            <svg viewBox={`0 0 ${geom.width} ${WKH + 4}`} width="100%" style={{ maxWidth: geom.width, minWidth: 470, display: "block" }} role="img"
               aria-label={`tab notes on piano, position ${idx + 1} of ${events.length}`}>
               <defs><linearGradient id="tabWhite" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fbf6ec" /><stop offset="100%" stopColor={C.whiteShadow} /></linearGradient></defs>
               {Object.entries(geom.pos).filter(([n]) => !isBlack(+n)).map(([n, p]) => {

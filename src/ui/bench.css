@@ -210,6 +210,23 @@
 .kl-stagger > *:nth-child(5){animation-delay:160ms}.kl-stagger > *:nth-child(6){animation-delay:200ms}
 .kl-stagger > *:nth-child(7){animation-delay:240ms}.kl-stagger > *:nth-child(8){animation-delay:280ms}
 
+/* ---- responsive: phones ---- */
+@media (max-width: 560px) {
+  .kl-title { font-size: 25px; }
+  .kl-topbar { padding: 0 12px; gap: 8px; min-height: 46px; }
+  .kl-crumb { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .kl-content { padding: 16px 12px 48px; }
+  .kl-hide-sm { display: none !important; }
+  .kl-eyebrow { letter-spacing: 0.07em; }
+  .deck { border-radius: 12px; }
+}
+/* fingers need bigger targets than mice */
+@media (pointer: coarse) {
+  .kl-nav-item { padding: 10px 12px; }
+  .kl-seg button { padding: 8px 14px; }
+  .bench-btn { padding: 11px 16px; }
+}
+
 /* ---- responsive: sidebar -> top bar on narrow screens ---- */
 @media (max-width: 920px) {
   .kl-app { grid-template-columns: 1fr; }
