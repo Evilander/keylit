@@ -158,39 +158,62 @@ const SPELLING_CHARS = /^[\sA-Ga-g#b♭♯,./|–-]+$/;
 
 // A compact all-caps spelling like DGCFAD or DADGBE glued into prose.
 const COMPACT_SPELLING = /\b(?:[A-G][#b]?){6}\b/;
+// Prose names: "open D", "drop C#", "dadgad", "double drop d".
+const NAME_OPEN = /\bopen\s*([a-g])\b(?!\s*(?:#|sharp))/i;
+const NAME_DADGAD = /\bdadgad\b/i;
+const NAME_DOUBLE_DROP = /\bdouble[\s-]*drop(?:ped)?[\s-]*d\b/i;
+const NAME_DROP_C = /\bdrop(?:ped)?[\s-]*c(\s*#|sharp)?\b/i;
 
+/**
+ * Two-phase scan of the WHOLE text:
+ *  A) explicit letters (compact CGCEGC / spelled "Tuning: D-G-C-F-A-D") —
+ *     the most specific statement always wins, wherever it appears;
+ *  B) prose (step-downs, drop/open/dadgad names, explicit "standard").
+ * Quarter-step tunings aren't representable and are ignored.
+ */
 export function detectDeclaredTuning(text) {
-  const lines = String(text || "").split(/\r?\n/).slice(0, 40);
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-    const tuney = /tun/i.test(line);
-    const standalone = line.length <= 24 && /step/i.test(line) && /down/i.test(line);
+  const lines = String(text || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+  // --- phase A: explicit letters ---
+  for (const line of lines) {
+    if (/1\/4|quarter/i.test(line)) continue;
     const compact = COMPACT_SPELLING.exec(line);
-    if (!tuney && !standalone && !compact) continue;
-    if (/1\/4|quarter/i.test(line)) continue; // not representable — leave standard
-    const whole = DOWN_WHOLE.test(line);
-    const half = DOWN_HALF.test(line);
-    const dropD = DROP_D_RE.test(line);
-    if (dropD && (whole || half)) return whole ? "dropC" : "dropCsharp";
-    // a compact spelling is the most explicit statement on the line
     if (compact) {
       const t = canonicalTuning(compact[0]);
       if (t.id !== "standard" || /\btun/i.test(line) || /dropped|version/i.test(line)) return t.id;
     }
-    if (dropD) return "dropD";
-    if (whole) return "dStandard";
-    if (half) return "ebStandard";
-    // explicit spelling after "Tuning:" / "Tuning -" — e.g. "Tuning: D-G-C-F-A-D"
-    if (tuney && /[:\-–]/.test(line)) {
+    if (/tun/i.test(line) && /[:\-–]/.test(line)) {
       const rest = line.slice(line.search(/[:\-–]/) + 1).trim();
       if (rest && SPELLING_CHARS.test(rest)) {
         const notes = parseTuning(rest.replace(/[,./|–-]+/g, " "));
         if (notes) return canonicalTuning(rest.replace(/[,./|–-]+/g, " ")).id;
       }
-      // an EXPLICIT "standard" is information too — it blocks per-site defaults
-      if (/\bstandard\b/i.test(rest) || /\beadgbe\b/i.test(rest)) return "standard";
     }
+  }
+
+  // --- phase B: prose ---
+  for (const line of lines) {
+    const tuney = /tun(?:e|ing|ed)?\b|tuning/i.test(line) && /tun/i.test(line);
+    const standalone = line.length <= 24 && /step/i.test(line) && /down/i.test(line);
+    const droppy = /\bdrop/i.test(line);
+    const namey = NAME_OPEN.test(line) || NAME_DADGAD.test(line);
+    if (!tuney && !standalone && !droppy && !namey) continue;
+    if (/1\/4|quarter/i.test(line)) continue;
+    const whole = DOWN_WHOLE.test(line);
+    const half = DOWN_HALF.test(line);
+    if (NAME_DOUBLE_DROP.test(line)) return "doubleDropD";
+    if (DROP_D_RE.test(line)) return whole ? "dropC" : half ? "dropCsharp" : "dropD";
+    if (whole) return "dStandard";
+    if (half) return "ebStandard";
+    const dc = NAME_DROP_C.exec(line);
+    if (dc) return dc[1] ? "dropCsharp" : "dropC";
+    const open = NAME_OPEN.exec(line);
+    if (open) {
+      const id = "open" + open[1].toUpperCase();
+      if (TUNINGS[id]) return id;
+    }
+    if (NAME_DADGAD.test(line)) return "DADGAD";
+    if (tuney && (/\bstandard\b/i.test(line) || /\beadgbe\b/i.test(line))) return "standard";
   }
   return null;
 }

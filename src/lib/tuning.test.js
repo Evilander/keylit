@@ -120,6 +120,20 @@ describe("detectDeclaredTuning — tuning stated in the chart text", () => {
     expect(detectDeclaredTuning("Version 1: Dropped-D (DADGBE)")).toBe("dropD");
     expect(detectDeclaredTuning("and I am so in tune with you")).toBeNull();
   });
+  it("prefers explicit letters over a prose name anywhere in the text (See You Later)", () => {
+    const header = "See You Later\nby Elliott Smith\ntabbed by Ian\nTuning Open C, like on Independence Day and Ballad Of Big Nothing\nCGCEGC\nIntro:";
+    expect(detectDeclaredTuning(header)).toBe("C G C E G C");
+  });
+  it("falls back to tuning NAMES when no letters are given", () => {
+    expect(detectDeclaredTuning("Tuning Open D throughout")).toBe("openD");
+    expect(detectDeclaredTuning("played in open G")).toBe("openG");
+    expect(detectDeclaredTuning("Tuning: drop C")).toBe("dropC");
+    expect(detectDeclaredTuning("this one's in dadgad")).toBe("DADGAD");
+  });
+  it("scans the whole text, not just the header", () => {
+    const deep = Array(60).fill("verse line").join("\n") + "\nTuning: 1 step down";
+    expect(detectDeclaredTuning(deep)).toBe("dStandard");
+  });
   it("reports an EXPLICIT standard (it must block site-convention defaults)", () => {
     expect(detectDeclaredTuning("Capo: 2\nTuning: standard")).toBe("standard");
     expect(detectDeclaredTuning("Tuning: EADGBE")).toBe("standard");

@@ -8,6 +8,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getTuning, canonicalTuning, detectDeclaredTuning } from "../src/lib/tuning.js";
+import { findTabBlocks, parseTabBlock } from "../src/lib/tab.js";
+
+// The strongest per-song evidence: the tab's own string labels (C|G|C|E|G|C).
+// Only FULL 6-line systems count — 4-line riff excerpts label a string subset
+// (e.g. D G B E = the top four of standard), not the instrument's tuning.
+function labelsTuning(body) {
+  for (const b of findTabBlocks(body || "")) {
+    if (b.lines.length !== 6) continue;
+    const pb = parseTabBlock(b.lines);
+    if (pb.tuningFromLabels) return canonicalTuning(pb.tuning.id);
+  }
+  return null;
+}
 
 // Site-wide tuning conventions the per-song metadata never states.
 // sweetadeline.net documents that Elliott Smith plays a whole step down
@@ -55,24 +68,47 @@ for (const src of fs.readdirSync(ROOT)) {
     const na = normArtist(s.artist);
     let dirty = na !== s.artist;
     if (dirty) s.artist = na;
-    let t = canonicalTuning(s.tuning);
-    if (t.id === "standard") {
-      // Metadata says standard — try tuningRaw as a spelling ("D-A-D-G-B-D"),
-      // then prose declarations in raw/body, then the site convention.
-      const rawTuning = s.tuningRaw ? canonicalTuning(s.tuningRaw) : null;
-      const declared = (rawTuning && rawTuning.id !== "standard" && rawTuning.family !== "custom")
-        ? rawTuning.id
-        : detectDeclaredTuning([s.tuningRaw, s.body].filter(Boolean).join("\n"));
-      const resolved = declared || SOURCE_DEFAULT_TUNING[s.source || src] || null;
-      if (resolved && resolved !== "standard") {
-        t = canonicalTuning(resolved);
-        if (s.tuning !== t.id) {
-          s.tuning = t.id;
-          s.tuningRaw = t.spelling; // resolvable by the tab→piano player
-          dirty = true;
-          retuned++;
+
+    // ---- tuning resolution: labels > declared-in-text > metadata > site
+    // convention. `tuningSource` records the winner so a convention applied
+    // by an earlier pass never masquerades as per-song truth again.
+    const source = s.source || src;
+    const conv = SOURCE_DEFAULT_TUNING[source] || null;
+    const cur = canonicalTuning(s.tuning);
+    const polluted = !s.tuningSource && conv && cur.id === conv; // earlier blanket pass
+    let t = cur;
+    // Evidence-derived tags (labels/declared/convention) re-derive EVERY run —
+    // recorded sources exist precisely so better evidence rules can heal old
+    // results. Only original scraper metadata is immutable.
+    const rederive = s.tuningSource && s.tuningSource !== "meta";
+    if (cur.id === "standard" || polluted || rederive) {
+      const lab = labelsTuning(s.body);
+      let pickT = null, pickSrc = null;
+      if (lab && lab.id !== "standard") {
+        pickT = lab; pickSrc = "labels";
+      } else {
+        // tuningRaw is only scraper-original on unstamped files; stamped files
+        // carry a spelling my own pass wrote, which is not evidence.
+        const rawT = (!polluted && !s.tuningSource && s.tuningRaw) ? canonicalTuning(s.tuningRaw) : null;
+        if (rawT && rawT.id !== "standard" && rawT.family !== "custom") {
+          pickT = rawT; pickSrc = "meta";
+        } else {
+          const scanText = polluted ? (s.body || "") : [s.tuningRaw, s.body].filter(Boolean).join("\n");
+          const dec = detectDeclaredTuning(scanText);
+          if (dec && dec !== "standard") { pickT = canonicalTuning(dec); pickSrc = "declared"; }
+          else if (dec === "standard") { pickT = getTuning("standard"); pickSrc = "declared"; }
+          else if (conv) { pickT = canonicalTuning(conv); pickSrc = "convention"; }
+          else { pickT = getTuning("standard"); pickSrc = "meta"; }
         }
       }
+      if (pickT.id !== cur.id) retuned++;
+      if (pickT.id !== s.tuning || s.tuningSource !== pickSrc) {
+        s.tuning = pickT.id;
+        s.tuningRaw = pickT.spelling; // resolvable by the tab→piano player
+        s.tuningSource = pickSrc;
+        dirty = true;
+      }
+      t = pickT;
     }
     if (dirty) fs.writeFileSync(fp, JSON.stringify(s), "utf8");
     out.push({

@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import {
   SHARP_NAMES, parseSheet, transposeChord, chordSymbol, displaySymbol,
-  nashville, romanNumeral, detectKey, CIRCLE_OF_FIFTHS, sameChordSound,
+  nashville, romanNumeral, detectKey, CIRCLE_OF_FIFTHS, sameChordSound, detectCapo,
 } from "./lib/theory.js";
 import { rootPositionFull, smoothUpper, addBass, clampVoicing } from "./lib/voicing.js";
 import { analyzeSheet } from "./lib/llm.js";
@@ -138,8 +138,19 @@ export default function App() {
 
   useEffect(() => { setLabProg(null); setLabHistory([]); }, [sheet]);
 
+  // The capo moves REAL PITCH: a chart in E shapes with capo 2 sounds in F#.
+  // Song metadata wins; pasted charts fall back to a "Capo: N" header line.
+  const capoShift = useMemo(() => {
+    const meta = Number(loaded?.capo);
+    if (Number.isFinite(meta) && meta > 0) return Math.min(11, Math.round(meta));
+    return detectCapo(sheet);
+  }, [loaded, sheet]);
+  // Everything downstream (piano lights, numbers, key, playback, chart labels)
+  // speaks SOUNDING pitch: shapes + capo + the user's transpose.
+  const pitchShift = transpose + capoShift;
+
   const view = useMemo(() => {
-    const raw = sourceProg.map((ch) => transposeChord(ch, transpose));
+    const raw = sourceProg.map((ch) => transposeChord(ch, pitchShift));
     const detected = detectKey(raw);
     const keyCtx = keyOverride || { tonic: detected.tonic, mode: detected.mode };
     const prog = raw.map((ch) => respell(ch, keyCtx));
@@ -155,7 +166,7 @@ export default function App() {
       prevUp = up;
     }
     return { prog, unique, rootFull, smoothFull, detected };
-  }, [sourceProg, transpose, keyOverride]);
+  }, [sourceProg, pitchShift, keyOverride]);
 
   useEffect(() => {
     setCurrentIdx((i) => (view.prog.length ? Math.min(i, view.prog.length - 1) : 0));
@@ -228,7 +239,7 @@ export default function App() {
   useEffect(() => {
     if (armedRef.current) ensureAndPlay(audioVoicingRef.current[currentIdx]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIdx, mode, transpose]);
+  }, [currentIdx, mode, pitchShift]);
 
   useEffect(() => {
     const el = stripRef.current?.querySelector('[data-active="true"]');
@@ -274,7 +285,7 @@ export default function App() {
   const applyLab = (s) => {
     const idx = currentIdx;
     const sectionTag = sourceProg[idx]?.section || "";
-    const canon = s.chords.map((ch) => ({ ...transposeChord(ch, -transpose), section: sectionTag }));
+    const canon = s.chords.map((ch) => ({ ...transposeChord(ch, -pitchShift), section: sectionTag }));
     const next = sourceProg.slice();
     if (s.kind === "replace") next.splice(idx, 1, ...canon);
     else if (s.kind === "insertBefore") next.splice(idx, 0, ...canon);
@@ -432,9 +443,10 @@ export default function App() {
 
   // Tab → piano is tuning-, capo- and key-aware: the loaded song's metadata
   // feeds the parser, and transpose moves the lit keys with the rest of the app.
+  // (The parser applies capo to fret numbers itself, so shift stays user-only.)
   const tabKeysPanel = (
     <TabKeys sheet={sheet} tuning={loaded?.tuning} tuningRaw={loaded?.tuningRaw}
-      capo={loaded?.capo} shift={transpose}
+      capo={capoShift} shift={transpose}
       onPlay={(midis) => { arm(); ensureAndPlay(midis, 1.2); }} />
   );
 
@@ -558,6 +570,13 @@ export default function App() {
               <SongHeader loaded={loaded} keyName={keyName} />
               <div className="flex items-center" style={{ gap: 12, flexWrap: "wrap", margin: "14px 0 4px" }}>
                 {transposeCtl}
+                {capoShift > 0 && (
+                  <Readout style={{ display: "inline-flex", alignItems: "center", gap: 7 }}
+                    title={`The chart's shapes sound ${capoShift} semitone${capoShift > 1 ? "s" : ""} higher with the capo — everything here speaks sounding pitch`}>
+                    <EngLabel>capo</EngLabel>
+                    <span style={{ fontFamily: MONO, fontSize: 14, color: C.rootText }}>+{capoShift}</span>
+                  </Readout>
+                )}
                 {keyPicker}
                 <BenchButton onClick={runAI} disabled={!view.prog.length || ai.loading} style={{ marginLeft: "auto" }}>
                   {ai.loading ? <Loader2 size={15} className="kl-spin" /> : <Lightbulb size={15} />} Read the harmony
@@ -567,7 +586,7 @@ export default function App() {
               {aiPanel}
               {tabKeysPanel}
               <section style={{ marginTop: 18 }}>
-                <ChartView text={sheet} activeKey={activeKey} transpose={transpose}
+                <ChartView text={sheet} activeKey={activeKey} transpose={pitchShift}
                   activeChord={current}
                   onChordClick={(ch) => { arm(); selectUnique(ch); }} />
               </section>
