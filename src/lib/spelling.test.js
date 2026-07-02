@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseChord, buildChord } from "./theory.js";
-import { keyPrefersFlats, spellPc, spellChord, respell, FLAT_NAMES } from "./spelling.js";
+import { keyPrefersFlats, spellPc, spellDegreePc, spellChord, respell, FLAT_NAMES } from "./spelling.js";
 
 describe("keyPrefersFlats", () => {
   it("flat keys use flats", () => {
@@ -59,5 +59,25 @@ describe("respell", () => {
     const r = respell(c, { tonic: 5, mode: "major" });
     expect(r.rootName).toBe("C");
     expect(r.raw).toBe("Cm7");
+  });
+});
+
+describe("spellDegreePc — flat degrees always spell flat", () => {
+  const C = { tonic: 0, mode: "major" };
+  const G = { tonic: 7, mode: "major" };
+  it("spells the borrowed flat degrees of C major with flats", () => {
+    expect(spellDegreePc(3, C)).toBe("Eb");   // ♭3
+    expect(spellDegreePc(10, C)).toBe("Bb");  // ♭7
+    expect(spellDegreePc(8, C)).toBe("Ab");   // ♭6
+    expect(spellDegreePc(1, C)).toBe("Db");   // ♭2
+  });
+  it("keeps diatonic sharps in sharp keys", () => {
+    expect(spellDegreePc(6, G)).toBe("F#");   // leading tone of G
+    expect(spellDegreePc(1, { tonic: 4, mode: "major" })).toBe("C#"); // 6th of E
+  });
+  it("flows through respell for chords", () => {
+    expect(respell(parseChord("D#"), C).raw).toBe("Eb");
+    expect(respell(parseChord("A#"), C).raw).toBe("Bb");
+    expect(respell(parseChord("F#m"), G).raw).toBe("F#m"); // diatonic vii stays sharp
   });
 });

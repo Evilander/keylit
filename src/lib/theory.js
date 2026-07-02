@@ -199,6 +199,20 @@ export const chordSymbol = (ch) =>
   ch.rootName + symFromName(ch.quality) + (ch.bassName ? "/" + ch.bassName : "");
 export const displaySymbol = (ch, t) => (t === 0 ? ch.raw : chordSymbol(ch));
 
+/** True when two parsed chords SOUND the same — same root pitch class,
+ *  interval content, and bass — regardless of spelling (A#m7 ≡ B♭m7). */
+export const sameChordSound = (a, b) => {
+  if (!a || !b) return false;
+  const pc = (n) => ((n % 12) + 12) % 12;
+  if (pc(a.rootSemitone) !== pc(b.rootSemitone)) return false;
+  const ai = [...a.intervals].sort((x, y) => x - y).join(",");
+  const bi = [...b.intervals].sort((x, y) => x - y).join(",");
+  if (ai !== bi) return false;
+  const ab = a.bassSemitone == null ? null : pc(a.bassSemitone);
+  const bb = b.bassSemitone == null ? null : pc(b.bassSemitone);
+  return ab === bb;
+};
+
 /* ---- Nashville + Roman ---- */
 export const MAJOR_DEGREE = {
   0: "1", 2: "2", 4: "3", 5: "4", 7: "5", 9: "6", 11: "7",
