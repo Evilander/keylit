@@ -83,7 +83,7 @@
 .kl-crumb { font-family: var(--kl-mono); font-size: 12.5px; color: var(--kl-faint); display: flex; align-items: center; gap: 7px; }
 .kl-crumb .cur { color: var(--kl-ink); }
 .kl-crumb .sep { color: var(--kl-line); }
-.kl-content { padding: 26px 26px 64px; max-width: 1080px; width: 100%; }
+.kl-content { padding: 26px 26px 64px; max-width: 1080px; width: 100%; margin-inline: auto; }
 .kl-content.wide { max-width: 1280px; }
 
 /* ---- editorial type helpers ---- */
@@ -193,11 +193,14 @@
 @keyframes kl-spin { to { transform: rotate(360deg); } }
 @keyframes kl-breathe { 0%, 100% { filter: drop-shadow(0 0 6px currentColor); } 50% { filter: drop-shadow(0 0 13px currentColor); } }
 @keyframes kl-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* "the numbers stay, the key moves" — new note names drop in when the key changes */
+@keyframes kl-noteswap { from { opacity: 0; transform: translateY(-7px); } to { opacity: 1; transform: none; } }
 
 .kl-rise { animation: kl-rise 360ms cubic-bezier(.22, 1, .36, 1) both; }
 .kl-pop  { animation: kl-pop 300ms cubic-bezier(.34, 1.56, .64, 1) both; }
 .kl-snap { animation: kl-snap 340ms cubic-bezier(.34, 1.56, .64, 1) both; }
 .kl-spin { animation: kl-spin 1s linear infinite; }
+.kl-noteswap { display: inline-block; animation: kl-noteswap 240ms cubic-bezier(.22, 1, .36, 1) both; }
 .kl-breathe { animation: kl-breathe 2.4s ease-in-out infinite; }
 .kl-section { animation: kl-fade 280ms cubic-bezier(.22, 1, .36, 1) both; }
 

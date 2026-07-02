@@ -6,11 +6,12 @@ import { Search, ChevronRight, X } from "lucide-react";
 import { loadManifest, groupByArtist, SOURCE_LABEL } from "../corpus.js";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 
-export default function Library({ onOpen }) {
+export default function Library({ onOpen, onPaste, onDemo }) {
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState("");
   const [tuning, setTuning] = useState(null); // tuningId or null
   const [open, setOpen] = useState(() => new Set());
+  const [allTunings, setAllTunings] = useState(false);
 
   useEffect(() => { let on = true; loadManifest().then((r) => { if (on) setRows(r); }); return () => { on = false; }; }, []);
 
@@ -39,7 +40,29 @@ export default function Library({ onOpen }) {
   const autoOpen = q.trim().length > 0 || !!tuning;
 
   if (rows === null) return <p style={{ color: C.muted }}>Loading the library…</p>;
+
+  // No bundled corpus (the public build ships without one) — invite, don't apologize.
+  if (rows.length === 0) {
+    return (
+      <div className="kl-section" style={{ maxWidth: 560 }}>
+        <div className="kl-eyebrow">The catalog</div>
+        <h1 className="kl-title" style={{ marginTop: 4 }}>Bring a song</h1>
+        <p className="kl-prose" style={{ marginTop: 12 }}>
+          This copy of Keylit ships without a bundled songbook. Paste any chord
+          chart or guitar tab — Ultimate-Guitar, ChordPro, plain chords over
+          lyrics, 6-line ASCII tab — and it becomes a playable piano: lit keys,
+          numbers, fingerings, the works.
+        </p>
+        <div className="flex items-center" style={{ gap: 10, marginTop: 18 }}>
+          <button className="bench-btn primary" onClick={() => onPaste?.()}>Paste a chart or tab</button>
+          <button className="bench-btn" onClick={() => onDemo?.()}>Try the demo song</button>
+        </div>
+      </div>
+    );
+  }
+
   const tuningName = tuning && (tuningFacets.find((t) => t.id === tuning)?.name || tuning);
+  const shownFacets = allTunings ? tuningFacets : tuningFacets.slice(0, 8);
 
   return (
     <div className="kl-section">
@@ -60,7 +83,7 @@ export default function Library({ onOpen }) {
       {tuningFacets.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
           <span className="kl-eyebrow" style={{ marginRight: 4 }}>Tuning</span>
-          {tuningFacets.map((t) => {
+          {shownFacets.map((t) => {
             const active = tuning === t.id;
             return (
               <button key={t.id} onClick={() => setTuning(active ? null : t.id)}
@@ -70,6 +93,12 @@ export default function Library({ onOpen }) {
               </button>
             );
           })}
+          {tuningFacets.length > 8 && (
+            <button onClick={() => setAllTunings((v) => !v)}
+              style={{ fontFamily: "var(--kl-sans)", fontSize: 12, fontWeight: 600, color: C.muted, background: "transparent", border: 0, cursor: "pointer", padding: "4px 6px" }}>
+              {allTunings ? "fewer" : `+${tuningFacets.length - 8} more`}
+            </button>
+          )}
         </div>
       )}
 

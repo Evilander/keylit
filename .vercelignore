@@ -1,0 +1,7 @@
+# The scraped tab corpus is personal-use only — never publish it.
+public/corpus
+# Local/desktop-only surfaces.
+release
+electron
+tools
+server.mjs

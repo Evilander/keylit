@@ -68,7 +68,7 @@ export default function NumbersRail({ prog, activeKey, currentIdx, transpose = 0
                           opacity: hidden ? 0.35 : 1,
                           letterSpacing: "-0.01em", whiteSpace: "nowrap",
                         }}>
-                          {hidden ? "·" : val}
+                          {hidden ? "·" : isNotes ? <span key={val} className="kl-noteswap">{val}</span> : val}
                         </div>
                       );
                     })}
