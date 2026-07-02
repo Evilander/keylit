@@ -4,6 +4,8 @@ import {
   STANDARD_TUNING,
   getTuning,
   parseTuning,
+  detectDeclaredTuning,
+  canonicalTuning,
   fretToMidi,
   shapeToMidi,
   tuningSpelling,
@@ -73,6 +75,63 @@ describe("parseTuning", () => {
   });
 });
 
+describe("down-tuned standards are first-class tunings", () => {
+  it("names D standard and Eb standard", () => {
+    expect(getTuning("dStandard").name).toBe("D Standard");
+    expect(getTuning("ebStandard").name).toBe("Eb Standard");
+  });
+  it("folds spellings into them", () => {
+    expect(getTuning("D G C F A D").id).toBe("dStandard");
+    expect(getTuning("Eb Ab Db Gb Bb Eb").id).toBe("ebStandard");
+    expect(getTuning("D# G# C# F# A# D#").id).toBe("ebStandard");
+  });
+  it("keeps whole-step-down pitches right (low D2, high D4)", () => {
+    const t = getTuning("dStandard");
+    expect(t.notes).toEqual([38, 43, 48, 53, 57, 62]);
+  });
+});
+
+describe("detectDeclaredTuning — tuning stated in the chart text", () => {
+  it("hears a whole step down", () => {
+    expect(detectDeclaredTuning("Tuning: standard, one whole step down\n[Verse]")).toBe("dStandard");
+    expect(detectDeclaredTuning("Tune down a full step to match the record")).toBe("dStandard");
+    expect(detectDeclaredTuning("Tuning: 1 step down (DGCFAD)")).toBe("dStandard");
+    expect(detectDeclaredTuning("tuning: D standard")).toBe("dStandard");
+  });
+  it("hears a half step down", () => {
+    expect(detectDeclaredTuning("Tuning: 1/2 step down")).toBe("ebStandard");
+    expect(detectDeclaredTuning("Standard tuning, down a half step")).toBe("ebStandard");
+    expect(detectDeclaredTuning("down 1/2 step")).toBe("ebStandard");
+  });
+  it("combines drop D with step-downs", () => {
+    expect(detectDeclaredTuning("Tuning: drop D, whole step down")).toBe("dropC");
+    expect(detectDeclaredTuning("Tuning: Drop D, half step down")).toBe("dropCsharp");
+    expect(detectDeclaredTuning("Tuning: drop d")).toBe("dropD");
+  });
+  it("reads an explicit spelling on a tuning line", () => {
+    expect(detectDeclaredTuning("Tuning: D A D G A D\nchords follow")).toBe("DADGAD");
+    expect(detectDeclaredTuning("Tuning: D-G-C-F-A-D")).toBe("dStandard");
+  });
+  it("reads real-world hyperrust declarations", () => {
+    expect(detectDeclaredTuning("Version 1:  Dropped Standard (DGCFAD)")).toBe("dStandard");
+    // DADGBD is the same tuning as Double Drop D — folds to the common name
+    expect(detectDeclaredTuning("Tuning - DADGBD")).toBe("doubleDropD");
+    expect(detectDeclaredTuning("Tuning: D modal, DADGBD.")).toBe("doubleDropD");
+    expect(detectDeclaredTuning("Version 1: Dropped-D (DADGBE)")).toBe("dropD");
+    expect(detectDeclaredTuning("and I am so in tune with you")).toBeNull();
+  });
+  it("reports an EXPLICIT standard (it must block site-convention defaults)", () => {
+    expect(detectDeclaredTuning("Capo: 2\nTuning: standard")).toBe("standard");
+    expect(detectDeclaredTuning("Tuning: EADGBE")).toBe("standard");
+  });
+  it("ignores quarter steps, lyric noise, and silence", () => {
+    expect(detectDeclaredTuning("Tuning: 1/4 step down (album)")).toBeNull();
+    expect(detectDeclaredTuning("I'll step down from the throne\nwhole verse here")).toBeNull();
+    expect(detectDeclaredTuning("Capo: 2\njust chords below")).toBeNull();
+    expect(detectDeclaredTuning("")).toBeNull();
+  });
+});
+
 describe("getTuning", () => {
   it("resolves a known id", () => {
     expect(getTuning("openG").notes).toEqual([38, 43, 50, 55, 59, 62]);
@@ -126,5 +185,14 @@ describe("display helpers", () => {
     expect(pcOfString(STANDARD_TUNING, 0)).toBe(4); // E
     expect(pcOfString(STANDARD_TUNING, 5)).toBe(4); // E
     expect(pcOfString(STANDARD_TUNING, 2)).toBe(2); // D
+  });
+});
+
+describe("canonicalTuning — twin names fold for tagging", () => {
+  it("folds DADGBD into Double Drop D and CGCGCD into Open Csus2", () => {
+    expect(canonicalTuning("DADGBD").id).toBe("doubleDropD");
+    expect(canonicalTuning("CGCGCD").id).toBe("openCsus2");
+    expect(canonicalTuning("dropD").id).toBe("dropD");
+    expect(canonicalTuning("C G C G C D").id).toBe("openCsus2");
   });
 });
