@@ -12,6 +12,7 @@ import {
 import { rootPositionFull, smoothUpper, addBass, clampVoicing } from "./lib/voicing.js";
 import { analyzeSheet } from "./lib/llm.js";
 import { respell, spellPc } from "./lib/spelling.js";
+import { wheelMoves } from "./lib/voice.js";
 import { isMidiSupported, requestMidi, listOutputs, sendChordToOutput, allNotesOff } from "./webmidi.js";
 import { C, MONO, DISPLAY } from "./ui/theme.js";
 import { EngLabel, Readout, BenchButton } from "./ui/Bench.jsx";
@@ -664,17 +665,36 @@ export default function App() {
                 </div>
               </div>
               {theoryTab === "circle" ? (
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 240px", gap: 24, marginTop: 18, alignItems: "start" }} className="bench-cols">
-                  <div className="flex justify-center">
-                    <KeyWheel prog={view.prog} activeKey={activeKey} currentIdx={currentIdx} onPickTonic={(pc, m) => setKeyOverride({ tonic: pc, mode: m || activeKey.mode })} />
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 24, marginTop: 18, alignItems: "start" }} className="bench-cols">
+                  <div>
+                    <KeyWheel prog={view.prog} activeKey={activeKey} currentIdx={currentIdx}
+                      onPickTonic={(pc, m) => setKeyOverride({ tonic: pc, mode: m || activeKey.mode })}
+                      onAudition={auditionChords} />
+                    <p style={{ color: C.faint, fontSize: 12, textAlign: "center", marginTop: 10 }}>
+                      Your key rides at the top; the wedge holds the chords that always fit. Click any key to <b style={{ color: C.muted }}>hear it</b> and make it home — the wheel turns, your song's chords stay lit.
+                    </p>
                   </div>
                   <div>
-                    <div className="kl-eyebrow">Key of {keyName}</div>
-                    <div style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 22, color: C.ink, margin: "6px 0 14px" }}>{keyFacts.acc}</div>
-                    <div className="kl-meta">relative {keyFacts.rel}</div>
-                    <p style={{ color: C.muted, fontSize: 13, lineHeight: 1.55, marginTop: 14 }}>
-                      Each step clockwise adds a sharp (F C G D A E B); counter-clockwise adds a flat. Going up a fifth here is the same as going down a fourth on the neck. Click any key to re-center.
-                    </p>
+                    <div className="kl-eyebrow">Key of {keyName} · {keyFacts.acc}</div>
+                    {Object.entries(wheelMoves(activeKey)).map(([k, mv]) => (
+                      <div key={k} style={{ borderTop: `1px solid ${C.line}`, marginTop: 12, paddingTop: 12 }}>
+                        <div className="flex items-center justify-between" style={{ gap: 8 }}>
+                          <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 17, color: C.ink }}>{mv.title}</span>
+                          {mv.chords ? (
+                            <button className="bench-btn" style={{ padding: "4px 11px", fontSize: 12 }}
+                              onClick={() => auditionChords(mv.chords)}>
+                              <Play size={12} /> hear it
+                            </button>
+                          ) : (
+                            <button className="bench-btn" style={{ padding: "4px 11px", fontSize: 12 }}
+                              onClick={() => { arm(); setKeyOverride({ tonic: mv.pivotTonic, mode: mv.pivotMode }); }}>
+                              go there
+                            </button>
+                          )}
+                        </div>
+                        <p style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>{mv.line}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ) : (
