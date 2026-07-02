@@ -2,18 +2,31 @@
 // cards); expand an artist to see songs grouped BY ALBUM. A tuning filter bar
 // lets you click a tuning to see every song in it, across all artists.
 import { useEffect, useMemo, useState } from "react";
-import { Search, ChevronRight, X } from "lucide-react";
+import { Search, ChevronRight, X, Plus } from "lucide-react";
 import { loadManifest, groupByArtist, SOURCE_LABEL } from "../corpus.js";
+import { userSongbook } from "../storage.js";
+import AddSong from "./AddSong.jsx";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 
 export default function Library({ onOpen, onPaste, onDemo }) {
-  const [rows, setRows] = useState(null);
+  const [fetched, setFetched] = useState(null);
+  const [userRows, setUserRows] = useState(() => userSongbook.rows());
+  const [adding, setAdding] = useState(false);
   const [q, setQ] = useState("");
   const [tuning, setTuning] = useState(null); // tuningId or null
   const [open, setOpen] = useState(() => new Set());
   const [allTunings, setAllTunings] = useState(false);
 
-  useEffect(() => { let on = true; loadManifest().then((r) => { if (on) setRows(r); }); return () => { on = false; }; }, []);
+  useEffect(() => { let on = true; loadManifest().then((r) => { if (on) setFetched(r); }); return () => { on = false; }; }, []);
+  // Your songs join the same catalog, grouped and styled like everyone else.
+  const rows = useMemo(() => (fetched === null ? null : [...userRows, ...fetched]), [fetched, userRows]);
+
+  const removeUserSong = (id) => { userSongbook.remove(id); setUserRows(userSongbook.rows()); };
+  const onSaved = (song) => {
+    setUserRows(userSongbook.rows());
+    setAdding(false);
+    setOpen((s) => new Set(s).add(song.artist));
+  };
 
   const tuningFacets = useMemo(() => {
     if (!rows) return [];
@@ -40,22 +53,27 @@ export default function Library({ onOpen, onPaste, onDemo }) {
 
   if (rows === null) return <p style={{ color: C.muted }}>Loading the library…</p>;
 
-  // No bundled corpus (the public build ships without one) — invite, don't apologize.
+  // No songs at all — invite, don't apologize.
   if (rows.length === 0) {
     return (
-      <div className="kl-section" style={{ maxWidth: 560 }}>
+      <div className="kl-section" style={{ maxWidth: 640 }}>
         <div className="kl-eyebrow">The catalog</div>
         <h1 className="kl-title" style={{ marginTop: 4 }}>Bring a song</h1>
         <p className="kl-prose" style={{ marginTop: 12 }}>
-          This copy of Keylit ships without a bundled songbook. Paste any chord
+          This copy of Keylit ships without a bundled songbook. Add any chord
           chart or guitar tab — Ultimate-Guitar, ChordPro, plain chords over
           lyrics, 6-line ASCII tab — and it becomes a playable piano: lit keys,
           numbers, fingerings, the works.
         </p>
-        <div className="flex items-center" style={{ gap: 10, marginTop: 18 }}>
-          <button className="bench-btn primary" onClick={() => onPaste?.()}>Paste a chart or tab</button>
-          <button className="bench-btn" onClick={() => onDemo?.()}>Try the demo song</button>
-        </div>
+        {adding ? (
+          <AddSong onSaved={onSaved} onClose={() => setAdding(false)} />
+        ) : (
+          <div className="flex items-center" style={{ gap: 10, marginTop: 18, flexWrap: "wrap" }}>
+            <button className="bench-btn primary" onClick={() => setAdding(true)}><Plus size={15} /> Add a song to your library</button>
+            <button className="bench-btn" onClick={() => onPaste?.()}>Just paste one</button>
+            <button className="bench-btn" onClick={() => onDemo?.()}>Try the demo song</button>
+          </div>
+        )}
       </div>
     );
   }
@@ -70,8 +88,15 @@ export default function Library({ onOpen, onPaste, onDemo }) {
           <div className="kl-eyebrow">The catalog</div>
           <h1 className="kl-title" style={{ marginTop: 4 }}>Library</h1>
         </div>
-        <div className="kl-meta">{rows.length} songs · {new Set(rows.map((r) => r.artist || "Various")).size} artists</div>
+        <div className="flex items-center" style={{ gap: 12 }}>
+          <span className="kl-meta kl-hide-sm">{rows.length} songs · {new Set(rows.map((r) => r.artist || "Various")).size} artists</span>
+          <button className="bench-btn" style={{ padding: "7px 13px", fontSize: 13 }} onClick={() => setAdding((v) => !v)}>
+            <Plus size={14} /> Add a song
+          </button>
+        </div>
       </div>
+
+      {adding && <AddSong onSaved={onSaved} onClose={() => setAdding(false)} />}
 
       <div style={{ position: "relative", margin: "18px 0 10px", maxWidth: 420 }}>
         <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.faint }} />
@@ -146,7 +171,7 @@ export default function Library({ onOpen, onPaste, onDemo }) {
                             <span style={{ flex: 1, height: 1, background: C.line, marginLeft: 4 }} />
                           </div>
                         )}
-                        {al.songs.map((s) => <SongRow key={s.id} s={s} onOpen={onOpen} onTuning={setTuning} />)}
+                        {al.songs.map((s) => <SongRow key={s.id} s={s} onOpen={onOpen} onTuning={setTuning} onRemove={removeUserSong} />)}
                       </div>
                     ))}
                   </div>
@@ -160,13 +185,15 @@ export default function Library({ onOpen, onPaste, onDemo }) {
   );
 }
 
-function SongRow({ s, onOpen, onTuning }) {
+function SongRow({ s, onOpen, onTuning, onRemove }) {
   const alt = s.tuningId && s.tuningId !== "standard";
+  const mine = s.source === "user";
   return (
     <button onClick={() => onOpen?.(s)}
       style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "7px 4px 7px 31px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}
       onMouseEnter={(e) => (e.currentTarget.style.background = C.panel2)} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
       <span style={{ fontFamily: "var(--kl-sans)", fontSize: 14.5, color: C.ink, flex: 1 }}>{s.title}</span>
+      {mine && <Tag color={C.toneText}>yours</Tag>}
       {s.format === "tab" && <Tag>tab</Tag>}
       {alt && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onTuning?.(s.tuningId); }}
         onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onTuning?.(s.tuningId); } }}
@@ -174,6 +201,15 @@ function SongRow({ s, onOpen, onTuning }) {
         style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, color: C.toneText, border: `1px solid ${C.toneText}66`, borderRadius: 5, padding: "1px 6px", cursor: "pointer" }}>{s.tuningName}</span>}
       {s.capo ? <Tag color={C.rootText}>capo {s.capo}</Tag> : null}
       {s.key ? <span className="kl-meta kl-hide-sm" style={{ minWidth: 42, textAlign: "right" }}>{s.key}</span> : null}
+      {mine && (
+        <span role="button" tabIndex={0} aria-label={`remove ${s.title} from your songbook`}
+          onClick={(e) => { e.stopPropagation(); onRemove?.(s.id); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onRemove?.(s.id); } }}
+          title="Remove from your songbook"
+          style={{ color: C.faint, display: "inline-flex", padding: 2, cursor: "pointer" }}>
+          <X size={13} />
+        </span>
+      )}
     </button>
   );
 }

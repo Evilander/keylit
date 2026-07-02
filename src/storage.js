@@ -35,3 +35,27 @@ export function createLibrary(backend) {
 
 // Default app-wide library (localStorage in the browser).
 export const library = createLibrary();
+
+/* ---- the user songbook: full corpus-shaped records for the Library ------ */
+const USER_KEY = "keylit.usersongs.v1";
+
+export function createUserSongbook(backend) {
+  const be = backend || (typeof localStorage !== "undefined" ? localStorage : memoryBackend());
+  const read = () => {
+    try { return JSON.parse(be.getItem(USER_KEY) || "[]"); } catch { return []; }
+  };
+  const write = (songs) => be.setItem(USER_KEY, JSON.stringify(songs));
+
+  return {
+    /** Light manifest rows (no bodies) for the Library listing. */
+    rows() { return read().map(({ body, ...row }) => row); },
+    get(id) { return read().find((s) => s.id === id) || null; },
+    /** Save { song, row } from buildUserSong — same id replaces (edit). */
+    save(song, row) {
+      write(read().filter((s) => s.id !== song.id).concat({ ...song, ...row }));
+    },
+    remove(id) { write(read().filter((s) => s.id !== id)); },
+  };
+}
+
+export const userSongbook = createUserSongbook();
