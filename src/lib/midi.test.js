@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { progressionToMidi, noteOn, noteOff } from "./midi.js";
+import { progressionToMidi, eventsToMidi, noteOn, noteOff } from "./midi.js";
 
 const ascii = (bytes, start, len) =>
   String.fromCharCode(...bytes.slice(start, start + len));
@@ -73,5 +73,69 @@ describe("live MIDI messages", () => {
   });
   it("clamps out-of-range values", () => {
     expect(noteOn(200, 999, 99)).toEqual([0x9f, 127, 127]);
+  });
+});
+
+/* ---- eventsToMidi: absolute-timed arrangement events ---- */
+
+// Minimal SMF track decoder: walks deltas, returns {tick, type, note, vel}.
+function decodeTrack(bytes) {
+  let i = 14 + 8; // MThd(14) + "MTrk"+len(8)
+  let tick = 0;
+  const out = [];
+  const b = bytes;
+  const vlq = () => { let n = 0; for (;;) { const x = b[i++]; n = (n << 7) | (x & 0x7f); if (!(x & 0x80)) return n; } };
+  while (i < b.length) {
+    tick += vlq();
+    const status = b[i++];
+    if (status === 0xff) { const type = b[i++]; const len = b[i++]; i += len; if (type === 0x2f) break; continue; }
+    const hi = status & 0xf0;
+    if (hi === 0x90) { const note = b[i++], vel = b[i++]; out.push({ tick, type: vel > 0 ? "on" : "off", note, vel }); }
+    else if (hi === 0x80) { const note = b[i++]; i++; out.push({ tick, type: "off", note, vel: 0 }); }
+    else { i += 2; }
+  }
+  return out;
+}
+
+describe("eventsToMidi", () => {
+  const events = [
+    { t: 0, dur: 1, midis: [60], v: 0.9 },
+    { t: 1, dur: 0.5, midis: [64, 67], v: 0.5 },
+  ];
+
+  it("places note on/offs at the right absolute ticks", () => {
+    const bytes = eventsToMidi(events, { tempoBpm: 120, ticksPerBeat: 480 });
+    expect(ascii(bytes, 0, 4)).toBe("MThd");
+    const evs = decodeTrack(bytes);
+    const find = (type, note) => evs.find((e) => e.type === type && e.note === note);
+    expect(find("on", 60).tick).toBe(0);
+    expect(find("off", 60).tick).toBe(480);
+    expect(find("on", 64).tick).toBe(480);
+    expect(find("on", 67).tick).toBe(480);
+    expect(find("off", 64).tick).toBe(720);
+    expect(find("off", 67).tick).toBe(720);
+  });
+
+  it("an off and an on landing on the same tick emit the off first", () => {
+    const bytes = eventsToMidi([
+      { t: 0, dur: 1, midis: [60], v: 0.8 },
+      { t: 1, dur: 1, midis: [60], v: 0.8 },   // same note re-struck back-to-back
+    ], { ticksPerBeat: 100 });
+    const evs = decodeTrack(bytes).filter((e) => e.note === 60);
+    expect(evs.map((e) => e.type)).toEqual(["on", "off", "on", "off"]);
+  });
+
+  it("maps v 0..1 onto velocity 1..127", () => {
+    const bytes = eventsToMidi([{ t: 0, dur: 1, midis: [60], v: 1 }, { t: 1, dur: 1, midis: [62], v: 0.01 }]);
+    const evs = decodeTrack(bytes);
+    expect(evs.find((e) => e.note === 60 && e.type === "on").vel).toBe(127);
+    expect(evs.find((e) => e.note === 62 && e.type === "on").vel).toBeGreaterThanOrEqual(1);
+  });
+
+  it("writes the tempo meta", () => {
+    const m = eventsToMidi(events, { tempoBpm: 60 });
+    const idx = [...m].findIndex((x, k) => x === 0xff && m[k + 1] === 0x51);
+    const us = (m[idx + 3] << 16) | (m[idx + 4] << 8) | m[idx + 5];
+    expect(us).toBe(1000000);
   });
 });

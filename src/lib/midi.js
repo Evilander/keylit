@@ -55,6 +55,47 @@ export function midiBlob(voicings, opts) {
   return new Blob([progressionToMidi(voicings, opts)], { type: "audio/midi" });
 }
 
+/**
+ * Build a MIDI file from absolute-timed events (the Arranger's output).
+ * @param {Array<{t:number, dur:number, midis:number[], v?:number}>} events  beats domain
+ * @param {object} opts  { tempoBpm=90, ticksPerBeat=480 }
+ * @returns {Uint8Array} the .mid file bytes
+ */
+export function eventsToMidi(events, opts = {}) {
+  const { tempoBpm = 90, ticksPerBeat = 480 } = opts;
+  // Flatten to on/off moments; at equal ticks, offs go first so a re-struck
+  // note never gets swallowed by its own previous note-off.
+  const moments = [];
+  for (const e of events || []) {
+    const vel = Math.max(1, Math.min(127, Math.round((e.v ?? 0.75) * 127)));
+    const on = Math.max(0, Math.round(e.t * ticksPerBeat));
+    const off = Math.max(on + 1, Math.round((e.t + e.dur) * ticksPerBeat));
+    for (const m of e.midis || []) {
+      const n = Math.round(m);
+      if (!Number.isFinite(n) || n < 0 || n > 127) continue;
+      moments.push({ tick: on, kind: 1, note: n, vel });
+      moments.push({ tick: off, kind: 0, note: n, vel: 0 });
+    }
+  }
+  moments.sort((a, b) => a.tick - b.tick || a.kind - b.kind);
+
+  const track = [];
+  const usPerBeat = Math.min(0xffffff, Math.max(1, Math.round(60000000 / tempoBpm)));
+  track.push(...vlq(0), 0xff, 0x51, 0x03, (usPerBeat >> 16) & 0xff, (usPerBeat >> 8) & 0xff, usPerBeat & 0xff);
+  let last = 0;
+  for (const m of moments) {
+    track.push(...vlq(m.tick - last));
+    last = m.tick;
+    if (m.kind === 1) track.push(0x90, m.note, m.vel);
+    else track.push(0x80, m.note, 0x00);
+  }
+  track.push(...vlq(0), 0xff, 0x2f, 0x00);
+
+  const header = [...str("MThd"), ...u32(6), ...u16(0), ...u16(1), ...u16(ticksPerBeat)];
+  const trackChunk = [...str("MTrk"), ...u32(track.length), ...track];
+  return new Uint8Array([...header, ...trackChunk]);
+}
+
 /* ---- live MIDI messages (for Web MIDI output) — pure byte builders ---- */
 const clampCh = (ch) => Math.max(0, Math.min(15, ch | 0));
 const clampNote = (n) => Math.max(0, Math.min(127, n | 0));
