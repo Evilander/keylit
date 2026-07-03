@@ -844,7 +844,7 @@ function SongHeader({ loaded, keyName }) {
       </div>
     );
   }
-  const bits = [loaded.artist, `key of ${keyName}`];
+  const bits = [loaded.artist, `key of ${keyName}`].filter(Boolean);
   if (loaded.tuning && loaded.tuning !== "standard") bits.push(loaded.tuning);
   if (loaded.capo) bits.push(`capo ${loaded.capo}`);
   return (
