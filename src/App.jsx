@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import * as Tone from "tone";
 import {
   Play, Pause, ChevronLeft, ChevronRight, Volume2, VolumeX,
   RotateCcw, Upload, Minus, Plus, Loader2, Piano as PianoIcon, Undo2, Lightbulb,
@@ -14,6 +13,7 @@ import { analyzeSheet } from "./lib/llm.js";
 import { respell, spellPc } from "./lib/spelling.js";
 import { wheelMoves } from "./lib/voice.js";
 import { isMidiSupported, requestMidi, listOutputs, sendChordToOutput, allNotesOff } from "./webmidi.js";
+import { useAudioEngine } from "./audio/useAudioEngine.js";
 import { C, MONO, DISPLAY } from "./ui/theme.js";
 import { EngLabel, Readout, BenchButton } from "./ui/Bench.jsx";
 import { loadSong, SOURCE_LABEL } from "./corpus.js";
@@ -30,17 +30,6 @@ import ChartView from "./components/ChartView.jsx";
 import Library from "./components/Library.jsx";
 import Practice from "./components/Practice.jsx";
 import TabKeys from "./components/TabKeys.jsx";
-
-const SALAMANDER = {
-  A0: "A0.mp3", C1: "C1.mp3", "D#1": "Ds1.mp3", "F#1": "Fs1.mp3",
-  A1: "A1.mp3", C2: "C2.mp3", "D#2": "Ds2.mp3", "F#2": "Fs2.mp3",
-  A2: "A2.mp3", C3: "C3.mp3", "D#3": "Ds3.mp3", "F#3": "Fs3.mp3",
-  A3: "A3.mp3", C4: "C4.mp3", "D#4": "Ds4.mp3", "F#4": "Fs4.mp3",
-  A4: "A4.mp3", C5: "C5.mp3", "D#5": "Ds5.mp3", "F#5": "Fs5.mp3",
-  A5: "A5.mp3", C6: "C6.mp3", "D#6": "Ds6.mp3", "F#6": "Fs6.mp3",
-  A6: "A6.mp3", C7: "C7.mp3",
-};
-const SALAMANDER_BASE = "https://tonejs.github.io/audio/salamander/";
 
 const DEFAULT_SHEET = `[Intro]
 E       A       E
@@ -83,8 +72,7 @@ export default function App() {
   const [mode, setMode] = useState("shape");
   const [transpose, setTranspose] = useState(0);
   const [keyOverride, setKeyOverride] = useState(null);
-  const [engine, setEngine] = useState("off");
-  const [sampleLoading, setSampleLoading] = useState(false);
+  const { engine: audio, engineState } = useAudioEngine();
   const [ai, setAi] = useState({ open: false, loading: false, data: null, error: null, raw: null });
   const [labProg, setLabProg] = useState(null);
   const [labHistory, setLabHistory] = useState([]);
@@ -92,11 +80,6 @@ export default function App() {
   const [theoryTab, setTheoryTab] = useState("circle");
   const [lessonHL, setLessonHL] = useState(null);
 
-  const audioInit = useRef(false);
-  const engineRef = useRef(null);
-  const synthRef = useRef(null);
-  const samplerRef = useRef(null);
-  const reverbRef = useRef(null);
   const armedRef = useRef(false);
   const stripRef = useRef(null);
   const audioVoicingRef = useRef([]);
@@ -204,53 +187,16 @@ export default function App() {
     return { kind: "midi", set: new Set(notes), root: ch.rootSemitone % 12, bass: ch.bassSemitone, notes };
   }, [soundingCurrent, mode, soundingView, currentIdx]);
 
-  /* ---------- audio ---------- */
-  const buildInstrument = () => {
-    const reverb = new Tone.Reverb({ decay: 2.4, wet: 0.22 }).toDestination();
-    reverbRef.current = reverb;
-    const synth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: "triangle" },
-      envelope: { attack: 0.006, decay: 0.9, sustain: 0.12, release: 1.3 },
-    });
-    synth.volume.value = -7;
-    synth.connect(reverb);
-    synthRef.current = synth;
-    engineRef.current = synth;
-    setEngine("synth");
-    setSampleLoading(true);
-    try {
-      const sampler = new Tone.Sampler({
-        urls: SALAMANDER, baseUrl: SALAMANDER_BASE, release: 1,
-        onload: () => { samplerRef.current = sampler; engineRef.current = sampler; setEngine("piano"); setSampleLoading(false); },
-      });
-      sampler.connect(reverb);
-      setTimeout(() => { if (engineRef.current !== sampler) setSampleLoading(false); }, 12000);
-    } catch (e) { setSampleLoading(false); }
-  };
-
-  const initAudioOnce = async () => {
-    if (audioInit.current) return;
-    audioInit.current = true;
-    try { await Tone.start(); } catch (e) { /* noop */ }
-    buildInstrument();
-  };
-
+  /* ---------- audio (engine lives in src/audio/engine.js) ---------- */
   const playVoiced = useCallback((midis, dur = 1.4) => {
     if (!midis || !midis.length) return;
     if (midiOutRef.current) {
       try { sendChordToOutput(midiOutRef.current, midis, { durationMs: Math.round(dur * 1000) }); } catch (e) { /* noop */ }
     }
-    if (!soundOn) return;
-    const inst = engineRef.current;
-    if (!inst) return;
-    const t0 = Tone.now();
-    midis.forEach((m, i) => {
-      const n = Tone.Frequency(m, "midi").toNote();
-      try { inst.triggerAttackRelease(n, dur, t0 + i * 0.013); } catch (e) { /* sampler not ready */ }
-    });
-  }, [soundOn]);
+    if (soundOn) audio.play(midis, dur);
+  }, [soundOn, audio]);
 
-  const ensureAndPlay = useCallback(async (midis, dur) => { await initAudioOnce(); playVoiced(midis, dur); }, [playVoiced]);
+  const ensureAndPlay = useCallback(async (midis, dur) => { await audio.init(); playVoiced(midis, dur); }, [audio, playVoiced]);
 
   useEffect(() => {
     if (armedRef.current) ensureAndPlay(audioVoicingRef.current[currentIdx]);
@@ -271,15 +217,14 @@ export default function App() {
   }, [isPlaying, view.prog.length, tempo]);
 
   useEffect(() => () => {
-    try { synthRef.current?.dispose(); samplerRef.current?.dispose(); reverbRef.current?.dispose(); } catch (e) {}
-    try { allNotesOff(midiOutRef.current); } catch (e) {}
+    try { allNotesOff(midiOutRef.current); } catch (e) { /* noop */ }
   }, []);
 
   useEffect(() => { if (!isPlaying) { try { allNotesOff(midiOutRef.current); } catch (e) {} } }, [isPlaying]);
   useEffect(() => { if (section !== "learn") setLessonHL(null); }, [section]);
 
   /* ---------- handlers ---------- */
-  const arm = () => { armedRef.current = true; initAudioOnce(); };
+  const arm = () => { armedRef.current = true; audio.init(); };
   const selectIdx = (i) => { arm(); setIsPlaying(false); setCurrentIdx(i); };
   const selectUnique = (ch, progList = view.prog) => {
     arm(); setIsPlaying(false);
@@ -558,7 +503,7 @@ export default function App() {
           })}
         </nav>
         <div className="kl-side-foot">
-          <EnginePill engine={engine} loading={sampleLoading} />
+          <EnginePill engine={engineState.engine} loading={engineState.loading} />
         </div>
       </aside>
 
