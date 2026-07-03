@@ -32,6 +32,7 @@ import Practice from "./components/Practice.jsx";
 import TabKeys from "./components/TabKeys.jsx";
 import PlayAlong from "./components/PlayAlong.jsx";
 import BenchBook from "./components/BenchBook.jsx";
+import Arranger from "./components/Arranger.jsx";
 import { benchBook } from "./storage.js";
 import { slugSongKey } from "./lib/bench.js";
 
@@ -203,10 +204,33 @@ export default function App() {
 
   const ensureAndPlay = useCallback(async (midis, dur) => { await audio.init(); playVoiced(midis, dur); }, [audio, playVoiced]);
 
+  // While the Arranger drives the lights, the pad walker keeps quiet.
+  const arrangingRef = useRef(false);
   useEffect(() => {
-    if (armedRef.current) ensureAndPlay(audioVoicingRef.current[currentIdx]);
+    if (armedRef.current && !arrangingRef.current) ensureAndPlay(audioVoicingRef.current[currentIdx]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIdx, mode, pitchShift]);
+
+  const arrangementRef = useRef(null);
+  const stopArrangement = useCallback(() => {
+    arrangementRef.current?.stop();
+    arrangementRef.current = null;
+    arrangingRef.current = false;
+  }, []);
+  const startArrangement = useCallback(async (payload, opts = {}) => {
+    armedRef.current = true;
+    await audio.init();
+    setIsPlaying(false);
+    stopArrangement();
+    arrangingRef.current = true;
+    const h = audio.playEvents(payload, {
+      ...opts,
+      onDone: () => { arrangingRef.current = false; opts.onDone?.(); },
+    });
+    const wrapped = { stop: () => { h.stop(); arrangingRef.current = false; } };
+    arrangementRef.current = wrapped;
+    return wrapped;
+  }, [audio, stopArrangement]);
 
   useEffect(() => {
     const el = stripRef.current?.querySelector('[data-active="true"]');
@@ -238,7 +262,7 @@ export default function App() {
     if (i >= 0) setCurrentIdx(i); else ensureAndPlay(rootPositionFull(ch));
   };
   const step = (d) => { arm(); setIsPlaying(false); setCurrentIdx((i) => Math.max(0, Math.min(view.prog.length - 1, i + d))); };
-  const togglePlay = () => { arm(); if (!isPlaying && currentIdx >= view.prog.length - 1) setCurrentIdx(0); setIsPlaying((p) => !p); };
+  const togglePlay = () => { arm(); stopArrangement(); if (!isPlaying && currentIdx >= view.prog.length - 1) setCurrentIdx(0); setIsPlaying((p) => !p); };
   const playSingleKey = (midi) => { arm(); ensureAndPlay([midi], 1.0); setFlash(new Set([midi])); setTimeout(() => setFlash(new Set()), 260); };
 
   const auditionChords = useCallback((chords) => {
@@ -632,6 +656,8 @@ export default function App() {
               <p style={{ color: C.faint, fontSize: 12, marginTop: 14, maxWidth: 620 }}>
                 <b style={{ color: C.muted }}>Shape</b> lights every note in the chord. <b style={{ color: C.muted }}>Voicing</b> shows one close hand position. <b style={{ color: C.muted }}>Smooth</b> voice-leads from the chord before it.
               </p>
+              <Arranger prog={soundingView.prog} title={loaded?.title || "your chart"}
+                onStart={startArrangement} onStepIdx={setCurrentIdx} />
               {tabKeysPanel}
             </div>
           )}
