@@ -30,6 +30,8 @@ import ChartView from "./components/ChartView.jsx";
 import Library from "./components/Library.jsx";
 import Practice from "./components/Practice.jsx";
 import TabKeys from "./components/TabKeys.jsx";
+import PlayAlong from "./components/PlayAlong.jsx";
+import { benchBook } from "./storage.js";
 
 const DEFAULT_SHEET = `[Intro]
 E       A       E
@@ -77,6 +79,7 @@ export default function App() {
   const [labProg, setLabProg] = useState(null);
   const [labHistory, setLabHistory] = useState([]);
   const [section, setSection] = useState("library");
+  const [practiceTab, setPracticeTab] = useState("drills");
   const [theoryTab, setTheoryTab] = useState("circle");
   const [lessonHL, setLessonHL] = useState(null);
 
@@ -330,6 +333,16 @@ export default function App() {
     playNotes: (midis, dur) => { arm(); ensureAndPlay(midis, dur); },
     playPc: (pc) => { arm(); ensureAndPlay([60 + (((pc % 12) + 12) % 12)], 1.0); },
   };
+
+  /* ---------- play-along + bench book plumbing ---------- */
+  const songKey = useMemo(() => {
+    const raw = loaded ? `${loaded.artist || ""} ${loaded.title || ""}` : "untitled chart";
+    return raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "untitled-chart";
+  }, [loaded]);
+  const labelForSounding = useCallback((ch) => displaySymbol(ch, pitchShift), [pitchShift]);
+  const logPractice = useCallback((entry) => {
+    try { benchBook.logPractice({ ...entry, at: Date.now() }); } catch (e) { /* storage full/blocked */ }
+  }, []);
 
   const onChipIntent = (intent) => {
     if (intent === "relative") {
@@ -710,7 +723,33 @@ export default function App() {
             </div>
           )}
 
-          {section === "practice" && <Practice onPlay={(midis) => { arm(); midis.forEach((m, i) => setTimeout(() => ensureAndPlay([m], 0.9), i * 460)); }} />}
+          {section === "practice" && (
+            <div className="kl-section">
+              <div className="kl-seg" role="tablist" aria-label="Practice area" style={{ marginBottom: 6 }}>
+                <button role="tab" aria-selected={practiceTab === "drills"} onClick={() => setPracticeTab("drills")}>Drills</button>
+                <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
+              </div>
+              {practiceTab === "drills" && (
+                <Practice onPlay={(midis) => { arm(); midis.forEach((m, i) => setTimeout(() => ensureAndPlay([m], 0.9), i * 460)); }} />
+              )}
+              {practiceTab === "song" && (
+                <PlayAlong
+                  title={loaded?.title || (sheet.trim() ? "Your chart" : null)}
+                  artist={loaded?.artist || null}
+                  songKey={songKey}
+                  prog={soundingView.prog}
+                  rootVoicings={soundingView.rootFull}
+                  smoothVoicings={soundingView.smoothFull}
+                  sheet={sheet} tuning={loaded?.tuning} tuningRaw={loaded?.tuningRaw}
+                  capo={capoShift} shift={transpose}
+                  labelFor={labelForSounding}
+                  onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }}
+                  onScore={logPractice}
+                  onPickSong={() => setSection("library")}
+                />
+              )}
+            </div>
+          )}
         </div>
       </main>
 
