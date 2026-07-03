@@ -593,7 +593,12 @@ export default function App() {
           {section === "library" && (
             <Library onOpen={openSong}
               onPaste={() => { setSection("song"); setImportOpen(true); }}
-              onDemo={() => { setLoaded(null); loadSheet(DEFAULT_SHEET); setSection("song"); }} />
+              onDemo={() => { setLoaded(null); loadSheet(DEFAULT_SHEET); setSection("song"); }}
+              onHeard={(sheetText, title) => {
+                setLoaded({ title: title || "Heard from audio", artist: null, source: "ear" });
+                loadSheet(sheetText);
+                setSection("song");
+              }} />
           )}
 
           {section === "song" && (
@@ -611,7 +616,7 @@ export default function App() {
                 )}
                 {keyPicker}
                 <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8, alignItems: "center" }}>
-                  {sheet.trim() && (!loaded || loaded.source === "user" || loaded.source === "shared") && (
+                  {sheet.trim() && (!loaded || loaded.source === "user" || loaded.source === "shared" || loaded.source === "ear") && (
                     <ShareChart data={{
                       title: loaded?.title || "Untitled chart", artist: loaded?.artist || undefined,
                       body: sheet, key: loaded?.key || undefined, capo: loaded?.capo || undefined,

@@ -2,16 +2,18 @@
 // cards); expand an artist to see songs grouped BY ALBUM. A tuning filter bar
 // lets you click a tuning to see every song in it, across all artists.
 import { useEffect, useMemo, useState } from "react";
-import { Search, ChevronRight, X, Plus } from "lucide-react";
+import { Search, ChevronRight, X, Plus, Disc3 } from "lucide-react";
 import { loadManifest, groupByArtist, SOURCE_LABEL } from "../corpus.js";
 import { userSongbook } from "../storage.js";
 import AddSong from "./AddSong.jsx";
+import Ear from "./Ear.jsx";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 
-export default function Library({ onOpen, onPaste, onDemo }) {
+export default function Library({ onOpen, onPaste, onDemo, onHeard }) {
   const [fetched, setFetched] = useState(null);
   const [userRows, setUserRows] = useState(() => userSongbook.rows());
   const [adding, setAdding] = useState(false);
+  const [hearing, setHearing] = useState(false);
   const [q, setQ] = useState("");
   const [tuning, setTuning] = useState(null); // tuningId or null
   const [open, setOpen] = useState(() => new Set());
@@ -70,10 +72,12 @@ export default function Library({ onOpen, onPaste, onDemo }) {
         ) : (
           <div className="flex items-center" style={{ gap: 10, marginTop: 18, flexWrap: "wrap" }}>
             <button className="bench-btn primary" onClick={() => setAdding(true)}><Plus size={15} /> Add a song to your library</button>
+            <button className="bench-btn" onClick={() => setHearing((v) => !v)}><Disc3 size={15} /> Hear a record</button>
             <button className="bench-btn" onClick={() => onPaste?.()}>Just paste one</button>
             <button className="bench-btn" onClick={() => onDemo?.()}>Try the demo song</button>
           </div>
         )}
+        {hearing && <Ear onLoadSheet={onHeard} onClose={() => setHearing(false)} />}
       </div>
     );
   }
@@ -90,12 +94,16 @@ export default function Library({ onOpen, onPaste, onDemo }) {
         </div>
         <div className="flex items-center" style={{ gap: 12 }}>
           <span className="kl-meta kl-hide-sm">{rows.length} songs · {new Set(rows.map((r) => r.artist || "Various")).size} artists</span>
+          <button className="bench-btn" style={{ padding: "7px 13px", fontSize: 13 }} onClick={() => setHearing((v) => !v)}>
+            <Disc3 size={14} /> Hear a record
+          </button>
           <button className="bench-btn" style={{ padding: "7px 13px", fontSize: 13 }} onClick={() => setAdding((v) => !v)}>
             <Plus size={14} /> Add a song
           </button>
         </div>
       </div>
 
+      {hearing && <Ear onLoadSheet={onHeard} onClose={() => setHearing(false)} />}
       {adding && <AddSong onSaved={onSaved} onClose={() => setAdding(false)} />}
 
       <div style={{ position: "relative", margin: "18px 0 10px", maxWidth: 420 }}>
