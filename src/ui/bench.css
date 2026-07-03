@@ -245,3 +245,11 @@
   .kl-content { padding: 20px 16px 56px; }
   .bench-cols { grid-template-columns: 1fr !important; }
 }
+
+/* ---- Bench Book print: the setlist is the only thing on paper ---- */
+.kl-printonly { display: none; }
+@media print {
+  body { background: #fff !important; }
+  .kl-app { display: none !important; }
+  .kl-printonly { display: block; color: #111; font-family: Georgia, "Times New Roman", serif; padding: 24px 8px; }
+}

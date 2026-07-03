@@ -31,7 +31,9 @@ import Library from "./components/Library.jsx";
 import Practice from "./components/Practice.jsx";
 import TabKeys from "./components/TabKeys.jsx";
 import PlayAlong from "./components/PlayAlong.jsx";
+import BenchBook from "./components/BenchBook.jsx";
 import { benchBook } from "./storage.js";
+import { slugSongKey } from "./lib/bench.js";
 
 const DEFAULT_SHEET = `[Intro]
 E       A       E
@@ -335,10 +337,10 @@ export default function App() {
   };
 
   /* ---------- play-along + bench book plumbing ---------- */
-  const songKey = useMemo(() => {
-    const raw = loaded ? `${loaded.artist || ""} ${loaded.title || ""}` : "untitled chart";
-    return raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "untitled-chart";
-  }, [loaded]);
+  const songKey = useMemo(
+    () => (loaded ? slugSongKey(loaded.artist, loaded.title) : "untitled-chart"),
+    [loaded]
+  );
   const labelForSounding = useCallback((ch) => displaySymbol(ch, pitchShift), [pitchShift]);
   const logPractice = useCallback((entry) => {
     try { benchBook.logPractice({ ...entry, at: Date.now() }); } catch (e) { /* storage full/blocked */ }
@@ -728,6 +730,7 @@ export default function App() {
               <div className="kl-seg" role="tablist" aria-label="Practice area" style={{ marginBottom: 6 }}>
                 <button role="tab" aria-selected={practiceTab === "drills"} onClick={() => setPracticeTab("drills")}>Drills</button>
                 <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
+                <button role="tab" aria-selected={practiceTab === "bench"} onClick={() => setPracticeTab("bench")}>Bench Book</button>
               </div>
               {practiceTab === "drills" && (
                 <Practice onPlay={(midis) => { arm(); midis.forEach((m, i) => setTimeout(() => ensureAndPlay([m], 0.9), i * 460)); }} />
@@ -748,6 +751,7 @@ export default function App() {
                   onPickSong={() => setSection("library")}
                 />
               )}
+              {practiceTab === "bench" && <BenchBook onOpen={openSong} />}
             </div>
           )}
         </div>
