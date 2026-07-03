@@ -1,6 +1,61 @@
 # Keylit — Roadmap
 
-**Handoff for Claude Code.** Read `CLAUDE.md` first. Execute phases in order. Each phase lists concrete tasks and an acceptance bar that is the definition of done. Don't skip Phase 0.
+**Handoff for Claude Code.** Read `CLAUDE.md` first. The **Master Plan** below is the current marching order (2026-07-02); the numbered phases after it are the original map and still hold as reference. Each item lists concrete files and an acceptance bar — treat acceptance as the definition of done.
+
+---
+
+## The Master Plan — the next five *(chosen 2026-07-02, after the library/tuning/capo/fingering era)*
+
+Where the project stands: 3,828-song local library + public-domain songbook + Add-a-song; written-vs-sounding capo architecture; tab→piano with fingering; evidence-chain tuning resolution; the wheel-as-instrument; 339 green tests over a pure `lib/`. What's missing is the loop: Keylit shows and tells, but it can't *hear* — not the record, and not the player. These five close that loop, in an order where each unlocks the next.
+
+**Selection criteria:** compounds existing machinery · serves Tyler-the-learner and the public tool at once · pure testable core · the set pays the Phase-0 debt on the way.
+
+### Step 0 (prerequisite, ~half a day) — Extract the audio engine
+The old Phase-0 debt, now unavoidable: items 2 and 4 both need an engine with a real API.
+- Create `src/audio/engine.js`: the Tone sampler/synth/reverb lifecycle out of `App.jsx`, exposing `init() / play(midis, dur, opts) / setInstrument(name) / setSustain(bool) / dispose()`, resilient to dispose/recreate (StrictMode-safe).
+- `App.jsx` consumes it through one `useAudioEngine()` hook; `playVoiced`/WebMIDI-out unchanged in behavior.
+- **Done when:** zero behavior change, all flows still play, App.jsx sheds ~120 lines.
+
+### 1 · Keylit hears YOU — MIDI-in play-along *(the learning loop)*
+A guitarist learning piano needs the instrument to listen back. Plug in any MIDI keyboard; the Practice room gains **Play the song**: the current step lights (chord voicing or tab event with fingering), Keylit waits until you hold the right notes, then advances — wrong notes flash coral, per-section accuracy is scored.
+- `src/webmidi.js`: add input side (`listInputs`, `onNotes(cb)` with running held-note set).
+- New pure `src/lib/playalong.js`: `matchStep(held, target, {octaveStrict})` → exact/octave-tolerant match, extra-note tolerance policy; step scoring + section rollup. Fully tested.
+- Practice room UI: song picker (from Library), wait-mode walker reusing TabKeys/voicing steps, big accuracy readout per section, "loop this section."
+- **Done when:** with a MIDI keyboard, a full song can be walked hands-on in wait-mode; scores persist per song (feeds item 3); no keyboard → feature hides gracefully.
+
+### 2 · The Bench Book — setlists + practice memory
+Musician-shaped organization: **setlists**, not playlists. Build tonight's bench from the Library, order it, note per-song key/capo; Keylit remembers what you practiced and how it went, and quietly resurfaces cold songs.
+- New `src/storage.js` section: setlists (`{name, songRefs[], notes}`) + per-song practice log (`{songId, at, accuracy?, source: "playalong"|"ran-it"}`) — localStorage, same pattern as the user songbook.
+- Pure `src/lib/bench.js`: "what's cold" ranking = staleness × (1 − last accuracy); honest sorting, no SRS cosplay. Tested.
+- Library rows get "＋ setlist"; a Setlists rail in the Library room; Practice room shows "tonight" + cold-songs shelf; printable setlist view (plain CSS print styles).
+- **Done when:** build/reorder/rename setlists; every play-along run logs itself; the cold shelf demonstrably reorders as logs accrue.
+
+### 3 · The Arranger — styles, not block chords
+Playback today is chord pads. Add pattern engines that turn any chart into *piano music*, with fingering annotations riding along.
+- New pure `src/lib/arrange.js`: pattern generators over `voicing.js` — **Bench Ballad** (bass + shell + top), **Waltz** (6/8 arpeggio), **Boom-Chick** (Carter→stride-lite), **Broken** (Travis→arpeggiated 16ths) — each emits timed note events `{midi, t, dur, hand}` per chord span. Invariant test: every generated pitch ∈ chord tones (or declared passing set). 
+- Engine (from Step 0) gains a tiny scheduler for timed events + sustain-pedal modeling; optional Rhodes/EP via `smplr`, lazy-loaded, synth fallback (prime directive 4).
+- Song/Piano rooms: style picker beside Shape/Voicing/Smooth; fingering overlay reuses `fingering.js` on generated events.
+- **Done when:** the demo song plays convincingly in all four styles; style survives transpose/capo; MIDI export honors the arrangement; no wrong notes possible by construction.
+
+### 4 · Hear the record — audio → chords, fully client-side *(the moonshot, phased)*
+The original headline, now with an unfair advantage: **3,828 known charts to validate against.** Audio never leaves the machine (hard promise).
+- **M1 (spike, timeboxed):** `@spotify/basic-pitch` in-browser on a dropped file → note events overlaid on the wide keyboard. Go/no-go on perf.
+- **M2:** onset-density spans → per-span pitch-class histograms → template match through `theory.js` → key-aware Viterbi smoothing (diatonic priors from `detectKey`). Renders as a normal *sounding* document: rail, piano, capo advisor suggesting how to PLAY it ("capo 2, G shapes").
+- **M3:** confidence chips per span; tap → ranked alternates; corrections re-render live.
+- **Eval harness:** `tools/eval_audio.mjs` scoring detection against N corpus charts for songs Tyler owns recordings of; target ≥80% on clean solo-instrument sources before M3 polish.
+- **Done when:** drop an MP3 of a solo-guitar song → correct chart-quality progression appears and plays, offline, with visible confidence.
+
+### 5 · Pass the chart — share links *(small, ships anytime)*
+A song as a URL: `tylereveland.com/keylit#s=<lz-string>` opens a read-only "handed to you" view with the full player (fingering included). Zero backend; the fragment never hits a server.
+- `src/lib/sharelink.js` (pure): encode/decode `{title, artist, body, key, capo, tuning}` via `lz-string`; version guard + size cap. Tested round-trip.
+- Share button ONLY on user-songbook rows and pasted charts — corpus rows get none (the library stays private by design); received charts offer "add to your songbook."
+- **Done when:** a Candle-sized chart round-trips in a ~2–4KB URL; opening one on a phone plays correctly; corpus rows show no share affordance.
+
+**Build order & why:** Step 0 → 1 → 2 → 3 → 5 → 4. The engine unlock first; play-along is the highest value-per-line in the codebase's history; the Bench Book consumes its data immediately; the Arranger rides the new engine; share-links slot into any idle hour; audio-in runs M1 as an early spike (kick it off any time after Step 0) but its long tail comes last deliberately — everything else compounds while it bakes.
+
+**Consciously deferred:** PWA/offline caching · photo-OCR import · Palace catalog cleanup (London band contamination) · tutor-voice proxy integration · IndexedDB migration. Named here so deferring stays a choice, not an accident.
+
+---
 
 ## Vision
 
