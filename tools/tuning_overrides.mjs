@@ -12,6 +12,11 @@
 
 // [artist, title (library exact), tuningId or spelling, note]
 export const TUNING_OVERRIDES = [
+  // --- Father John Misty (Tyler 2026-07-02; live covers played a full step down) ---
+  ["Father John Misty", "The Night Josh Tillman Came To Our Apartment", "dStandard", "UG meta + chart prose agree"],
+  ["Father John Misty", "Heart-Shaped Box", "dStandard", "FJM live cover of Nirvana; chart body is the Nirvana transcription"],
+  ["Father John Misty", "Modern Man", "dStandard", "FJM live cover of Arcade Fire; chart body is the AF transcription"],
+
   // --- Neil Young (source: NY unless noted) ---
   ["Neil Young", "Albuquerque", "dropD", ""],
   ["Neil Young", "Already One", "dropD", ""],
