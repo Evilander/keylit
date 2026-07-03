@@ -210,3 +210,65 @@ describe("canonicalTuning — twin names fold for tagging", () => {
     expect(canonicalTuning("C G C G C D").id).toBe("openCsus2");
   });
 });
+
+describe("detectDeclaredTuning — spelling on its own line under a header", () => {
+  const kurt = `**TUNING**
+low to high
+
+G-G-C-G-B-E
+
+tune the A string down a whole step to G. tune the low E up one and a half steps to G.
+tune the D string down one step to C.
+
+*NOTE* there is capo on the 1st fret for this one`;
+
+  it("reads a dash-separated spelling below a TUNING header (Blackberry Song)", () => {
+    const id = detectDeclaredTuning(kurt);
+    expect(id).toBeTruthy();
+    expect(id).not.toBe("dStandard");
+    expect(id.replace(/\s+/g, " ")).toBe("G G C G B E");
+  });
+
+  it("a dash-chained spelling declares even with no header nearby", () => {
+    expect(detectDeclaredTuning(`G-G-C-G-B-E
+[Verse]
+C  G`)).toBe("G G C G B E");
+  });
+
+  it("a bare space-separated chord row does NOT declare a tuning", () => {
+    expect(detectDeclaredTuning(`[Verse]
+C G D A E B
+la la la`)).toBe(null);
+  });
+
+  it("a chord row does NOT declare even with a tuning mention nearby", () => {
+    expect(detectDeclaredTuning(`Tuning is noted at the top
+A    B    D      A       B               D
+lyrics here`)).toBe(null);
+  });
+
+  it("a high-to-low string legend reads as what it is (reversed)", () => {
+    // e-B-G-D-A-E chained = standard written high to low
+    expect(detectDeclaredTuning(`Tuning
+e-B-G-D-A-E`)).toBe("standard");
+  });
+
+  it("a chained custom spelling stays low-to-high when neither direction is named", () => {
+    expect(detectDeclaredTuning(`G-G-C-G-B-E`)).toBe("G G C G B E");
+  });
+
+  it("a Tuning: line written high-to-low is recognized via reversal too", () => {
+    expect(detectDeclaredTuning("Tuning: e-B-G-D-A-E")).toBe("standard");
+    expect(detectDeclaredTuning("Tuning: D-B-G-D-A-D")).toBe("doubleDropD"); // DADGBD high→low
+  });
+
+  it("a compact EBGDAE string legend never outranks the real prose declaration", () => {
+    const sheet = `Coming Up Roses
+Tune 1/2 step down
+
+[chords]
+EBGDAE    EBGDAE
+x24442    x02220`;
+    expect(detectDeclaredTuning(sheet)).toBe("ebStandard");
+  });
+});

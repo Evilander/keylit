@@ -179,16 +179,50 @@ export function detectDeclaredTuning(text) {
     if (/1\/4|quarter/i.test(line)) continue;
     const compact = COMPACT_SPELLING.exec(line);
     if (compact) {
-      const t = canonicalTuning(compact[0]);
+      // Compact legends are often written HIGH to low (EBGDAE above a chord
+      // grid = standard's string names): when only the reversal is a named
+      // tuning, read it reversed — and a (reversed-)standard mention only
+      // declares when the line actually talks about tuning.
+      const fwd = canonicalTuning(compact[0]);
+      const rev = canonicalTuning([...compact[0].matchAll(/[A-G][#b]?/g)].map((m) => m[0]).reverse().join(" "));
+      const t = (fwd.family === "custom" && rev.family !== "custom") ? rev : fwd;
       if (t.id !== "standard" || /\btun/i.test(line) || /dropped|version/i.test(line)) return t.id;
     }
     if (/tun/i.test(line) && /[:\-–]/.test(line)) {
       const rest = line.slice(line.search(/[:\-–]/) + 1).trim();
       if (rest && SPELLING_CHARS.test(rest)) {
-        const notes = parseTuning(rest.replace(/[,./|–-]+/g, " "));
-        if (notes) return canonicalTuning(rest.replace(/[,./|–-]+/g, " ")).id;
+        const cleaned = rest.replace(/[,./|–-]+/g, " ").replace(/\s+/g, " ").trim();
+        if (parseTuning(cleaned)) {
+          // High-to-low writers exist ("Tuning: e-B-G-D-A-E"): when only the
+          // reversal lands on a NAMED tuning, the line was written top-down.
+          const fwd = canonicalTuning(cleaned);
+          const rev = canonicalTuning(cleaned.split(" ").reverse().join(" "));
+          return (fwd.family === "custom" && rev.family !== "custom") ? rev.id : fwd.id;
+        }
       }
     }
+  }
+
+  // --- phase A½: a spelling standing ALONE on its line ("G-G-C-G-B-E" under
+  // a **TUNING** header). ONLY dash/comma-chained note lines qualify — a
+  // space-separated "A B D A B D" is a chord row, never a declaration, no
+  // matter what the surrounding prose mentions. Chained lines written HIGH
+  // to low (string legends like e-B-G-D-A-E) are recognized by reversing:
+  // if only the reversal lands on a NAMED tuning, the line was a legend.
+  const CHAINED = /^[A-Ga-g][#b♭♯]?(?:\s*[-–,./|]\s*[A-Ga-g][#b♭♯]?){5}$/;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!SPELLING_CHARS.test(line)) continue;
+    if (/1\/4|quarter/i.test(line)) continue;
+    if (!CHAINED.test(line)) continue;
+    const cleaned = line.replace(/[,./|–-]+/g, " ").replace(/\s+/g, " ").trim();
+    if (cleaned.split(" ").length !== 6) continue;
+    if (!parseTuning(cleaned)) continue;
+    const context = lines.slice(Math.max(0, i - 3), i).some((l) => /tun/i.test(l));
+    const fwd = canonicalTuning(cleaned);
+    const rev = canonicalTuning(cleaned.split(" ").reverse().join(" "));
+    const pick = (fwd.family === "custom" && rev.family !== "custom") ? rev : fwd;
+    if (pick.id !== "standard" || context) return pick.id;
   }
 
   // --- phase B: prose ---

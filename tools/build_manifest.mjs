@@ -82,29 +82,45 @@ for (const src of fs.readdirSync(ROOT)) {
     const polluted = !s.tuningSource && conv && cur.id === conv; // earlier blanket pass
     let t = cur;
     // Evidence-derived tags re-derive EVERY run — recorded sources exist
-    // precisely so better evidence rules can heal old results. Only original
-    // scraper metadata is immutable.
+    // precisely so better evidence rules can heal old results. Only a
+    // stamped "meta" survives untouched. Unstamped files (fresh ingests)
+    // ALWAYS resolve once: scraper metadata can lie (a transcriber picks
+    // "D Tuning" in the dropdown while the chart says G-G-C-G-B-E — Kurt
+    // Vile's Blackberry Song), and the sheet itself outranks it.
     const rederive = s.tuningSource && s.tuningSource !== "meta";
     const ovr = OVERRIDE_MAP.get(normKey(s.artist || "", s.title || ""));
-    if (cur.id === "standard" || polluted || rederive || ovr) {
+    if (cur.id === "standard" || polluted || rederive || ovr || !s.tuningSource) {
       // Owner's rule: the sheet itself always wins. Precedence: the
       // transcription's string labels > its own text declaration > scraper
       // metadata > documented per-song overrides (for sheets that say
       // NOTHING) > site convention.
       const lab = labelsTuning(s.body);
       let pickT = null, pickSrc = null;
-      const scanText = polluted ? (s.body || "") : [s.tuningRaw, s.body].filter(Boolean).join("\n");
+      // Unstamped files scan the BODY only: tuningRaw is the meta claim and
+      // already speaks through rawT below — it must not pose as "declared".
+      const scanText = polluted || !s.tuningSource ? (s.body || "") : [s.tuningRaw, s.body].filter(Boolean).join("\n");
       const dec = detectDeclaredTuning(scanText);
       // tuningRaw is only scraper-original on unstamped files; stamped files
-      // carry a spelling my own pass wrote, which is not evidence.
-      const rawT = (!polluted && !s.tuningSource && s.tuningRaw) ? canonicalTuning(s.tuningRaw) : null;
+      // carry a spelling my own pass wrote, which is not evidence. Some
+      // sources stored the claim in `tuning` with no tuningRaw at all — the
+      // record's own current value IS the meta claim then, not silence.
+      const rawT = (!polluted && !s.tuningSource)
+        ? (s.tuningRaw ? canonicalTuning(s.tuningRaw) : (cur.id !== "standard" ? cur : null))
+        : null;
       if (lab && lab.id !== "standard") {
         pickT = lab; pickSrc = "labels";
       } else if (dec && dec !== "standard") {
         pickT = canonicalTuning(dec); pickSrc = "declared";
-      } else if (dec === "standard") {
+      } else if (dec === "standard" && !(rawT && rawT.id !== "standard")) {
+        // A vague "standard" in prose blocks conventions/overrides, but it
+        // never overturns a CONCRETE non-standard claim from the tab page's
+        // own metadata (Mr Tillman: sidebar says DGCFAD, prose says
+        // "standard" — the sidebar is the more deliberate statement).
         pickT = getTuning("standard"); pickSrc = "declared";
-      } else if (rawT && rawT.id !== "standard" && rawT.family !== "custom") {
+      } else if (rawT && rawT.id !== "standard" && (rawT.family !== "custom" || rawT.notes?.length === 6)) {
+        // Named claims always count; CUSTOM claims count when they are a
+        // real six-string spelling (Kozelek's CGCFGD is a tuning, "A D A D"
+        // label junk is not — parseTuning already rejected the latter).
         pickT = rawT; pickSrc = "meta";
       } else if (ovr) {
         pickT = canonicalTuning(ovr); pickSrc = "override";
