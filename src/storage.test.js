@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createLibrary } from "./storage.js";
+import { createLibrary, createBenchBook } from "./storage.js";
 
 function fakeBackend() {
   let v = "";
@@ -42,5 +42,65 @@ describe("song library", () => {
     const be = { getItem: () => "not json{", setItem: () => {} };
     const lib = createLibrary(be);
     expect(lib.list()).toEqual([]);
+  });
+});
+
+describe("bench book — setlists", () => {
+  const song = (t) => ({ songKey: t.toLowerCase(), title: t, artist: "Artist" });
+
+  it("creates, renames and removes setlists", () => {
+    const bb = createBenchBook(fakeBackend());
+    const sl = bb.createSetlist("Tonight", 100);
+    expect(bb.setlists()).toHaveLength(1);
+    bb.renameSetlist(sl.id, "Porch set");
+    expect(bb.setlists()[0].name).toBe("Porch set");
+    bb.removeSetlist(sl.id);
+    expect(bb.setlists()).toEqual([]);
+  });
+
+  it("adds songs once, removes them, reorders them", () => {
+    const bb = createBenchBook(fakeBackend());
+    const sl = bb.createSetlist("Tonight", 100);
+    bb.addToSetlist(sl.id, song("Candle"));
+    bb.addToSetlist(sl.id, song("Harvest"));
+    bb.addToSetlist(sl.id, song("Candle"));            // dupe ignored
+    expect(bb.setlists()[0].songs.map((s) => s.title)).toEqual(["Candle", "Harvest"]);
+    bb.moveInSetlist(sl.id, 1, -1);                     // Harvest up
+    expect(bb.setlists()[0].songs.map((s) => s.title)).toEqual(["Harvest", "Candle"]);
+    bb.removeFromSetlist(sl.id, "candle");
+    expect(bb.setlists()[0].songs.map((s) => s.title)).toEqual(["Harvest"]);
+  });
+
+  it("keeps per-setlist notes", () => {
+    const bb = createBenchBook(fakeBackend());
+    const sl = bb.createSetlist("Tonight", 100);
+    bb.setSetlistNotes(sl.id, "start slow; capo on 2 for the closer");
+    expect(bb.setlists()[0].notes).toMatch(/capo on 2/);
+  });
+});
+
+describe("bench book — practice log", () => {
+  it("appends entries and lists newest-first, filterable by song", () => {
+    const bb = createBenchBook(fakeBackend());
+    bb.logPractice({ songKey: "candle", title: "Candle", at: 10, kind: "playalong", accuracy: 0.5 });
+    bb.logPractice({ songKey: "harvest", title: "Harvest", at: 20, kind: "ran-it" });
+    bb.logPractice({ songKey: "candle", title: "Candle", at: 30, kind: "playalong", accuracy: 0.9 });
+    expect(bb.log()).toHaveLength(3);
+    expect(bb.log()[0].at).toBe(30);
+    expect(bb.log("candle")).toHaveLength(2);
+  });
+
+  it("caps the log so localStorage never bloats", () => {
+    const bb = createBenchBook(fakeBackend());
+    for (let i = 0; i < 620; i++) bb.logPractice({ songKey: "x", title: "X", at: i, kind: "ran-it" });
+    expect(bb.log().length).toBeLessThanOrEqual(500);
+    expect(bb.log()[0].at).toBe(619);                  // newest survive
+  });
+
+  it("survives a corrupt backend value", () => {
+    const be = { getItem: () => "{broken", setItem: () => {} };
+    const bb = createBenchBook(be);
+    expect(bb.setlists()).toEqual([]);
+    expect(bb.log()).toEqual([]);
   });
 });

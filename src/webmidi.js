@@ -34,3 +34,43 @@ export function allNotesOff(port, channel = 0) {
   if (!port) return;
   try { port.send([0xb0 | (channel & 0x0f), 0x7b, 0x00]); } catch { /* noop */ }
 }
+
+/* ---- MIDI IN: the player's hands ---------------------------------------- */
+
+export function listInputs(access) {
+  if (!access) return [];
+  return [...access.inputs.values()].map((i) => ({ id: i.id, name: i.name || "MIDI in", port: i }));
+}
+
+// Watch every input (or one, by id) and keep a running held-note set.
+// cb({ type: "down"|"up", note, velocity, held }) — held is a fresh copy per
+// event so React state can take it directly. Re-attaches on hot-plug.
+// Returns an unsubscribe function.
+export function watchInputs(access, cb, { inputId = null } = {}) {
+  if (!access) return () => {};
+  const held = new Set();
+  const handler = (e) => {
+    const [status, note, vel] = e.data || [];
+    const cmd = status & 0xf0;
+    if (cmd === 0x90 && vel > 0) {
+      held.add(note);
+      cb({ type: "down", note, velocity: vel, held: new Set(held) });
+    } else if (cmd === 0x80 || (cmd === 0x90 && vel === 0)) {
+      if (held.delete(note)) cb({ type: "up", note, velocity: 0, held: new Set(held) });
+    }
+  };
+  const attach = () => {
+    for (const inp of access.inputs.values()) {
+      if (!inputId || inp.id === inputId) inp.onmidimessage = handler;
+    }
+  };
+  attach();
+  const onState = () => attach();
+  try { access.addEventListener("statechange", onState); } catch { /* older impls */ }
+  return () => {
+    try { access.removeEventListener("statechange", onState); } catch { /* noop */ }
+    for (const inp of access.inputs.values()) {
+      if (inp.onmidimessage === handler) inp.onmidimessage = null;
+    }
+  };
+}
