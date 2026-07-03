@@ -33,8 +33,11 @@ import TabKeys from "./components/TabKeys.jsx";
 import PlayAlong from "./components/PlayAlong.jsx";
 import BenchBook from "./components/BenchBook.jsx";
 import Arranger from "./components/Arranger.jsx";
-import { benchBook } from "./storage.js";
+import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
+import { benchBook, userSongbook } from "./storage.js";
 import { slugSongKey } from "./lib/bench.js";
+import { decodeShare } from "./lib/sharelink.js";
+import { buildUserSong } from "./lib/usersong.js";
 
 const DEFAULT_SHEET = `[Intro]
 E       A       E
@@ -91,6 +94,8 @@ export default function App() {
   const audioVoicingRef = useRef([]);
   const sheetRef = useRef(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [handed, setHanded] = useState(null);
+  const [handedKept, setHandedKept] = useState(false);
   const [midiOutputs, setMidiOutputs] = useState([]);
   const [midiOutId, setMidiOutId] = useState("");
   const midiOutRef = useRef(null);
@@ -122,6 +127,29 @@ export default function App() {
     loadSheet(song.body || "");
     setSection("song");
   }, []);
+
+  // A chart handed over in the URL fragment (#s=…) — it never touched a server.
+  useEffect(() => {
+    const data = decodeShare(window.location.hash);
+    if (!data) return;
+    setLoaded({ title: data.title || "Untitled chart", artist: data.artist || null, source: "shared", tuning: data.tuning, tuningRaw: data.tuning, capo: data.capo, key: data.key });
+    loadSheet(data.body);
+    setHanded(data);
+    setSection("song");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const keepHanded = () => {
+    if (!handed) return;
+    const built = buildUserSong({
+      artist: handed.artist || "", title: handed.title || "Untitled",
+      album: "", key: handed.key || "", capo: handed.capo != null ? String(handed.capo) : "",
+      tuning: handed.tuning || "", body: handed.body,
+    }, Date.now());
+    if (built.error) return;
+    userSongbook.save(built.song, built.row);
+    setHandedKept(true);
+  };
 
   const { progression: baseProg } = useMemo(() => parseSheet(sheet), [sheet]);
   const sourceProg = labProg || baseProg;
@@ -570,6 +598,7 @@ export default function App() {
 
           {section === "song" && (
             <div className="kl-section">
+              <HandedBanner handed={handed} kept={handedKept} onKeep={keepHanded} onDismiss={() => setHanded(null)} />
               <SongHeader loaded={loaded} keyName={keyNameFull} />
               <div className="flex items-center" style={{ gap: 12, flexWrap: "wrap", margin: "14px 0 4px" }}>
                 {transposeCtl}
@@ -581,9 +610,18 @@ export default function App() {
                   </Readout>
                 )}
                 {keyPicker}
-                <BenchButton onClick={runAI} disabled={!view.prog.length || ai.loading} style={{ marginLeft: "auto" }}>
-                  {ai.loading ? <Loader2 size={15} className="kl-spin" /> : <Lightbulb size={15} />} Read the harmony
-                </BenchButton>
+                <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8, alignItems: "center" }}>
+                  {sheet.trim() && (!loaded || loaded.source === "user" || loaded.source === "shared") && (
+                    <ShareChart data={{
+                      title: loaded?.title || "Untitled chart", artist: loaded?.artist || undefined,
+                      body: sheet, key: loaded?.key || undefined, capo: loaded?.capo || undefined,
+                      tuning: loaded?.tuningRaw || loaded?.tuning || undefined,
+                    }} />
+                  )}
+                  <BenchButton onClick={runAI} disabled={!view.prog.length || ai.loading}>
+                    {ai.loading ? <Loader2 size={15} className="kl-spin" /> : <Lightbulb size={15} />} Read the harmony
+                  </BenchButton>
+                </span>
               </div>
               {numbersRailPanel}
               {aiPanel}
