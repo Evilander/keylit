@@ -37,6 +37,15 @@ Output: `release/Keylit Setup <version>.exe` (an installer with desktop + Start-
 
 The installer is **unsigned** — Windows SmartScreen will warn on first run (click *More info → Run anyway*). Add a code-signing certificate to `electron-builder` config to remove the warning.
 
+## New in v0.5 — *the Bench learns to listen*
+
+- **Play-along (Practice → Play the song)** — plug in any MIDI keyboard (or click the keys) and Keylit *waits for your hands*: each chord lights as ghosts, advances only when you hold it, flags strays in coral, and scores every pass per section. Chord voicings or exact tab notes.
+- **The Bench Book (Practice)** — setlists the way musicians mean it: tonight's bench, reorderable, with notes and a print view. Every play-along pass logs itself; a **cold shelf** resurfaces songs by *staleness × how rough they were* — no flashcard cosplay.
+- **The Arranger (Piano room)** — four pattern engines turn any chart into piano music: *Bench Ballad · Waltz · Boom-Chick · Broken*. Voice-led, capo/transpose-aware, wrong notes impossible by construction, and **.mid export is exactly what you hear**.
+- **The Ear (Library → Hear a record)** — drop an mp3/wav and Keylit writes the chart: FFT chromagram → chord-template Viterbi → confidence timeline with tap-to-correct, key-aware spelling. **Fully client-side; the audio never leaves your machine.**
+- **Pass the chart** — your songs (and only yours — never the corpus) share as a single URL: the whole chart rides the `#s=…` fragment, ~2–4KB, no server ever sees it. Receivers get a "handed to you" view and a one-tap save.
+- The audio engine moved to `src/audio/engine.js` (`createEngine` + beat-domain scheduler) — the old Phase-0 debt, paid.
+
 ## What works today (v0.4)
 
 - **Three rooms, one instrument** — Learn / Write / Play share a single tube-glow keyboard (the "Bench" UI), so theory, songwriting, and playback all write to the same keys.

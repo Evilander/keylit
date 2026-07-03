@@ -4,7 +4,7 @@
 
 ---
 
-## The Master Plan — the next five *(chosen 2026-07-02, after the library/tuning/capo/fingering era)*
+## The Master Plan — the next five *(chosen 2026-07-02 · **SHIPPED as v0.5.0 the same day** — execution notes at the end of this section)*
 
 Where the project stands: 3,828-song local library + public-domain songbook + Add-a-song; written-vs-sounding capo architecture; tab→piano with fingering; evidence-chain tuning resolution; the wheel-as-instrument; 339 green tests over a pure `lib/`. What's missing is the loop: Keylit shows and tells, but it can't *hear* — not the record, and not the player. These five close that loop, in an order where each unlocks the next.
 
@@ -54,6 +54,16 @@ A song as a URL: `tylereveland.com/keylit#s=<lz-string>` opens a read-only "hand
 **Build order & why:** Step 0 → 1 → 2 → 3 → 5 → 4. The engine unlock first; play-along is the highest value-per-line in the codebase's history; the Bench Book consumes its data immediately; the Arranger rides the new engine; share-links slot into any idle hour; audio-in runs M1 as an early spike (kick it off any time after Step 0) but its long tail comes last deliberately — everything else compounds while it bakes.
 
 **Consciously deferred:** PWA/offline caching · photo-OCR import · Palace catalog cleanup (London band contamination) · tutor-voice proxy integration · IndexedDB migration. Named here so deferring stays a choice, not an accident.
+
+### Execution notes — v0.5.0 (2026-07-02 · all six items landed · 401 tests green)
+
+- **Step 0** shipped as a closure (`createEngine`) + `useAudioEngine()`; the engine also gained `playEvents`, a 40ms-tick lookahead scheduler in the beats domain — built during Step 0 so item 3 only had to plug in.
+- **Item 1**: `lib/playalong.js` advances **only on an attack** (repeated chords demand a real re-strike); any wrong note taints the step's "clean" flag. PlayAlong renders its own range-hugging keyboard (TabKeys precedent) so guitar-register tab steps fit; mouse clicks simulate presses, so the public embed works with no hardware.
+- **Item 2**: Bench Book search is self-contained (manifest + user rows) instead of per-row "＋ setlist" buttons in Library — same capability, no Library surgery. Print CSS hides the app and shows only the paper setlist.
+- **Item 3**: pattern intervals reckon from the chord ROOT and place above the written bass (`Am/G` never grows a phantom D — regression-tested). `eventsToMidi` emits offs before ons at equal ticks so re-struck notes survive. **smplr/Rhodes skipped** (prime directive 5); the Salamander covers it.
+- **Item 4 — deliberate deviation**: no `@spotify/basic-pitch`, no tfjs. The Ear is pure DSP — radix-2 FFT → tuning-tolerant chromagram → 25-state chord-template Viterbi → confidence + ranked alternates — zero model download, instant, offline. The eval bench lives IN `ear.test.js` (synthesized progressions, ≥80% gate; currently 100%). Scoring against real recordings of corpus songs still wants doing when audio files are on hand; Basic Pitch remains the upgrade path if dense mixes matter.
+- **Item 5**: as planned (`lz-string` — the release's only new dependency). Share buttons appear on user/pasted/heard/handed charts; corpus rows never.
+- Folded in same-day: Father John Misty 16 → 91 songs; his Heart-Shaped Box + Modern Man covers minted as FJM "Covers" records in D standard (cited), originals kept under Nirvana / Arcade Fire with their own declared tunings.
 
 ---
 
