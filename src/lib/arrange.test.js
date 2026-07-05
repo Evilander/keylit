@@ -11,10 +11,18 @@ const chordPcs = (ch) => {
 };
 
 describe("STYLES registry", () => {
-  it("ships the four patterns with their meters", () => {
-    expect(Object.keys(STYLES)).toEqual(["ballad", "waltz", "boomchick", "broken"]);
+  it("ships the five patterns with their meters", () => {
+    expect(Object.keys(STYLES)).toEqual(["ballad", "waltz", "boomchick", "broken", "afterhours"]);
     expect(STYLES.waltz.beatsPerBar).toBe(3);
     expect(STYLES.ballad.beatsPerBar).toBe(4);
+    expect(STYLES.afterhours.beatsPerBar).toBe(4);
+  });
+
+  it("only After Hours swings", () => {
+    expect(STYLES.afterhours.swing).toBe(true);
+    for (const id of ["ballad", "waltz", "boomchick", "broken"]) {
+      expect(STYLES[id].swing).toBeFalsy();
+    }
   });
 });
 
@@ -79,6 +87,24 @@ describe("timing & shape", () => {
     for (const e of rh) expect(e.midis).toHaveLength(1);
     const top = Math.max(...rh.map((e) => e.midis[0]));
     expect(rh.filter((e) => e.midis[0] === top).length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("After Hours (the swing style's piano part)", () => {
+  it("comps the Charleston: a left-hand pedal on 1, right-hand shells on 1 and the and-of-2", () => {
+    const { events } = arrangeProgression(prog("Cmaj7"), "afterhours");
+    const lh = events.filter((e) => e.hand === "L");
+    const rh = events.filter((e) => e.hand === "R");
+    expect(lh.map((e) => e.t)).toEqual([0]);
+    expect(lh[0].dur).toBeGreaterThan(3); // held through the bar
+    expect(rh.map((e) => e.t)).toEqual([0, 1.5]);
+  });
+
+  it("stays complete without a band: the piano-only mix still has a low end", () => {
+    const { events } = arrangeProgression(prog("Fmaj7", "G7"), "afterhours");
+    const lows = events.filter((e) => e.hand === "L").flatMap((e) => e.midis);
+    expect(lows.length).toBeGreaterThan(0);
+    expect(Math.min(...lows)).toBeLessThan(48); // genuinely low, not mid-range
   });
 });
 

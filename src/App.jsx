@@ -21,6 +21,8 @@ import Keyboard from "./components/Keyboard.jsx";
 import NumbersRail from "./components/NumbersRail.jsx";
 import ScaleBuilder from "./components/ScaleBuilder.jsx";
 import DegreeFinder from "./components/DegreeFinder.jsx";
+import MeterFeel from "./components/MeterFeel.jsx";
+import PedalLab from "./components/PedalLab.jsx";
 import ChordLab from "./components/ChordLab.jsx";
 import KeyWheel from "./components/KeyWheel.jsx";
 import CapoTuning from "./components/CapoTuning.jsx";
@@ -240,10 +242,14 @@ export default function App() {
   }, [currentIdx, mode, pitchShift]);
 
   const arrangementRef = useRef(null);
+  // One stage, one act: whoever starts timed playback displaces whoever held
+  // it. The displaced owner's `onCancel` fires so its UI resets (an Arranger
+  // stuck on "Stop", a tap run that will never score) instead of going stale.
   const stopArrangement = useCallback(() => {
-    arrangementRef.current?.stop();
+    const prev = arrangementRef.current;
     arrangementRef.current = null;
     arrangingRef.current = false;
+    if (prev) { prev.stop(); prev.onCancel?.(); }
   }, []);
   const startArrangement = useCallback(async (payload, opts = {}) => {
     armedRef.current = true;
@@ -251,11 +257,30 @@ export default function App() {
     setIsPlaying(false);
     stopArrangement();
     arrangingRef.current = true;
+    let wrapped;
     const h = audio.playEvents(payload, {
       ...opts,
-      onDone: () => { arrangingRef.current = false; opts.onDone?.(); },
+      onDone: () => {
+        arrangingRef.current = false;
+        // A finished run vacates the stage — otherwise the next surface to
+        // start would fire this owner's onCancel and wipe its finished UI
+        // (a Meter Feel score, for one).
+        if (arrangementRef.current === wrapped) arrangementRef.current = null;
+        opts.onDone?.();
+      },
     });
-    const wrapped = { stop: () => { h.stop(); arrangingRef.current = false; } };
+    // Keep the handle's clock fields (startTime / secondsPerBeat) — the Meter
+    // Feel Trainer scores taps against the same clock the drummer plays on.
+    wrapped = {
+      ...h,
+      onCancel: opts.onCancel,
+      stop: () => {
+        h.stop();
+        arrangingRef.current = false;
+        // A self-stop is not a takeover — clear the slot without onCancel.
+        if (arrangementRef.current === wrapped) arrangementRef.current = null;
+      },
+    };
     arrangementRef.current = wrapped;
     return wrapped;
   }, [audio, stopArrangement]);
@@ -386,6 +411,10 @@ export default function App() {
     playChord: (ch) => { arm(); ensureAndPlay(rootPositionFull(ch), 1.2); },
     playNotes: (midis, dur) => { arm(); ensureAndPlay(midis, dur); },
     playPc: (pc) => { arm(); ensureAndPlay([60 + (((pc % 12) + 12) % 12)], 1.0); },
+    // Timed playback for Learn modules with a groove (Meter Feel, Pedal Lab):
+    // same beat scheduler the Arranger uses, same stop-everything discipline.
+    playEvents: startArrangement,
+    now: () => audio.now(),
   };
 
   /* ---------- play-along + bench book plumbing ---------- */
@@ -767,6 +796,8 @@ export default function App() {
               <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 18 }}>
                 <ScaleBuilder tutor={tutor} onIntent={onChipIntent} />
                 <DegreeFinder tutor={tutor} onIntent={onChipIntent} />
+                <MeterFeel tutor={tutor} />
+                <PedalLab tutor={tutor} onIntent={onChipIntent} />
               </div>
             </div>
           )}

@@ -4,6 +4,22 @@
 
 ---
 
+## v0.6 — the Bench hires a rhythm section *(shipped 2026-07-04 · 495 tests green)*
+
+The loop closed in v0.5 (the Bench hears the record and the player); v0.6 gives it **time**: a band to play with, and two Learn modules that train the muscle no chord chart teaches — feeling meter and holding a pedal against the grind.
+
+- **`lib/band.js`** (pure, mirror of `arrange.js`): the bassist (`bassLine` — per-style lines up to a real walking engine: written-bass downbeats, thirds/passing tones, fifths, chromatic approaches planned against the *actual* next downbeat, last bar resolves), the drummer (`drumGroove` — GM kit numbers, one authored bar per style), `countIn`/`metronome`, `applySwing` (straight grid in, triplet feel out), and `arrangeBand` — the one entry point: piano (left hand dropped when the bass is on) + bass + drums + count-off, all swung identically, `tracks` split out export-ready. Iron rule extended to the bass and test-enforced.
+- **`arrange.js`**: fifth style **After Hours** (`swing: true`) — Charleston shells + LH pedal that the band-bass replaces.
+- **`audio/engine.js`**: a MonoSynth upright + synthesized kit (membrane kick, filtered-noise snare/stick/hats/shaker, metal ride/crash), `playEvents` routes by `e.ch` ("piano" | "bass" | "drums"), returns `startTime`/`secondsPerBeat` so tap drills score on the audio clock. Band build is fail-soft: piano survives if percussion construction throws.
+- **`lib/midi.js`**: `eventsToMidiTracks` — format-1 SMF, conductor track (tempo + 0x58 time signature), per-part channels/programs/names; offs-before-ons preserved per track. Arranger exports Piano/Upright Bass/Drums stems; count-in never enters the file.
+- **`lib/meter.js` + `components/MeterFeel.jsx`**: meter-expressing grooves (4/4, 3/4, 6/8-in-two), deterministic challenges, `scoreTaps` (nearest-unclaimed within tolerance, signed mean offset → rushing/dragging/locked) — and the drill UI: guess the meter, then tap the ONE (first bar free, spacebar works).
+- **`lib/pedal.js` + `components/PedalLab.jsx`**: `pedalEvents` (full-bar drone below lifted voicings) + consonant/dissonant marks straight from `pedalRelation`; UI shows rings/grinds per bar in the T/S/D hue language, pedal lit in the reserved fourth hue. The `CONCEPTS.pedal` copy finally has its lab.
+- **`lib/voice.js`**: `meterFeelLine` (honest time-calling with the millisecond number) + `meter-feel` and `find-the-one` concepts.
+- **Housekeeping**: tutor contract gains `playEvents`/`now`; DegreeFinder clears the lesson light on unmount (parity with ScaleBuilder); `prefers-reduced-motion` guard on the Bench springs; GitHub Actions CI (npm ci → test → build); **zero new dependencies**.
+- **Consciously deferred**: swing-amount knob (fixed 2/3) · drum fills/turnarounds · count-in + metronome inside Play-Along · brushes/intensity tiers · bass/drum levels in a mixer. Named so deferring stays a choice.
+
+---
+
 ## The Master Plan — the next five *(chosen 2026-07-02 · **SHIPPED as v0.5.0 the same day** — execution notes at the end of this section)*
 
 Where the project stands: 3,828-song local library + public-domain songbook + Add-a-song; written-vs-sounding capo architecture; tab→piano with fingering; evidence-chain tuning resolution; the wheel-as-instrument; 339 green tests over a pure `lib/`. What's missing is the loop: Keylit shows and tells, but it can't *hear* — not the record, and not the player. These five close that loop, in an order where each unlocks the next.

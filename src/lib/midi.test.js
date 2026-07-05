@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { progressionToMidi, eventsToMidi, noteOn, noteOff } from "./midi.js";
+import { progressionToMidi, eventsToMidi, eventsToMidiTracks, noteOn, noteOff } from "./midi.js";
 
 const ascii = (bytes, start, len) =>
   String.fromCharCode(...bytes.slice(start, start + len));
@@ -137,5 +137,126 @@ describe("eventsToMidi", () => {
     const idx = [...m].findIndex((x, k) => x === 0xff && m[k + 1] === 0x51);
     const us = (m[idx + 3] << 16) | (m[idx + 4] << 8) | m[idx + 5];
     expect(us).toBe(1000000);
+  });
+});
+
+/* ---- eventsToMidiTracks: format-1 multi-track (the Band's export) ---- */
+
+// Full SMF parser for the multi-track tests: header + every chunk, channel-aware.
+function parseSmf(bytes) {
+  const b = bytes;
+  const ntrks = (b[10] << 8) | b[11];
+  const header = { format: (b[8] << 8) | b[9], ntrks, division: (b[12] << 8) | b[13] };
+  const tracks = [];
+  let i = 14;
+  while (i < b.length) {
+    const tag = String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+    const len = (b[i + 4] << 24) | (b[i + 5] << 16) | (b[i + 6] << 8) | b[i + 7];
+    const end = i + 8 + len;
+    i += 8;
+    const track = { tag, events: [], metas: [], programs: [] };
+    let tick = 0;
+    const vlq = () => { let n = 0; for (;;) { const x = b[i++]; n = (n << 7) | (x & 0x7f); if (!(x & 0x80)) return n; } };
+    while (i < end) {
+      tick += vlq();
+      const status = b[i++];
+      if (status === 0xff) {
+        const type = b[i++]; const len2 = b[i++];
+        track.metas.push({ tick, type, data: [...b.slice(i, i + len2)] });
+        i += len2;
+        continue;
+      }
+      const hi = status & 0xf0, ch = status & 0x0f;
+      if (hi === 0x90) { const note = b[i++], vel = b[i++]; track.events.push({ tick, type: vel > 0 ? "on" : "off", ch, note, vel }); }
+      else if (hi === 0x80) { const note = b[i++]; i++; track.events.push({ tick, type: "off", ch, note, vel: 0 }); }
+      else if (hi === 0xc0) { track.programs.push({ tick, ch, program: b[i++] }); }
+      else { i += 2; }
+    }
+    tracks.push(track);
+    i = end;
+  }
+  return { header, tracks };
+}
+
+describe("eventsToMidiTracks", () => {
+  const piano = [{ t: 0, dur: 2, midis: [60, 64, 67], v: 0.8 }];
+  const bass = [{ t: 0, dur: 1, midis: [36], v: 0.9 }, { t: 2, dur: 1, midis: [43], v: 0.8 }];
+  const drums = [{ t: 0, dur: 0.1, midis: [36], v: 0.9 }, { t: 1, dur: 0.1, midis: [38], v: 0.7 }];
+
+  const build = () => eventsToMidiTracks([
+    { name: "Piano", channel: 0, program: 0, events: piano },
+    { name: "Bass", channel: 1, program: 32, events: bass },
+    { name: "Drums", channel: 9, events: drums },
+  ], { tempoBpm: 120, ticksPerBeat: 480, timeSig: { num: 4, den: 4 } });
+
+  it("writes a format-1 header with a conductor track plus one track per part", () => {
+    const { header } = parseSmf(build());
+    expect(header.format).toBe(1);
+    expect(header.ntrks).toBe(4); // conductor + piano + bass + drums
+    expect(header.division).toBe(480);
+  });
+
+  it("puts tempo and time signature in the conductor track", () => {
+    const { tracks } = parseSmf(build());
+    const tempo = tracks[0].metas.find((m) => m.type === 0x51);
+    expect(tempo).toBeTruthy();
+    expect((tempo.data[0] << 16) | (tempo.data[1] << 8) | tempo.data[2]).toBe(500000); // 120bpm
+    const ts = tracks[0].metas.find((m) => m.type === 0x58);
+    expect(ts).toBeTruthy();
+    expect(ts.data[0]).toBe(4);      // numerator
+    expect(ts.data[1]).toBe(2);      // denominator as power of two: 4 = 2^2
+  });
+
+  it("stamps each part's channel into its status bytes (drums live on channel 9)", () => {
+    const { tracks } = parseSmf(build());
+    expect(tracks[1].events.every((e) => e.ch === 0)).toBe(true);
+    expect(tracks[2].events.every((e) => e.ch === 1)).toBe(true);
+    expect(tracks[3].events.every((e) => e.ch === 9)).toBe(true);
+  });
+
+  it("emits a program change for pitched parts and names every track", () => {
+    const { tracks } = parseSmf(build());
+    expect(tracks[2].programs).toEqual([{ tick: 0, ch: 1, program: 32 }]);
+    expect(tracks[3].programs).toEqual([]); // drums: no program change
+    const name = (tr) => String.fromCharCode(...(tr.metas.find((m) => m.type === 0x03)?.data ?? []));
+    expect(name(tracks[1])).toBe("Piano");
+    expect(name(tracks[2])).toBe("Bass");
+    expect(name(tracks[3])).toBe("Drums");
+  });
+
+  it("keeps absolute ticks correct inside each track", () => {
+    const { tracks } = parseSmf(build());
+    const bassEvents = tracks[2].events;
+    expect(bassEvents.find((e) => e.type === "on" && e.note === 36).tick).toBe(0);
+    expect(bassEvents.find((e) => e.type === "off" && e.note === 36).tick).toBe(480);
+    expect(bassEvents.find((e) => e.type === "on" && e.note === 43).tick).toBe(960);
+  });
+
+  it("an off and an on at the same tick emit the off first, per track", () => {
+    const bytes = eventsToMidiTracks([{
+      channel: 0,
+      events: [
+        { t: 0, dur: 1, midis: [60], v: 0.8 },
+        { t: 1, dur: 1, midis: [60], v: 0.8 },
+      ],
+    }], { ticksPerBeat: 100 });
+    const { tracks } = parseSmf(bytes);
+    const evs = tracks[1].events.filter((e) => e.note === 60);
+    expect(evs.map((e) => e.type)).toEqual(["on", "off", "on", "off"]);
+  });
+
+  it("a part with no events still writes a valid (empty) track", () => {
+    const bytes = eventsToMidiTracks([{ name: "Empty", channel: 2, events: [] }], {});
+    const { header, tracks } = parseSmf(bytes);
+    expect(header.ntrks).toBe(2);
+    expect(tracks[1].events).toEqual([]);
+    expect(tracks[1].metas.some((m) => m.type === 0x2f)).toBe(true); // end-of-track
+  });
+
+  it("waltz time signature encodes 3/4", () => {
+    const bytes = eventsToMidiTracks([{ channel: 0, events: [] }], { timeSig: { num: 3, den: 4 } });
+    const ts = parseSmf(bytes).tracks[0].metas.find((m) => m.type === 0x58);
+    expect(ts.data[0]).toBe(3);
+    expect(ts.data[1]).toBe(2);
   });
 });

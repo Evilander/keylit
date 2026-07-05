@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PERSONA, CONCEPTS, reaction, buildSuggestionChips, wheelMoves } from "./voice.js";
+import { PERSONA, CONCEPTS, reaction, buildSuggestionChips, wheelMoves, meterFeelLine } from "./voice.js";
 import { buildChord, parseChord } from "./theory.js";
 
 const REQUIRED_CONCEPT_KEYS = [
@@ -11,6 +11,8 @@ const REQUIRED_CONCEPT_KEYS = [
   "function-tsd",
   "pedal",
   "nashville-roman",
+  "meter-feel",
+  "find-the-one",
 ];
 
 describe("PERSONA", () => {
@@ -129,6 +131,29 @@ describe("buildSuggestionChips", () => {
     const chips = buildSuggestionChips();
     expect(chips.length).toBeGreaterThan(0);
     expect(chips.some((c) => c.intent === "diatonic")).toBe(true);
+  });
+});
+
+describe("meterFeelLine — how the bandmate calls your time", () => {
+  it("tells a rusher they're rushing, with the number", () => {
+    const line = meterFeelLine("rushing", -62);
+    expect(line.toLowerCase()).toContain("rush");
+    expect(line).toContain("62");
+  });
+  it("tells a dragger they're dragging, with the number", () => {
+    const line = meterFeelLine("dragging", 84);
+    expect(line.toLowerCase()).toContain("drag");
+    expect(line).toContain("84");
+  });
+  it("celebrates locked time without scolding numbers", () => {
+    const line = meterFeelLine("locked", 8);
+    expect(line.length).toBeGreaterThan(0);
+    expect(line.toLowerCase()).toMatch(/lock|pocket/);
+  });
+  it("handles a silent run kindly", () => {
+    const line = meterFeelLine(null, null);
+    expect(typeof line).toBe("string");
+    expect(line.length).toBeGreaterThan(0);
   });
 });
 
