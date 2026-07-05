@@ -25,10 +25,7 @@ export function progressionToMidi(voicings, opts = {}) {
   const vel = Math.max(0, Math.min(127, velocity | 0)); // data bytes must be 0-127
   const chordTicks = Math.round(beatsPerChord * ticksPerBeat);
 
-  const track = [];
-  // tempo meta: microseconds per quarter note (24-bit field, so cap at 0xFFFFFF)
-  const usPerBeat = Math.min(0xffffff, Math.max(1, Math.round(60000000 / tempoBpm)));
-  track.push(...vlq(0), 0xff, 0x51, 0x03, (usPerBeat >> 16) & 0xff, (usPerBeat >> 8) & 0xff, usPerBeat & 0xff);
+  const track = tempoMeta(tempoBpm);
 
   for (const notes of voicings) {
     const safe = (notes || []).map((n) => Math.round(n)).filter((n) => Number.isFinite(n) && n >= 0 && n <= 127);
@@ -55,16 +52,9 @@ export function midiBlob(voicings, opts) {
   return new Blob([progressionToMidi(voicings, opts)], { type: "audio/midi" });
 }
 
-/**
- * Build a MIDI file from absolute-timed events (the Arranger's output).
- * @param {Array<{t:number, dur:number, midis:number[], v?:number}>} events  beats domain
- * @param {object} opts  { tempoBpm=90, ticksPerBeat=480 }
- * @returns {Uint8Array} the .mid file bytes
- */
-export function eventsToMidi(events, opts = {}) {
-  const { tempoBpm = 90, ticksPerBeat = 480 } = opts;
-  // Flatten to on/off moments; at equal ticks, offs go first so a re-struck
-  // note never gets swallowed by its own previous note-off.
+// Flatten timed events into sorted on/off moments; at equal ticks, offs go
+// first so a re-struck note never gets swallowed by its own previous note-off.
+function noteMoments(events, ticksPerBeat) {
   const moments = [];
   for (const e of events || []) {
     const vel = Math.max(1, Math.min(127, Math.round((e.v ?? 0.75) * 127)));
@@ -78,22 +68,86 @@ export function eventsToMidi(events, opts = {}) {
     }
   }
   moments.sort((a, b) => a.tick - b.tick || a.kind - b.kind);
+  return moments;
+}
 
-  const track = [];
+function tempoMeta(tempoBpm) {
   const usPerBeat = Math.min(0xffffff, Math.max(1, Math.round(60000000 / tempoBpm)));
-  track.push(...vlq(0), 0xff, 0x51, 0x03, (usPerBeat >> 16) & 0xff, (usPerBeat >> 8) & 0xff, usPerBeat & 0xff);
+  return [...vlq(0), 0xff, 0x51, 0x03, (usPerBeat >> 16) & 0xff, (usPerBeat >> 8) & 0xff, usPerBeat & 0xff];
+}
+
+const END_OF_TRACK = [0, 0xff, 0x2f, 0x00]; // delta 0 + meta
+
+const trackChunk = (body) => [...str("MTrk"), ...u32(body.length), ...body];
+
+/**
+ * Build a MIDI file from absolute-timed events (the Arranger's output).
+ * @param {Array<{t:number, dur:number, midis:number[], v?:number}>} events  beats domain
+ * @param {object} opts  { tempoBpm=90, ticksPerBeat=480 }
+ * @returns {Uint8Array} the .mid file bytes
+ */
+export function eventsToMidi(events, opts = {}) {
+  const { tempoBpm = 90, ticksPerBeat = 480 } = opts;
+  const track = tempoMeta(tempoBpm);
   let last = 0;
-  for (const m of moments) {
+  for (const m of noteMoments(events, ticksPerBeat)) {
     track.push(...vlq(m.tick - last));
     last = m.tick;
     if (m.kind === 1) track.push(0x90, m.note, m.vel);
     else track.push(0x80, m.note, 0x00);
   }
-  track.push(...vlq(0), 0xff, 0x2f, 0x00);
+  track.push(...END_OF_TRACK);
 
   const header = [...str("MThd"), ...u32(6), ...u16(0), ...u16(1), ...u16(ticksPerBeat)];
-  const trackChunk = [...str("MTrk"), ...u32(track.length), ...track];
-  return new Uint8Array([...header, ...trackChunk]);
+  return new Uint8Array([...header, ...trackChunk(track)]);
+}
+
+/**
+ * Build a format-1 multi-track MIDI file — the Band's export. One conductor
+ * track (tempo + time signature), then one track per part, each stamped with
+ * its own channel (drums belong on channel 9 per General MIDI).
+ * @param {Array<{name?:string, channel?:number, program?:number,
+ *                events:Array<{t,dur,midis,v?}>}>} tracks
+ * @param {object} opts  { tempoBpm=90, ticksPerBeat=480, timeSig?:{num,den} }
+ * @returns {Uint8Array} the .mid file bytes
+ */
+export function eventsToMidiTracks(tracks, opts = {}) {
+  const { tempoBpm = 90, ticksPerBeat = 480, timeSig } = opts;
+  const parts = tracks || [];
+
+  const conductor = tempoMeta(tempoBpm);
+  if (timeSig) {
+    // denominator is stored as a power of two (4 -> 2, 8 -> 3);
+    // 24 MIDI clocks per metronome tick, 8 32nd notes per quarter (defaults).
+    const denPow = Math.max(0, Math.round(Math.log2(timeSig.den || 4)));
+    conductor.push(...vlq(0), 0xff, 0x58, 0x04, (timeSig.num || 4) & 0x7f, denPow, 24, 8);
+  }
+  conductor.push(...END_OF_TRACK);
+
+  const chunks = [trackChunk(conductor)];
+  for (const part of parts) {
+    const ch = clampCh(part.channel ?? 0);
+    const body = [];
+    if (part.name) {
+      const name = str(String(part.name).slice(0, 96));
+      body.push(...vlq(0), 0xff, 0x03, name.length, ...name);
+    }
+    if (part.program != null) body.push(...vlq(0), 0xc0 | ch, part.program & 0x7f);
+    let last = 0;
+    for (const m of noteMoments(part.events, ticksPerBeat)) {
+      body.push(...vlq(m.tick - last));
+      last = m.tick;
+      if (m.kind === 1) body.push(0x90 | ch, m.note, m.vel);
+      else body.push(0x80 | ch, m.note, 0x00);
+    }
+    body.push(...END_OF_TRACK);
+    chunks.push(trackChunk(body));
+  }
+
+  const header = [...str("MThd"), ...u32(6), ...u16(1), ...u16(1 + parts.length), ...u16(ticksPerBeat)];
+  const out = [...header];
+  for (const c of chunks) out.push(...c);
+  return new Uint8Array(out);
 }
 
 /* ---- live MIDI messages (for Web MIDI output) — pure byte builders ---- */

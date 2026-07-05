@@ -2,7 +2,7 @@
 // Retrieval practice, interleaved across keys/degrees. Answer on a note row;
 // the shared keyboard confirms by lighting the tonic + target, with a kind,
 // no-scold correction in the tutor's voice.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MAJOR_SCALE, MINOR_SCALE, degreeOf } from "../lib/theory.js";
 import { spellPc } from "../lib/spelling.js";
 import { reaction, buildSuggestionChips } from "../lib/voice.js";
@@ -47,6 +47,10 @@ export default function DegreeFinder({ tutor, onIntent }) {
   };
 
   const next = () => { setAnswered(null); setQ(makeQuestion(mode)); tutor.light(null); };
+
+  // Clear the lesson light when this widget leaves the screen (same manners
+  // as ScaleBuilder — a stale answer shouldn't stay lit on the keys).
+  useEffect(() => () => tutor.light(null), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const chips = buildSuggestionChips({ key: keyCtx, lesson: "degree" });
 

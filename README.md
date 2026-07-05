@@ -37,6 +37,15 @@ Output: `release/Keylit Setup <version>.exe` (an installer with desktop + Start-
 
 The installer is **unsigned** — Windows SmartScreen will warn on first run (click *More info → Run anyway*). Add a code-signing certificate to `electron-builder` config to remove the warning.
 
+## New in v0.6 — *the Bench hires a rhythm section*
+
+- **The Band (Piano room → the Arranger)** — toggle in an **upright bass** and a **synthesized drum kit** behind any chart, in any style. The bassist takes the low end and the piano's left hand steps aside — exactly what a pianist does when a bass player sits in. The iron rule extends to the bass: strong beats are chord tones (or the written slash bass); everything else must be a genuine passing or approach tone, stepwise into its target — all test-enforced. A **count-off** bar of stick clicks brings the band in (and counts you back in on every loop pass).
+- **After Hours** — a fifth arranger style: Charleston piano shells over a **real walking bass** (roots, thirds, fifths, chromatic approaches that always resolve into the next bar's downbeat) under the classic swing ride with the pedal hat on 2 and 4. The whole band swings identically — every part is authored on a straight-eighth grid and passes through one swing transform, so live playback and the export can never disagree.
+- **Stems, not a blob** — with the band on, **.mid export** writes a **format-1 multi-track file**: a conductor track (tempo + time signature), Piano (ch 1), Upright Bass (ch 2, GM program 32), and Drums (ch 10, GM percussion numbers). Drop it in a DAW and every player lands on their own track.
+- **Meter Feel Trainer (Learn)** — hear a groove, name the meter (4/4 · 3/4 · 6/8), then **tap the ONE** — spacebar or the big pad — and get your time called honestly: *rushing*, *dragging*, or *locked*, with the millisecond number, scored on the same audio clock the drummer plays on.
+- **Pedal-Point Lab (Learn)** — hold the 1 or the 5 of the key under its own chords: teal bars **ring** (the pedal is a chord tone), coral bars **grind** — and hearing the grind let go is the whole lesson. Pedal tones light in the keyboard's reserved fourth hue, so they never masquerade as chord tones.
+- **Zero new dependencies.** The kit and bass are synthesized (membrane, filtered noise, metal), not sampled — the band is ready the instant the engine is, offline included. Plus: GitHub Actions CI (tests + build on every push) and a `prefers-reduced-motion` guard on the Bench's spring motion.
+
 ## New in v0.5 — *the Bench learns to listen*
 
 - **Play-along (Practice → Play the song)** — plug in any MIDI keyboard (or click the keys) and Keylit *waits for your hands*: each chord lights as ghosts, advances only when you hold it, flags strays in coral, and scores every pass per section. Chord voicings or exact tab notes.

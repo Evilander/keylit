@@ -67,6 +67,14 @@ export const CONCEPTS = {
     line: "Nashville numbers and Roman numerals say the exact same thing — '1 4 5' is 'I IV V' — one's the studio shorthand, the other's the textbook, and the case of the Roman tells you major or minor.",
     bridge: "You already count songs off in numbers on stage; Roman numerals are just that chart dressed up for the page, with lowercase meaning a minor chord.",
   },
+  "meter-feel": {
+    line: "Meter isn't math, it's a lean — 4/4 marches, 3/4 sways, 6/8 rolls in twos — and once your body picks the right lean, the count takes care of itself.",
+    bridge: "It's the difference between strumming a train song and a waltz: your arm already knows before you could name the time signature.",
+  },
+  "find-the-one": {
+    line: "Every bar has a front door — the ONE — and every player on stage is secretly holding hands on it; lose the ONE and no amount of right notes saves you.",
+    bridge: "It's the downstroke you lean on when the band comes back in: you've been finding the ONE for years, this drill just makes you prove it.",
+  },
 };
 
 // Encouraging bandmate lines for a correct answer. Kept short; selected
@@ -95,6 +103,18 @@ export function reaction(correct, seed = 0) {
   const pool = correct ? CORRECT_LINES : WRONG_LINES;
   const i = ((Math.trunc(seed) % pool.length) + pool.length) % pool.length;
   return pool[i];
+}
+
+// The bandmate calling your time after a tap run (the Meter Feel Trainer).
+// feel comes from lib/meter.js#scoreTaps: "rushing" | "dragging" | "locked" |
+// null (nothing landed). offsetMs is the signed mean offset in milliseconds.
+// Honest, kind, and specific — a number when you're off, a grin when you're on.
+export function meterFeelLine(feel, offsetMs) {
+  const ms = Math.abs(Math.round(offsetMs ?? 0));
+  if (feel === "rushing") return `You're rushing — about ${ms}ms on top of the beat. Exhale, let the drummer carry it.`;
+  if (feel === "dragging") return `You're dragging — about ${ms}ms behind. Lean forward; the ONE won't wait.`;
+  if (feel === "locked") return "Locked. That's the pocket — you and the kick are the same animal.";
+  return "Nothing landed that pass — no shame, the ONE is slippery. Listen once more, then come in swinging.";
 }
 
 // Human key name for a label, e.g. "G major" / "A minor", spelled for the key.

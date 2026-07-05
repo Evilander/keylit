@@ -14,6 +14,7 @@ export const STYLES = {
   waltz:     { id: "waltz",     name: "Waltz",        beatsPerBar: 3, line: "ONE two three — bass note, then the chord breathes twice" },
   boomchick: { id: "boomchick", name: "Boom-Chick",   beatsPerBar: 4, line: "root, chord, fifth, chord — the Carter strum moved to stride" },
   broken:    { id: "broken",    name: "Broken",       beatsPerBar: 4, line: "held bass under rolling eighths — Travis picking for ten fingers" },
+  afterhours:{ id: "afterhours",name: "After Hours",  beatsPerBar: 4, swing: true, line: "Charleston shells over a walking bass — the trio at closing time" },
 };
 
 const pc = (m) => ((m % 12) + 12) % 12;
@@ -85,7 +86,21 @@ function barBroken(ch, up) {
   return events;
 }
 
-const BAR_FN = { ballad: barBallad, waltz: barWaltz, boomchick: barBoomChick, broken: barBroken };
+// The Charleston comp: a long-held hit on 1 and a push on the and-of-2, over a
+// soft left-hand pedal that keeps the piano-only mix complete. When the band's
+// bassist is on, arrangeBand drops the "L" events and the walking line takes
+// over the low end — exactly what a pianist does when a bass player sits in.
+// Straight-eighth grid here; arrangeBand swings the and-of-2 to the 2/3 point.
+function barAfterHours(ch, up) {
+  const b = bassMidi(ch);
+  return [
+    { t: 0, dur: 3.9, midis: [b], hand: "L", v: 0.5 },
+    { t: 0, dur: 1.4, midis: [...up], hand: "R", v: 0.62 },
+    { t: 1.5, dur: 1.15, midis: [...up], hand: "R", v: 0.5 },
+  ];
+}
+
+const BAR_FN = { ballad: barBallad, waltz: barWaltz, boomchick: barBoomChick, broken: barBroken, afterhours: barAfterHours };
 
 /**
  * Arrange a progression: one bar per chord in the chosen style.
