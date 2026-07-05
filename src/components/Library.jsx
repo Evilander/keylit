@@ -1,23 +1,61 @@
 // Library.jsx — the catalog. Alphabetical artist index (hairline rows, no
 // cards); expand an artist to see songs grouped BY ALBUM. A tuning filter bar
 // lets you click a tuning to see every song in it, across all artists.
+// "Setlist" mode turns rows into a picker: check songs across any artists,
+// stack them straight into the Bench Book.
 import { useEffect, useMemo, useState } from "react";
-import { Search, ChevronRight, X, Plus, Disc3 } from "lucide-react";
+import { Search, ChevronRight, X, Plus, Disc3, ListMusic, CircleCheck, Circle } from "lucide-react";
 import { loadManifest, groupByArtist, SOURCE_LABEL } from "../corpus.js";
-import { userSongbook } from "../storage.js";
+import { userSongbook, benchBook } from "../storage.js";
+import { slugSongKey } from "../lib/bench.js";
 import AddSong from "./AddSong.jsx";
 import Ear from "./Ear.jsx";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 
-export default function Library({ onOpen, onPaste, onDemo, onHeard }) {
+// Browse state survives leaving the room (Back returns you to the same
+// search, tuning filter, and expanded artists — not a collapsed index).
+const remembered = { q: "", tuning: null, open: [] };
+
+export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard }) {
   const [fetched, setFetched] = useState(null);
   const [userRows, setUserRows] = useState(() => userSongbook.rows());
   const [adding, setAdding] = useState(false);
   const [hearing, setHearing] = useState(false);
-  const [q, setQ] = useState("");
-  const [tuning, setTuning] = useState(null); // tuningId or null
-  const [open, setOpen] = useState(() => new Set());
+  const [q, setQ] = useState(remembered.q);
+  const [tuning, setTuning] = useState(remembered.tuning); // tuningId or null
+  const [open, setOpen] = useState(() => new Set(remembered.open));
   const [allTunings, setAllTunings] = useState(false);
+  const [selecting, setSelecting] = useState(false);
+  const [sel, setSel] = useState(() => new Map()); // id -> manifest row
+  const [setName, setSetName] = useState("Tonight");
+  const [destId, setDestId] = useState("new");
+
+  useEffect(() => { remembered.q = q; }, [q]);
+  useEffect(() => { remembered.tuning = tuning; }, [tuning]);
+  useEffect(() => { remembered.open = [...open]; }, [open]);
+
+  const toggleSel = (row) => setSel((m) => {
+    const n = new Map(m);
+    n.has(row.id) ? n.delete(row.id) : n.set(row.id, row);
+    return n;
+  });
+
+  const makeSetlist = () => {
+    if (!sel.size) return;
+    let target = destId !== "new" && benchBook.setlists().find((s) => s.id === destId);
+    if (!target) target = benchBook.createSetlist(setName.trim() || "Tonight", Date.now());
+    for (const row of sel.values()) {
+      benchBook.addToSetlist(target.id, {
+        songKey: slugSongKey(row.artist, row.title),
+        title: row.title, artist: row.artist,
+        source: row.source, id: row.id,
+        tuning: row.tuning || null, capo: row.capo || null, key: row.key || null,
+      });
+    }
+    setSel(new Map());
+    setSelecting(false);
+    onSetlist?.(target);
+  };
 
   useEffect(() => { let on = true; loadManifest().then((r) => { if (on) setFetched(r); }); return () => { on = false; }; }, []);
   // Your songs join the same catalog, grouped and styled like everyone else.
@@ -94,6 +132,11 @@ export default function Library({ onOpen, onPaste, onDemo, onHeard }) {
         </div>
         <div className="flex items-center" style={{ gap: 12 }}>
           <span className="kl-meta kl-hide-sm">{rows.length} songs · {new Set(rows.map((r) => r.artist || "Various")).size} artists</span>
+          <button className={`bench-btn${selecting ? " primary" : ""}`} style={{ padding: "7px 13px", fontSize: 13 }}
+            onClick={() => { setSelecting((v) => !v); setSel(new Map()); }} aria-pressed={selecting}
+            title="pick songs across the library and stack them into a setlist">
+            <ListMusic size={14} /> {selecting ? "picking…" : "Setlist"}
+          </button>
           <button className="bench-btn" style={{ padding: "7px 13px", fontSize: 13 }} onClick={() => setHearing((v) => !v)}>
             <Disc3 size={14} /> Hear a record
           </button>
@@ -143,9 +186,10 @@ export default function Library({ onOpen, onPaste, onDemo, onHeard }) {
           </div>
           <div className="kl-rows" style={{ marginTop: 4 }}>
             {filtered.slice().sort((a, b) => (a.artist || "").localeCompare(b.artist || "") || a.title.localeCompare(b.title)).map((s) => (
-              <button key={s.id} onClick={() => onOpen?.(s)}
+              <button key={s.id} onClick={() => (selecting ? toggleSel(s) : onOpen?.(s))}
                 style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "9px 4px", borderBottom: `1px solid ${C.line}`, background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = C.panel2)} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                {selecting && <SelMark on={sel.has(s.id)} />}
                 <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 15, color: C.muted, minWidth: 160 }}>{s.artist || "Various"}</span>
                 <span style={{ fontFamily: "var(--kl-sans)", fontSize: 14.5, color: C.ink, flex: 1 }}>{s.title}</span>
                 {s.capo ? <Tag color={C.rootText}>capo {s.capo}</Tag> : null}
@@ -179,7 +223,10 @@ export default function Library({ onOpen, onPaste, onDemo, onHeard }) {
                             <span style={{ flex: 1, height: 1, background: C.line, marginLeft: 4 }} />
                           </div>
                         )}
-                        {al.songs.map((s) => <SongRow key={s.id} s={s} onOpen={onOpen} onTuning={setTuning} onRemove={removeUserSong} />)}
+                        {al.songs.map((s) => (
+                          <SongRow key={s.id} s={s} onOpen={onOpen} onTuning={setTuning} onRemove={removeUserSong}
+                            selecting={selecting} selected={sel.has(s.id)} onToggle={toggleSel} />
+                        ))}
                       </div>
                     ))}
                   </div>
@@ -189,17 +236,50 @@ export default function Library({ onOpen, onPaste, onDemo, onHeard }) {
           })}
         </div>
       )}
+
+      {selecting && (
+        <div style={{ position: "sticky", bottom: 12, marginTop: 16, zIndex: 20 }}>
+          <div className="faceplate" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", flexWrap: "wrap", boxShadow: "0 8px 28px rgba(30,25,18,0.18)" }}>
+            <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: sel.size ? C.toneText : C.faint }}>
+              {sel.size} picked
+            </span>
+            <select value={destId} onChange={(e) => setDestId(e.target.value)} aria-label="destination setlist"
+              style={{ background: C.panel2, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "6px 9px", fontSize: 13 }}>
+              <option value="new">new setlist…</option>
+              {benchBook.setlists().map((sl) => <option key={sl.id} value={sl.id}>add to: {sl.name}</option>)}
+            </select>
+            {destId === "new" && (
+              <input value={setName} onChange={(e) => setSetName(e.target.value)} aria-label="setlist name" placeholder="setlist name"
+                style={{ width: 150, background: C.panel2, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, outline: "none" }} />
+            )}
+            <button className="bench-btn primary" disabled={!sel.size} onClick={makeSetlist} style={{ opacity: sel.size ? 1 : 0.5 }}>
+              <ListMusic size={14} /> To the Bench Book
+            </button>
+            <button className="bench-btn" onClick={() => { setSelecting(false); setSel(new Map()); }}>cancel</button>
+            <span style={{ fontSize: 12, color: C.faint, marginLeft: "auto" }} className="kl-hide-sm">
+              click songs to pick them — any artist, any tuning
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function SongRow({ s, onOpen, onTuning, onRemove }) {
+function SelMark({ on }) {
+  return on
+    ? <CircleCheck size={16} style={{ color: C.toneUi, flex: "0 0 auto" }} />
+    : <Circle size={16} style={{ color: C.faint, flex: "0 0 auto" }} />;
+}
+
+function SongRow({ s, onOpen, onTuning, onRemove, selecting, selected, onToggle }) {
   const alt = s.tuningId && s.tuningId !== "standard";
   const mine = s.source === "user";
   return (
-    <button onClick={() => onOpen?.(s)}
+    <button onClick={() => (selecting ? onToggle?.(s) : onOpen?.(s))}
       style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "7px 4px 7px 31px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}
       onMouseEnter={(e) => (e.currentTarget.style.background = C.panel2)} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+      {selecting && <SelMark on={selected} />}
       <span style={{ fontFamily: "var(--kl-sans)", fontSize: 14.5, color: C.ink, flex: 1 }}>{s.title}</span>
       {mine && <Tag color={C.toneText}>yours</Tag>}
       {s.format === "tab" && <Tag>tab</Tag>}

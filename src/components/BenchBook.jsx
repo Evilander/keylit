@@ -80,6 +80,17 @@ export default function BenchBook({ onOpen }) {
     bump();
   };
 
+  // Open a setlist song WITH its place in the set, so the Song room can walk
+  // prev/next through the night without coming back here.
+  const openFromSet = (i) => {
+    if (!active) return;
+    const resolved = active.songs.map((s) => byKey.get(s.songKey) || (s.source && s.id ? s : null));
+    const rows = resolved.filter(Boolean);
+    const row = resolved[i];
+    if (!row) return;
+    onOpen?.(row, { name: active.name, rows, idx: rows.indexOf(row) });
+  };
+
   return (
     <div style={{ marginTop: 18 }}>
       <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 10 }}>
@@ -145,7 +156,7 @@ export default function BenchBook({ onOpen }) {
                       <span style={{ fontSize: 12.5, color: C.muted }}> · {s.artist}</span>
                       {meta && <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.faint, marginLeft: 8 }}>{meta}</span>}
                     </span>
-                    <button onClick={() => row && onOpen?.(row)} disabled={!row} title={row ? "open it" : "not in this library copy"}
+                    <button onClick={() => row && openFromSet(i)} disabled={!row} title={row ? "open it — prev/next walks the set" : "not in this library copy"}
                       style={{ ...rowBtn, opacity: row ? 1 : 0.35 }}><Play size={13} /></button>
                     <button onClick={() => ranIt(s)} title="mark practiced tonight" style={rowBtn}><Check size={13} /></button>
                     <button onClick={() => { benchBook.moveInSetlist(active.id, i, -1); bump(); }} disabled={i === 0} title="up" style={{ ...rowBtn, opacity: i === 0 ? 0.3 : 1 }}><ChevronUp size={13} /></button>
