@@ -3,9 +3,12 @@
 // ships). Songsterr is the preferred harvester (absolute tunings), but small
 // catalogs it doesn't carry — Chris Cohen, deep Deerhoof — live on UG.
 // Run from repo root:
-//   node tools/ug_fetch.mjs --artist "Chris Cohen" [--dry] [--delay ms]
-// Picks ONE chart per song: Chords beats Tabs, higher rating breaks ties;
-// bass/drum/ukulele/video/pro versions are skipped.
+//   node tools/ug_fetch.mjs --artist "Chris Cohen" [--dry] [--delay ms] [--alts N]
+// Picks ONE chart per song by default: Chords beats Tabs, higher rating
+// breaks ties; bass/drum/ukulele/video/pro versions are skipped. --alts N
+// keeps up to N versions per song (extra ones titled "… (ver X)") — for
+// catalogs where the community argues about the changes and the runner-up
+// is sometimes the better transcription.
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -19,6 +22,7 @@ const flag = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 
 const ARTIST = flag("--artist");
 const DRY = args.includes("--dry");
 const DELAY = +(flag("--delay") || 1100);
+const ALTS = Math.max(1, +(flag("--alts") || 1));
 if (!ARTIST) { console.log('usage: node tools/ug_fetch.mjs --artist "Name" [--dry] [--delay ms]'); process.exit(1); }
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
@@ -52,22 +56,38 @@ for (let page = 1; page < 20; page++) {
   if (page >= totalPages) break;
 }
 
-// One chart per song: Chords > Tabs; rating breaks ties inside a type.
+// Rank each song's versions: Chords > Tabs; rating breaks ties inside a
+// type. Keep the top ALTS of them.
 const TYPE_RANK = { Chords: 2, Tabs: 1 };
-const best = new Map();
+const bySong = new Map();
 for (const t of tabs) {
   const rank = TYPE_RANK[t.type];
   if (!rank) continue; // bass/drums/uke/video/pro/official
   const key = slug(t.song_name);
-  const cur = best.get(key);
   const score = rank * 1000 + (t.rating || 0) * 10 + Math.min(t.votes || 0, 9) / 10;
-  if (!cur || score > cur.score) best.set(key, { ...t, score });
+  if (!bySong.has(key)) bySong.set(key, []);
+  bySong.get(key).push({ ...t, score });
 }
-console.log(`${tabs.length} listed → ${best.size} songs to fetch`);
+// Never re-download a version that's already in the corpus under any id.
+const haveUrls = new Set(
+  fs.existsSync(OUT)
+    ? fs.readdirSync(OUT).filter((f) => f.endsWith(".json"))
+        .map((f) => { try { return JSON.parse(fs.readFileSync(path.join(OUT, f), "utf8")).sourceUrl; } catch { return null; } })
+        .filter(Boolean)
+    : [],
+);
+const picks = [];
+for (const versions of bySong.values()) {
+  versions.sort((a, b) => b.score - a.score);
+  versions.slice(0, ALTS).forEach((t, i) => picks.push({ ...t, alt: i }));
+}
+console.log(`${tabs.length} listed → ${picks.length} charts to fetch (${bySong.size} songs, up to ${ALTS} versions each)`);
 
 let written = 0, skipped = 0, failed = 0;
-for (const t of best.values()) {
-  const id = `${slug(hit.artist_name)}--${slug(t.song_name)}`;
+for (const t of picks) {
+  if (haveUrls.has(t.tab_url)) { skipped++; continue; }
+  const ver = t.alt > 0 ? ` (ver ${t.version || t.alt + 1})` : "";
+  const id = `${slug(hit.artist_name)}--${slug(t.song_name + ver)}`;
   const fp = path.join(OUT, `${id}.json`);
   if (fs.existsSync(fp)) { skipped++; continue; }
   if (DRY) { console.log(`  would fetch: ${t.song_name} (${t.type})`); continue; }
@@ -80,7 +100,7 @@ for (const t of best.values()) {
     body = body.replace(/\[\/?(ch|tab)\]/g, "").replace(/\r\n/g, "\n");
     const meta = view?.meta || {};
     const rec = {
-      id, artist: hit.artist_name, title: t.song_name,
+      id, artist: hit.artist_name, title: t.song_name + ver,
       album: d?.tab?.album_name || null, albumOrder: 9999,
       source: "ultimateguitar", sourceUrl: t.tab_url,
       tuning: "standard", tuningRaw: meta.tuning?.value || null,
