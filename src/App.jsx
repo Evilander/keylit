@@ -3,10 +3,12 @@ import {
   Play, Pause, ChevronLeft, ChevronRight, Volume2, VolumeX,
   RotateCcw, Upload, Minus, Plus, Loader2, Piano as PianoIcon, Undo2, Lightbulb,
   Library as LibraryIcon, ScrollText, Compass, GraduationCap, PenLine, Target,
+  ArrowLeft,
 } from "lucide-react";
 import {
   SHARP_NAMES, parseSheet, transposeChord, chordSymbol, displaySymbol,
   nashville, romanNumeral, detectKey, CIRCLE_OF_FIFTHS, sameChordSound, detectCapo,
+  suggestCapo,
 } from "./lib/theory.js";
 import { rootPositionFull, smoothUpper, addBass, clampVoicing } from "./lib/voicing.js";
 import { analyzeSheet } from "./lib/llm.js";
@@ -90,6 +92,11 @@ export default function App() {
   const [practiceTab, setPracticeTab] = useState("drills");
   const [theoryTab, setTheoryTab] = useState("circle");
   const [lessonHL, setLessonHL] = useState(null);
+  // "Cover it capo'd": null = read the chart as written; a number = re-render
+  // the chart as the shapes you'd finger with a capo there (sound unchanged).
+  const [playCapo, setPlayCapo] = useState(null);
+  // Opened from a setlist: { name, rows, idx } drives the gig strip (prev/next).
+  const [setlistCtx, setSetlistCtx] = useState(null);
 
   const armedRef = useRef(false);
   const stripRef = useRef(null);
@@ -119,14 +126,15 @@ export default function App() {
   }, []);
 
   const loadSheet = (s) => {
-    setSheet(s); setCurrentIdx(0); setIsPlaying(false); setTranspose(0); setKeyOverride(null);
+    setSheet(s); setCurrentIdx(0); setIsPlaying(false); setTranspose(0); setKeyOverride(null); setPlayCapo(null);
   };
 
-  const openSong = useCallback(async (entry) => {
+  const openSong = useCallback(async (entry, ctx = null) => {
     const song = await loadSong(entry);
     if (!song) return;
     setLoaded({ title: song.title, artist: song.artist, source: song.source, sourceUrl: song.sourceUrl, tuning: song.tuning, tuningRaw: song.tuningRaw, capo: song.capo, key: song.key, format: song.format });
     loadSheet(song.body || "");
+    setSetlistCtx(ctx); // opened outside a setlist clears the gig strip
     setSection("song");
   }, []);
 
@@ -202,6 +210,26 @@ export default function App() {
   useEffect(() => {
     setCurrentIdx((i) => (view.prog.length ? Math.min(i, view.prog.length - 1) : 0));
   }, [view.prog.length]);
+
+  // The reading surface under a CHOSEN capo: same sound, different shapes.
+  // playCapo === null reads the paper as written; playCapo === N re-renders
+  // every chord as its capo-N shape (transposed down N from sounding pitch).
+  // Picking the chart's own capo reproduces the written document exactly.
+  const readingShift = playCapo == null ? transpose : pitchShift - playCapo;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const readingView = useMemo(
+    () => (playCapo == null || playCapo === capoShift ? view : computeView(readingShift)),
+    [view, playCapo, capoShift, readingShift, sourceProg, keyOverride]
+  );
+  const readingKey = playCapo == null
+    ? null
+    : { tonic: ((readingView.detected.tonic % 12) + 12) % 12, mode: readingView.detected.mode };
+  // Where the capo makes the shapes easiest, judged on the SOUNDING chords.
+  const capoBest = useMemo(() => {
+    if (!soundingView.prog.length) return null;
+    const best = suggestCapo(soundingView.prog)[0];
+    return best ? best.fret : null;
+  }, [soundingView]);
 
   const current = view.prog[currentIdx] || null;
   const soundingCurrent = soundingView.prog[currentIdx] || null;
@@ -304,6 +332,27 @@ export default function App() {
 
   useEffect(() => { if (!isPlaying) { try { allNotesOff(midiOutRef.current); } catch (e) {} } }, [isPlaying]);
   useEffect(() => { if (section !== "learn") setLessonHL(null); }, [section]);
+
+  // Browser-grade back: every room change is a history entry, so the mouse's
+  // back button (and the ← in the topbar) walks the trail instead of needing
+  // the side panel. popstate restores without re-pushing.
+  const popNavRef = useRef(false);
+  useEffect(() => {
+    if (popNavRef.current) { popNavRef.current = false; return; }
+    if (window.history.state?.klSection === section) return;
+    try { window.history.pushState({ klSection: section }, ""); } catch { /* sandboxed shell */ }
+  }, [section]);
+  useEffect(() => {
+    const onPop = (e) => {
+      const s = e.state?.klSection;
+      if (!s) return;
+      popNavRef.current = true;
+      setSection(s);
+    };
+    window.addEventListener("popstate", onPop);
+    try { window.history.replaceState({ klSection: "library" }, ""); } catch { /* noop */ }
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   /* ---------- handlers ---------- */
   const arm = () => { armedRef.current = true; audio.init(); };
@@ -606,9 +655,21 @@ export default function App() {
       {/* ---- MAIN ---- */}
       <main className="kl-main">
         <div className="kl-topbar">
+          <button onClick={() => window.history.back()} aria-label="go back" title="back"
+            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, marginRight: 10,
+              borderRadius: 8, background: "transparent", color: section === "library" ? C.faint : C.muted,
+              border: `1px solid ${C.line}`, cursor: "pointer", flex: "0 0 auto" }}>
+            <ArrowLeft size={15} />
+          </button>
           <div className="kl-crumb">
             {(section === "song" || section === "piano") && loaded ? (
-              <><span>Library</span><span className="sep">/</span><span>{loaded.artist}</span><span className="sep">/</span><span className="cur">{loaded.title}</span></>
+              <>
+                <button onClick={() => setSection("library")}
+                  style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", color: "inherit", font: "inherit" }}>
+                  Library
+                </button>
+                <span className="sep">/</span><span>{loaded.artist}</span><span className="sep">/</span><span className="cur">{loaded.title}</span>
+              </>
             ) : (
               <span className="cur">{NAV.find((n) => n.id === section)?.label}</span>
             )}
@@ -621,6 +682,7 @@ export default function App() {
         <div className={`kl-content${section === "library" || section === "song" ? "" : " wide"}`}>
           {section === "library" && (
             <Library onOpen={openSong}
+              onSetlist={() => { setPracticeTab("bench"); setSection("practice"); }}
               onPaste={() => { setSection("song"); setImportOpen(true); }}
               onDemo={() => { setLoaded(null); loadSheet(DEFAULT_SHEET); setSection("song"); }}
               onHeard={(sheetText, title) => {
@@ -633,16 +695,55 @@ export default function App() {
           {section === "song" && (
             <div className="kl-section">
               <HandedBanner handed={handed} kept={handedKept} onKeep={keepHanded} onDismiss={() => setHanded(null)} />
+              {setlistCtx && setlistCtx.rows?.length > 0 && (
+                <div className="flex items-center" style={{ gap: 10, marginBottom: 12, padding: "7px 12px", background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10 }}>
+                  <span className="kl-eyebrow" style={{ whiteSpace: "nowrap" }}>{setlistCtx.name}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 12, color: C.muted }}>{setlistCtx.idx + 1} / {setlistCtx.rows.length}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.faint, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {setlistCtx.rows[setlistCtx.idx + 1] ? <>next: {setlistCtx.rows[setlistCtx.idx + 1].title}</> : "last one — bring it home"}
+                  </span>
+                  <button onClick={() => openSong(setlistCtx.rows[setlistCtx.idx - 1], { ...setlistCtx, idx: setlistCtx.idx - 1 })}
+                    disabled={setlistCtx.idx === 0} aria-label="previous song in setlist"
+                    style={{ ...navChip, opacity: setlistCtx.idx === 0 ? 0.35 : 1 }}><ChevronLeft size={14} /></button>
+                  <button onClick={() => openSong(setlistCtx.rows[setlistCtx.idx + 1], { ...setlistCtx, idx: setlistCtx.idx + 1 })}
+                    disabled={setlistCtx.idx >= setlistCtx.rows.length - 1} aria-label="next song in setlist"
+                    style={{ ...navChip, opacity: setlistCtx.idx >= setlistCtx.rows.length - 1 ? 0.35 : 1 }}><ChevronRight size={14} /></button>
+                </div>
+              )}
               <SongHeader loaded={loaded} keyName={keyNameFull} />
               <div className="flex items-center" style={{ gap: 12, flexWrap: "wrap", margin: "14px 0 4px" }}>
                 {transposeCtl}
-                {capoShift > 0 && (
+                <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "6px 8px", display: "inline-flex", alignItems: "center", gap: 8 }}
+                  title="Re-render the chart as the shapes you'd finger with a capo there — the song keeps sounding at the same pitch, like covering it capo'd somewhere new.">
+                  <span className="kl-eyebrow">Play with capo</span>
+                  <button onClick={() => setPlayCapo((c) => Math.max(0, (c == null ? capoShift : c) - 1))} style={miniBtn} aria-label="capo down a fret"><Minus size={14} /></button>
+                  <span style={{ fontFamily: MONO, fontSize: 14, minWidth: 58, textAlign: "center", color: playCapo != null && playCapo !== capoShift ? C.toneText : C.muted }}>
+                    {playCapo == null ? (capoShift > 0 ? `${capoShift} · chart` : "none") : playCapo === 0 ? "none" : playCapo}
+                  </span>
+                  <button onClick={() => setPlayCapo((c) => Math.min(11, (c == null ? capoShift : c) + 1))} style={miniBtn} aria-label="capo up a fret"><Plus size={14} /></button>
+                  {capoBest != null && capoBest !== (playCapo == null ? capoShift : playCapo) && (
+                    <button onClick={() => setPlayCapo(capoBest)} className="chip" style={{ padding: "3px 9px", fontSize: 11.5 }}
+                      title="the capo with the friendliest open shapes for this song">
+                      easiest: {capoBest === 0 ? "none" : capoBest}
+                    </button>
+                  )}
+                  {playCapo != null && playCapo !== capoShift && (
+                    <button onClick={() => setPlayCapo(null)} className="chip" style={{ padding: "3px 9px", fontSize: 11.5 }}>as written</button>
+                  )}
+                </div>
+                {playCapo != null && playCapo !== capoShift ? (
+                  <Readout style={{ display: "inline-flex", alignItems: "center", gap: 7 }}
+                    title="The shapes changed; the sound didn't. Playback and the Piano room stay at the song's real pitch.">
+                    <EngLabel>{playCapo === 0 ? "no capo" : `capo ${playCapo}`}</EngLabel>
+                    <span style={{ fontFamily: MONO, fontSize: 13, color: C.rootText }}>still sounds in {soundingKeyName}</span>
+                  </Readout>
+                ) : capoShift > 0 ? (
                   <Readout style={{ display: "inline-flex", alignItems: "center", gap: 7 }}
                     title={`The chart reads as written; with the capo it SOUNDS in ${soundingKeyName}. The Piano room and playback use the sounding pitch.`}>
                     <EngLabel>capo {capoShift}</EngLabel>
                     <span style={{ fontFamily: MONO, fontSize: 13, color: C.rootText }}>sounds in {soundingKeyName}</span>
                   </Readout>
-                )}
+                ) : null}
                 {keyPicker}
                 <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8, alignItems: "center" }}>
                   {sheet.trim() && (!loaded || loaded.source === "user" || loaded.source === "shared" || loaded.source === "ear") && (
@@ -661,9 +762,15 @@ export default function App() {
               {aiPanel}
               {tabKeysPanel}
               <section style={{ marginTop: 18 }}>
-                <ChartView text={sheet} activeKey={activeKey} transpose={transpose}
-                  activeChord={current}
-                  onChordClick={(ch) => { arm(); selectUnique(ch); }} />
+                <ChartView text={sheet} activeKey={readingKey || activeKey} transpose={readingShift}
+                  activeChord={readingView.prog[currentIdx] || null}
+                  onChordClick={(ch) => {
+                    arm();
+                    // Match by position in the reading view (indexes align across
+                    // views), then let playback speak sounding pitch as always.
+                    const i = readingView.prog.findIndex((c) => sameChordSound(c, ch));
+                    if (i >= 0) { setIsPlaying(false); setCurrentIdx(i); }
+                  }} />
               </section>
               {chartInput}
             </div>
@@ -895,6 +1002,11 @@ const miniBtn = {
   display: "inline-flex", alignItems: "center", justifyContent: "center",
   width: 26, height: 26, borderRadius: 7, background: C.panel2,
   color: C.ink, border: `1px solid ${C.line}`, cursor: "pointer",
+};
+const navChip = {
+  display: "inline-flex", alignItems: "center", justifyContent: "center",
+  width: 28, height: 28, borderRadius: 8, background: C.panel2,
+  color: C.ink, border: `1px solid ${C.line}`, cursor: "pointer", flex: "0 0 auto",
 };
 const selStyle = {
   background: C.panel, color: C.ink, border: `1px solid ${C.line}`,
