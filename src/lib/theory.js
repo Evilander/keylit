@@ -36,6 +36,25 @@ export const QUALITIES = {
   "-7": { name: "m7", intervals: [0, 3, 7, 10] },
   m7b5: { name: "m7\u266d5", intervals: [0, 3, 6, 10] },
   "\u00f8": { name: "m7\u266d5", intervals: [0, 3, 6, 10] },
+  // Hal Leonard's older minus/plus dialect: -5/-9 mean flat, +5/+9 mean sharp.
+  "m7-5": { name: "m7\u266d5", intervals: [0, 3, 6, 10] },
+  "7-5": { name: "7\u266d5", intervals: [0, 4, 6, 10] },
+  "7+5": { name: "7\u266f5", intervals: [0, 4, 8, 10] },
+  "7-9": { name: "7\u266d9", intervals: [0, 4, 7, 10, 13] },
+  "7+9": { name: "7\u266f9", intervals: [0, 4, 7, 10, 15] },
+  // minor with a MAJOR seventh \u2014 engravings write it mmaj7 / mM7 / m(maj7),
+  // and Hal Leonard's older books write m(+7) or m(#7); parens strip upstream.
+  mmaj7: { name: "m(maj7)", intervals: [0, 3, 7, 11] },
+  mM7: { name: "m(maj7)", intervals: [0, 3, 7, 11] },
+  "m+7": { name: "m(maj7)", intervals: [0, 3, 7, 11] },
+  "m#7": { name: "m(maj7)", intervals: [0, 3, 7, 11] },
+  minmaj7: { name: "m(maj7)", intervals: [0, 3, 7, 11] },
+  // engraver's "(no3)"/"(no3rd)" = bare root-and-fifth = the power chord
+  no3: { name: "5", intervals: [0, 7] },
+  no3rd: { name: "5", intervals: [0, 7] },
+  // "(add2)" = the add-9 family written an octave down
+  add2: { name: "add9", intervals: [0, 4, 7, 14] },
+  madd2: { name: "madd9", intervals: [0, 3, 7, 14] },
   dim7: { name: "dim7", intervals: [0, 3, 6, 9] },
   "\u00b07": { name: "dim7", intervals: [0, 3, 6, 9] },
   "7b5": { name: "7\u266d5", intervals: [0, 4, 6, 10] },
@@ -59,6 +78,10 @@ export const QUALITIES = {
   sus2: { name: "sus2", intervals: [0, 2, 7] },
   sus4: { name: "sus4", intervals: [0, 5, 7] },
   sus: { name: "sus4", intervals: [0, 5, 7] },
+  // engravings occasionally print "Dmsus" — a sus chord has no third to be
+  // minor about, so it sounds (and parses) as the plain sus4
+  msus: { name: "sus4", intervals: [0, 5, 7] },
+  msus4: { name: "sus4", intervals: [0, 5, 7] },
   "7sus4": { name: "7sus4", intervals: [0, 5, 7, 10] },
   "7sus2": { name: "7sus2", intervals: [0, 2, 7, 10] },
   "7sus": { name: "7sus4", intervals: [0, 5, 7, 10] },
@@ -97,7 +120,29 @@ export function parseChord(rawToken) {
     bassStr = rest.slice(slash + 1);
   }
 
-  const qDef = QUALITIES[qualityStr];
+  let qDef = QUALITIES[qualityStr];
+  if (!qDef) {
+    // Engraver's note-name addition — "Dm(addE)", "F#m(addD)": the named
+    // pitch joins the base chord at its interval from the root. A second
+    // is voiced up the octave (a 9th), the way the notation intends.
+    const addNote = /^(.*)add([A-G][#b]?)$/.exec(qualityStr);
+    if (addNote && QUALITIES[addNote[1]] !== undefined) {
+      const base = QUALITIES[addNote[1]];
+      const addPc = NOTE_TO_SEMITONE[addNote[2]];
+      if (addPc !== undefined) {
+        let iv = ((addPc - rootSemitone) % 12 + 12) % 12;
+        if (iv > 0 && iv <= 2) iv += 12;
+        if (iv === 0 || base.intervals.includes(iv) || base.intervals.includes(iv % 12)) {
+          qDef = base; // the "added" note was already a chord tone
+        } else {
+          qDef = {
+            name: `${base.name}(add${SHARP_NAMES[addPc]})`,
+            intervals: [...base.intervals, iv].sort((a, b) => a - b),
+          };
+        }
+      }
+    }
+  }
   if (!qDef) return null;
 
   let bassSemitone = null, bassName = null;
