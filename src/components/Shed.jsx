@@ -1,11 +1,12 @@
-// Shed.jsx — the practice library (Practice room). Method books, technique
-// routines, theory, references, magazines: the shelf BESIDE the songbook.
-// Charts live in the Library; the stuff that makes you better lives here.
-// Data: public/corpus/shed/index.json (tools/build_shed.mjs). Small text
-// lessons and extracted EPUB chapters read in-app; everything else shows
-// its shelf path with one-tap copy (the file opens in your own reader).
-import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Copy, Check, ChevronRight, FileText } from "lucide-react";
+// Shed.jsx — the practice library. Method books, technique routines, theory,
+// references, magazines: the shelf BESIDE the songbook. Charts live in the
+// Library; the stuff that makes you better lives here.
+// Data: public/corpus/shed/index.json (tools/build_shed.mjs). PDF books read
+// in-app as rendered page images (item.pages — tab and diagrams intact);
+// text lessons and EPUB chapters read as text; anything else shows its shelf
+// path with one-tap copy.
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BookOpen, Copy, Check, ChevronRight, ChevronLeft, FileText, X } from "lucide-react";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 
 const KIND_ORDER = ["method", "technique", "lesson", "exercises", "theory", "reference", "magazine"];
@@ -18,7 +19,34 @@ export default function Shed() {
   const [shelf, setShelf] = useState(null);
   const [openId, setOpenId] = useState(null);
   const [reading, setReading] = useState(null); // { title, text }
+  const [viewing, setViewing] = useState(null); // { item, page } — page-image book viewer
   const [copied, setCopied] = useState(null);
+
+  const turnPage = useCallback((delta) => {
+    setViewing((v) => {
+      if (!v) return v;
+      const next = Math.min(v.item.pages.count, Math.max(1, v.page + delta));
+      return next === v.page ? v : { ...v, page: next };
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!viewing) return undefined;
+    const onKey = (e) => {
+      if (e.key === "ArrowRight" || e.key === "PageDown") { e.preventDefault(); turnPage(1); }
+      else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); turnPage(-1); }
+      else if (e.key === "Escape") setViewing(null);
+    };
+    window.addEventListener("keydown", onKey);
+    // warm the neighboring pages so a turn is instant
+    [viewing.page + 1, viewing.page - 1].forEach((p) => {
+      if (p >= 1 && p <= viewing.item.pages.count) {
+        const img = new Image();
+        img.src = `corpus/shed/pages/${viewing.item.pages.dir}/${String(p).padStart(4, "0")}.jpg`;
+      }
+    });
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewing, turnPage]);
 
   useEffect(() => {
     let on = true;
@@ -39,6 +67,7 @@ export default function Shed() {
   }, [shelf]);
 
   const readText = async (title, textFile) => {
+    setViewing(null);
     try {
       const r = await fetch(`corpus/shed/${textFile}`);
       setReading({ title, text: r.ok ? await r.text() : "Couldn't load this one." });
@@ -46,6 +75,8 @@ export default function Shed() {
       setReading({ title, text: "Couldn't load this one." });
     }
   };
+
+  const pageSrc = (item, page) => `corpus/shed/pages/${item.pages.dir}/${String(page).padStart(4, "0")}.jpg`;
 
   const copyPath = async (p) => {
     try { await navigator.clipboard.writeText(p); setCopied(p); setTimeout(() => setCopied(null), 1400); } catch { /* clipboard denied */ }
@@ -70,7 +101,7 @@ export default function Shed() {
         in-app — the heavier books open from your own shelf.
       </p>
 
-      <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: reading ? "minmax(0,1fr) minmax(0,1fr)" : "minmax(0,1fr)", gap: 20, alignItems: "start" }}>
+      <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: viewing ? "minmax(0,2fr) minmax(0,3fr)" : reading ? "minmax(0,1fr) minmax(0,1fr)" : "minmax(0,1fr)", gap: 20, alignItems: "start" }}>
         <div>
           {groups.map(({ kind, items }) => (
             <div key={kind} className="faceplate" style={{ padding: 16, marginBottom: 14 }}>
@@ -84,12 +115,18 @@ export default function Shed() {
                       <ChevronRight size={14} style={{ color: C.faint, transform: open ? "rotate(90deg)" : "none", transition: "transform 150ms ease", flex: "0 0 auto" }} />
                       <span style={{ fontSize: 14, color: C.ink, fontWeight: 600, flex: 1, minWidth: 0 }}>{item.title}</span>
                       <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.faint }}>{item.instrument}</span>
-                      {(item.textFile || item.chapters) && <BookOpen size={13} style={{ color: C.toneText }} title="readable in-app" />}
+                      {(item.pages || item.textFile || item.chapters) && <BookOpen size={13} style={{ color: C.toneText }} title="readable in-app" />}
                     </button>
                     {open && (
                       <div style={{ padding: "6px 0 4px 23px" }}>
                         <p style={{ margin: 0, fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>{item.note}</p>
                         <div className="flex items-center" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                          {item.pages && (
+                            <button className="bench-btn primary" style={{ padding: "5px 11px", fontSize: 12 }}
+                              onClick={() => { setReading(null); setViewing({ item, page: 1 }); }}>
+                              <BookOpen size={13} /> open the book · {item.pages.count} pages
+                            </button>
+                          )}
                           {item.textFile && (
                             <button className="bench-btn" style={{ padding: "5px 11px", fontSize: 12 }}
                               onClick={() => readText(item.title, item.textFile)}>
@@ -133,7 +170,7 @@ export default function Shed() {
           ))}
         </div>
 
-        {reading && (
+        {reading && !viewing && (
           <div className="faceplate" style={{ padding: 16, position: "sticky", top: 12 }}>
             <div className="flex items-center justify-between" style={{ gap: 10, marginBottom: 10 }}>
               <span className="kl-eyebrow" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{reading.title}</span>
@@ -142,6 +179,33 @@ export default function Shed() {
             <pre style={{ fontFamily: MONO, fontSize: 12.5, lineHeight: 1.55, color: C.ink, whiteSpace: "pre-wrap", margin: 0, maxHeight: "70vh", overflowY: "auto" }}>
               {reading.text}
             </pre>
+          </div>
+        )}
+
+        {viewing && (
+          <div className="faceplate" style={{ padding: 14, position: "sticky", top: 12 }}>
+            <div className="flex items-center" style={{ gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+              <span className="kl-eyebrow" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{viewing.item.title}</span>
+              <div className="flex items-center" style={{ gap: 6 }}>
+                <button className="bench-btn" style={{ padding: "4px 9px" }} onClick={() => turnPage(-1)} disabled={viewing.page <= 1}
+                  aria-label="previous page" title="previous page (←)"><ChevronLeft size={14} /></button>
+                <span style={{ fontFamily: MONO, fontSize: 12, color: C.muted, whiteSpace: "nowrap" }}>
+                  <input type="number" min={1} max={viewing.item.pages.count} value={viewing.page}
+                    onChange={(e) => { const p = +e.target.value; if (p >= 1 && p <= viewing.item.pages.count) setViewing((v) => ({ ...v, page: p })); }}
+                    aria-label="page number"
+                    style={{ width: 52, fontFamily: MONO, fontSize: 12, color: C.ink, background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 6, padding: "3px 6px", textAlign: "right" }} />
+                  {" "}/ {viewing.item.pages.count}
+                </span>
+                <button className="bench-btn" style={{ padding: "4px 9px" }} onClick={() => turnPage(1)} disabled={viewing.page >= viewing.item.pages.count}
+                  aria-label="next page" title="next page (→)"><ChevronRight size={14} /></button>
+                <button className="bench-btn" style={{ padding: "4px 9px" }} onClick={() => setViewing(null)} aria-label="close book" title="close (Esc)"><X size={14} /></button>
+              </div>
+            </div>
+            <div style={{ maxHeight: "78vh", overflowY: "auto", borderRadius: 9, border: `1px solid ${C.line}`, background: "#fff" }}>
+              <img src={pageSrc(viewing.item, viewing.page)} alt={`${viewing.item.title} — page ${viewing.page}`}
+                style={{ width: "100%", display: "block" }} />
+            </div>
+            <p style={{ margin: "8px 0 0", fontSize: 11.5, color: C.faint }}>← → keys turn pages · Esc closes</p>
           </div>
         )}
       </div>
