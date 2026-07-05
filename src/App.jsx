@@ -3,7 +3,7 @@ import {
   Play, Pause, ChevronLeft, ChevronRight, Volume2, VolumeX,
   RotateCcw, Upload, Minus, Plus, Loader2, Piano as PianoIcon, Undo2, Lightbulb,
   Library as LibraryIcon, ScrollText, Compass, GraduationCap, PenLine, Target,
-  ArrowLeft,
+  ArrowLeft, Moon, Sun,
 } from "lucide-react";
 import {
   SHARP_NAMES, parseSheet, transposeChord, chordSymbol, displaySymbol,
@@ -14,9 +14,10 @@ import { rootPositionFull, smoothUpper, addBass, clampVoicing } from "./lib/voic
 import { analyzeSheet } from "./lib/llm.js";
 import { respell, spellPc } from "./lib/spelling.js";
 import { wheelMoves } from "./lib/voice.js";
+import { progressionOfTheDay } from "./lib/potd.js";
 import { isMidiSupported, requestMidi, listOutputs, sendChordToOutput, allNotesOff } from "./webmidi.js";
 import { useAudioEngine } from "./audio/useAudioEngine.js";
-import { C, MONO, DISPLAY } from "./ui/theme.js";
+import { C, MONO, DISPLAY, applyTheme, currentTheme } from "./ui/theme.js";
 import { EngLabel, Readout, BenchButton } from "./ui/Bench.jsx";
 import { loadSong, SOURCE_LABEL } from "./corpus.js";
 import Keyboard from "./components/Keyboard.jsx";
@@ -36,6 +37,7 @@ import Practice from "./components/Practice.jsx";
 import TabKeys from "./components/TabKeys.jsx";
 import PlayAlong from "./components/PlayAlong.jsx";
 import BenchBook from "./components/BenchBook.jsx";
+import Shed from "./components/Shed.jsx";
 import Arranger from "./components/Arranger.jsx";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, userSongbook } from "./storage.js";
@@ -92,6 +94,10 @@ export default function App() {
   const [practiceTab, setPracticeTab] = useState("drills");
   const [theoryTab, setTheoryTab] = useState("circle");
   const [lessonHL, setLessonHL] = useState(null);
+  // Light "Fretboard Press" or dark "After Hours" — applyTheme mutates the
+  // live C palette + flips the CSS layer; this state change repaints the tree.
+  const [theme, setTheme] = useState(() => applyTheme(currentTheme()));
+  const toggleTheme = () => setTheme((t) => applyTheme(t === "dark" ? "light" : "dark"));
   // "Cover it capo'd": null = read the chart as written; a number = re-render
   // the chart as the shapes you'd finger with a capo there (sound unchanged).
   const [playCapo, setPlayCapo] = useState(null);
@@ -268,6 +274,10 @@ export default function App() {
     if (armedRef.current && !arrangingRef.current) ensureAndPlay(audioVoicingRef.current[currentIdx]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIdx, mode, pitchShift]);
+
+  // The day's deal for the Library card — date-seeded, so it's the same hand
+  // all day and a new one tomorrow.
+  const potd = useMemo(() => progressionOfTheDay(new Date().toISOString().slice(0, 10)), []);
 
   const arrangementRef = useRef(null);
   // One stage, one act: whoever starts timed playback displaces whoever held
@@ -649,6 +659,14 @@ export default function App() {
         </nav>
         <div className="kl-side-foot">
           <EnginePill engine={engineState.engine} loading={engineState.loading} />
+          <button onClick={toggleTheme} aria-label={theme === "dark" ? "lights up" : "lights down"}
+            title={theme === "dark" ? "back to the daylight songbook" : "after hours — lamps low"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8, padding: "5px 10px",
+              borderRadius: 999, background: "transparent", color: C.muted, border: `1px solid ${C.line}`,
+              cursor: "pointer", fontSize: 11.5 }}>
+            {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
+            {theme === "dark" ? "daylight" : "after hours"}
+          </button>
         </div>
       </aside>
 
@@ -682,6 +700,15 @@ export default function App() {
         <div className={`kl-content${section === "library" || section === "song" ? "" : " wide"}`}>
           {section === "library" && (
             <Library onOpen={openSong}
+              potd={potd}
+              onPotd={(action) => {
+                arm();
+                if (action === "hear") { auditionChords(potd.chords); return; }
+                setLoaded({ title: `${potd.name} — progression of the day`, artist: null, source: "spark", key: potd.keyName });
+                loadSheet(`[${potd.name} · ${potd.keyName}]\n${potd.sheet}`);
+                setSetlistCtx(null);
+                setSection("song");
+              }}
               onSetlist={() => { setPracticeTab("bench"); setSection("practice"); }}
               onPaste={() => { setSection("song"); setImportOpen(true); }}
               onDemo={() => { setLoaded(null); loadSheet(DEFAULT_SHEET); setSection("song"); }}
@@ -938,6 +965,7 @@ export default function App() {
                 <button role="tab" aria-selected={practiceTab === "drills"} onClick={() => setPracticeTab("drills")}>Drills</button>
                 <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
                 <button role="tab" aria-selected={practiceTab === "bench"} onClick={() => setPracticeTab("bench")}>Bench Book</button>
+                <button role="tab" aria-selected={practiceTab === "shed"} onClick={() => setPracticeTab("shed")}>The Shed</button>
               </div>
               {practiceTab === "drills" && (
                 <Practice onPlay={(midis) => { arm(); midis.forEach((m, i) => setTimeout(() => ensureAndPlay([m], 0.9), i * 460)); }} />
@@ -959,6 +987,7 @@ export default function App() {
                 />
               )}
               {practiceTab === "bench" && <BenchBook onOpen={openSong} />}
+              {practiceTab === "shed" && <Shed />}
             </div>
           )}
         </div>

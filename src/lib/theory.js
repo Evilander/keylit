@@ -20,6 +20,9 @@ export const QUALITIES = {
   "-": { name: "min", intervals: [0, 3, 7] },
   dim: { name: "dim", intervals: [0, 3, 6] },
   "\u00b0": { name: "dim", intervals: [0, 3, 6] },
+  // fan transcriptions write dim as a lowercase o (D#o, Co7)
+  o: { name: "dim", intervals: [0, 3, 6] },
+  o7: { name: "dim7", intervals: [0, 3, 6, 9] },
   aug: { name: "aug", intervals: [0, 4, 8] },
   "+": { name: "aug", intervals: [0, 4, 8] },
   "5": { name: "5", intervals: [0, 7] },
@@ -78,6 +81,17 @@ export const QUALITIES = {
   sus2: { name: "sus2", intervals: [0, 2, 7] },
   sus4: { name: "sus4", intervals: [0, 5, 7] },
   sus: { name: "sus4", intervals: [0, 5, 7] },
+  "4": { name: "sus4", intervals: [0, 5, 7] }, // "A4" = fan shorthand for Asus4
+  add4: { name: "add4", intervals: [0, 4, 5, 7] },
+  madd4: { name: "madd4", intervals: [0, 3, 5, 7] },
+  // stacked colors the engravings actually print
+  "6add2": { name: "6/9", intervals: [0, 4, 7, 9, 14] },
+  "6add9": { name: "6/9", intervals: [0, 4, 7, 9, 14] },
+  maj7sus4: { name: "maj7sus4", intervals: [0, 5, 7, 11] },
+  "9no3": { name: "9(no3)", intervals: [0, 7, 10, 14] },
+  b5: { name: "♭5", intervals: [0, 4, 6] },
+  "maj7b5": { name: "maj7♭5", intervals: [0, 4, 6, 11] },
+  "#11": { name: "add♯11", intervals: [0, 4, 7, 18] },
   // engravings occasionally print "Dmsus" — a sus chord has no third to be
   // minor about, so it sounds (and parses) as the plain sus4
   msus: { name: "sus4", intervals: [0, 5, 7] },
@@ -98,7 +112,9 @@ const cleanToken = (t) =>
   t.replace(/^[([{<"'.,;:|]+/, "").replace(/[)\]}>"'.,;:|]+$/, "");
 
 export function parseChord(rawToken) {
-  const token = cleanToken(rawToken);
+  // Typographic accidentals normalize to ASCII so the parser can re-read its
+  // own display output (chordSymbol prints ♭/♯; QUALITIES keys speak b/#).
+  const token = cleanToken(rawToken).replace(/♭/g, "b").replace(/♯/g, "#").replace(/♮/g, "");
   if (!token) return null;
   const m = token.match(/^([A-G])([#b]?)(.*)$/);
   if (!m) return null;
@@ -110,14 +126,15 @@ export function parseChord(rawToken) {
   // Cadd9. Strip the parentheses so the inner quality is looked up directly.
   const rest = rawRest.replace(/[()]/g, "");
 
-  // A "/" introduces a slash bass ONLY when what follows it is a note name.
-  // Otherwise the slash belongs to the quality itself (e.g. the "6/9" chord),
-  // which must not be mistaken for a chord over a "9" bass.
+  // A "/" introduces a slash bass ONLY when what follows it is a note name
+  // (either case — fan charts write "D/e"). Otherwise the slash belongs to
+  // the quality itself (e.g. the "6/9" chord), which must not be mistaken
+  // for a chord over a "9" bass.
   let qualityStr = rest, bassStr;
   const slash = rest.lastIndexOf("/");
-  if (slash !== -1 && /^[A-G][#b]?$/.test(rest.slice(slash + 1))) {
+  if (slash !== -1 && /^[A-Ga-g][#b]?$/.test(rest.slice(slash + 1))) {
     qualityStr = rest.slice(0, slash);
-    bassStr = rest.slice(slash + 1);
+    bassStr = rest.slice(slash + 1).toUpperCase()[0] + rest.slice(slash + 2);
   }
 
   let qDef = QUALITIES[qualityStr];
