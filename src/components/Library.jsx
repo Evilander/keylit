@@ -4,10 +4,11 @@
 // "Setlist" mode turns rows into a picker: check songs across any artists,
 // stack them straight into the Bench Book.
 import { useEffect, useMemo, useState } from "react";
-import { Search, ChevronRight, X, Plus, Disc3, ListMusic, CircleCheck, Circle } from "lucide-react";
-import { loadManifest, groupByArtist, isCoreArtist, SOURCE_LABEL } from "../corpus.js";
+import { Search, ChevronRight, X, Plus, Disc3, ListMusic, CircleCheck, Circle, Download } from "lucide-react";
+import { loadManifest, loadSong, groupByArtist, isCoreArtist, SOURCE_LABEL } from "../corpus.js";
 import { userSongbook, benchBook } from "../storage.js";
 import { slugSongKey } from "../lib/bench.js";
+import { makeZip } from "../lib/zip.js";
 import AddSong from "./AddSong.jsx";
 import Ear from "./Ear.jsx";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
@@ -29,6 +30,7 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
   const [sel, setSel] = useState(() => new Map()); // id -> manifest row
   const [setName, setSetName] = useState("Tonight");
   const [destId, setDestId] = useState("new");
+  const [exporting, setExporting] = useState(null); // { done, total } while a zip builds
 
   useEffect(() => { remembered.q = q; }, [q]);
   useEffect(() => { remembered.tuning = tuning; }, [tuning]);
@@ -58,6 +60,56 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
   };
 
   useEffect(() => { let on = true; loadManifest().then((r) => { if (on) setFetched(r); }); return () => { on = false; }; }, []);
+
+  const download = (name, blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  };
+
+  // Export the CURRENT VIEW (search/tuning filter applied; everything when
+  // unfiltered, or just the picked songs in Setlist mode) as a zip of plain
+  // .txt charts — the portable, future-proof form of a tab library.
+  const exportZip = async (rowsToExport) => {
+    if (exporting || !rowsToExport.length) return;
+    setExporting({ done: 0, total: rowsToExport.length });
+    const clean = (s) => (s || "").replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/\s+/g, " ").trim() || "Untitled";
+    const entries = [];
+    const seen = new Set();
+    const queue = rowsToExport.slice();
+    await Promise.all(Array.from({ length: 8 }, async () => {
+      while (queue.length) {
+        const row = queue.shift();
+        const song = await loadSong(row).catch(() => null);
+        setExporting((x) => (x ? { ...x, done: x.done + 1 } : x));
+        if (!song?.body) continue;
+        let name = `${clean(row.artist || "Various")}/${clean(row.title)}`;
+        if (seen.has(name)) name = `${name} (${row.source})`;
+        while (seen.has(name)) name += "_";
+        seen.add(name);
+        const facts = [
+          row.tuningId && row.tuningId !== "standard" ? `Tuning: ${row.tuningName}` : "",
+          row.capo ? `Capo ${row.capo}` : "",
+          row.key ? `Key: ${row.key}` : "",
+          song.sourceUrl || "",
+        ].filter(Boolean).join(" · ");
+        entries.push({ name: `${name}.txt`, data: `${row.title} — ${row.artist || "Various"}${facts ? `\n${facts}` : ""}\n\n${song.body}` });
+      }
+    }));
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    const stamp = new Date().toISOString().slice(0, 10);
+    download(`keylit-charts-${stamp}.zip`, new Blob([makeZip(entries)], { type: "application/zip" }));
+    setExporting(null);
+  };
+
+  // Your own songs + setlists as one JSON file — a real backup.
+  const exportBackup = () => {
+    const songs = userSongbook.rows().map((r) => userSongbook.get(r.id)).filter(Boolean);
+    const data = { keylit: 1, exportedAt: new Date().toISOString(), songs, setlists: benchBook.setlists() };
+    const stamp = new Date().toISOString().slice(0, 10);
+    download(`keylit-songbook-${stamp}.json`, new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
+  };
   // Your songs join the same catalog, grouped and styled like everyone else.
   const rows = useMemo(() => (fetched === null ? null : [...userRows, ...fetched]), [fetched, userRows]);
 
@@ -83,7 +135,7 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
     if (!rows) return [];
     const needle = q.trim().toLowerCase();
     return rows.filter((r) =>
-      (!tuning || r.tuningId === tuning) &&
+      (!tuning || (r.tuningId || r.tuning || "standard") === tuning) &&
       (!needle || r.artist?.toLowerCase().includes(needle) || r.title.toLowerCase().includes(needle) || (r.album || "").toLowerCase().includes(needle)));
   }, [rows, q, tuning]);
 
@@ -153,8 +205,25 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
           <button className="bench-btn" style={{ padding: "7px 13px", fontSize: 13 }} onClick={() => setAdding((v) => !v)}>
             <Plus size={14} /> Add a song
           </button>
+          <button className="bench-btn" style={{ padding: "7px 13px", fontSize: 13, opacity: exporting ? 0.6 : 1 }}
+            disabled={!!exporting}
+            onClick={() => exportZip(selecting && sel.size ? [...sel.values()] : filtered)}
+            title={selecting && sel.size
+              ? `download the ${sel.size} picked songs as .txt charts in a zip`
+              : `download ${q.trim() || tuning ? "the current view" : "the whole library"} as .txt charts in a zip`}>
+            <Download size={14} /> {exporting ? `zipping ${exporting.done}/${exporting.total}…` : "Export"}
+          </button>
         </div>
       </div>
+      {!exporting && (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={exportBackup}
+            style={{ background: "transparent", border: 0, cursor: "pointer", color: C.faint, fontSize: 11.5, padding: "2px 4px" }}
+            title="your added songs + setlists as one JSON file">
+            backup your songbook (.json)
+          </button>
+        </div>
+      )}
 
       {hearing && <Ear onLoadSheet={onHeard} onClose={() => setHearing(false)} />}
       {adding && <AddSong onSaved={onSaved} onClose={() => setAdding(false)} />}
