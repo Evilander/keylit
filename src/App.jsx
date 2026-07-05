@@ -3,7 +3,7 @@ import {
   Play, Pause, ChevronLeft, ChevronRight, Volume2, VolumeX,
   RotateCcw, Upload, Minus, Plus, Loader2, Piano as PianoIcon, Undo2, Lightbulb,
   Library as LibraryIcon, ScrollText, Compass, GraduationCap, PenLine, Target,
-  ArrowLeft, Moon, Sun,
+  ArrowLeft, Moon, Sun, BookOpen,
 } from "lucide-react";
 import {
   SHARP_NAMES, parseSheet, transposeChord, chordSymbol, displaySymbol,
@@ -72,6 +72,7 @@ const NAV = [
   { id: "learn", label: "Learn", icon: GraduationCap },
   { id: "write", label: "Write", icon: PenLine },
   { id: "practice", label: "Practice", icon: Target },
+  { id: "shed", label: "The Shed", icon: BookOpen },
 ];
 
 export default function App() {
@@ -965,7 +966,6 @@ export default function App() {
                 <button role="tab" aria-selected={practiceTab === "drills"} onClick={() => setPracticeTab("drills")}>Drills</button>
                 <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
                 <button role="tab" aria-selected={practiceTab === "bench"} onClick={() => setPracticeTab("bench")}>Bench Book</button>
-                <button role="tab" aria-selected={practiceTab === "shed"} onClick={() => setPracticeTab("shed")}>The Shed</button>
               </div>
               {practiceTab === "drills" && (
                 <Practice onPlay={(midis) => { arm(); midis.forEach((m, i) => setTimeout(() => ensureAndPlay([m], 0.9), i * 460)); }} />
@@ -987,9 +987,10 @@ export default function App() {
                 />
               )}
               {practiceTab === "bench" && <BenchBook onOpen={openSong} />}
-              {practiceTab === "shed" && <Shed />}
             </div>
           )}
+
+          {section === "shed" && <Shed />}
         </div>
       </main>
 

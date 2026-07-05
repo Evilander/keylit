@@ -42,6 +42,21 @@ const EXCLUDE_ID = /^(duster|damien-jurado|palace)--/;
 
 const FIX = {
   "R.E.M.": "R.E.M.", // all-caps normalizer would render it "R.e.m."
+  "R.e.m.": "R.E.M.", // heal records an earlier pass already lowercased
+  // Anthology pages credit songwriters, not the act — fold them home.
+  "John Lennon and Paul McCartney": "The Beatles",
+  "Paul McCartney & John Lennon": "The Beatles",
+  "PAUL McCARTNEY": "Paul McCartney",
+  "Barry Gibb & Albhy Galuten": "Bee Gees",
+  "Barry Gibb and Andy Gibb": "Bee Gees",
+  "Barry Gibb and Robin Gibb": "Bee Gees",
+  "BARRY GIBB, ROBIN GIBB and MAURICE GIBB": "Bee Gees",
+  "Barry Gibb, Robin Gibb and Maurice Gibb": "Bee Gees",
+  "Barry Gibb, Robin Gibb, Maurice Gibb": "Bee Gees",
+  "Barry Gibb, Robin Gibb & Maurice Gibb": "Bee Gees",
+  "Barry Gibb, Robin Gibb, Maurice Gibb and Andy Gibb": "Bee Gees",
+  "Barry & Robin Gibb": "Bee Gees",
+  "Barry, Robin & Maurice Gibb": "Bee Gees",
   "CHERYL CROW": "Sheryl Crow",
   "Dan Folgerberg": "Dan Fogelberg",
   "ALLMAN BROS": "The Allman Brothers Band",
