@@ -5,7 +5,7 @@
 // stack them straight into the Bench Book.
 import { useEffect, useMemo, useState } from "react";
 import { Search, ChevronRight, X, Plus, Disc3, ListMusic, CircleCheck, Circle } from "lucide-react";
-import { loadManifest, groupByArtist, SOURCE_LABEL } from "../corpus.js";
+import { loadManifest, groupByArtist, isCoreArtist, SOURCE_LABEL } from "../corpus.js";
 import { userSongbook, benchBook } from "../storage.js";
 import { slugSongKey } from "../lib/bench.js";
 import AddSong from "./AddSong.jsx";
@@ -90,6 +90,16 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
   const groups = useMemo(() => groupByArtist(filtered), [filtered]);
   const toggle = (artist) => setOpen((s) => { const n = new Set(s); n.has(artist) ? n.delete(artist) : n.add(artist); return n; });
   const autoOpen = q.trim().length > 0 || !!tuning;
+
+  // The shelf vs. the stacks: the owner's artists stay on the index; anthology
+  // fill folds into one Miscellaneous drawer. A search sees everything flat.
+  const { shelf, misc } = useMemo(() => {
+    if (autoOpen) return { shelf: groups, misc: [] };
+    const shelf = [], misc = [];
+    for (const g of groups) (isCoreArtist(g.artist, g.count) ? shelf : misc).push(g);
+    return { shelf, misc };
+  }, [groups, autoOpen]);
+  const miscCount = useMemo(() => misc.reduce((n, g) => n + g.count, 0), [misc]);
 
   if (rows === null) return <p style={{ color: C.muted }}>Loading the library…</p>;
 
@@ -221,41 +231,31 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
         </div>
       ) : (
         <div className="kl-rows">
-          {groups.map((g) => {
-            const isOpen = autoOpen || open.has(g.artist);
-            const allSongs = g.albums.flatMap((a) => a.songs);
-            const sources = [...new Set(allSongs.map((s) => s.source))].map((s) => SOURCE_LABEL[s] || s);
-            return (
-              <div key={g.artist} style={{ borderBottom: `1px solid ${C.line}` }}>
-                <button onClick={() => toggle(g.artist)} aria-expanded={isOpen}
-                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 4px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
-                  <ChevronRight size={15} style={{ color: C.faint, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
-                  <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 500, fontSize: 21, color: C.ink, flex: 1 }}>{g.artist}</span>
-                  <span className="kl-meta">{g.count} {g.count === 1 ? "song" : "songs"}</span>
-                  <span className="kl-meta kl-hide-sm" style={{ color: C.faint, minWidth: 110, textAlign: "right" }}>{sources.join(" · ")}</span>
-                </button>
-                {isOpen && (
-                  <div style={{ paddingBottom: 10 }}>
-                    {g.albums.map((al, ai) => (
-                      <div key={ai}>
-                        {g.multiAlbum && (
-                          <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "10px 4px 4px 31px" }}>
-                            <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 15.5, color: C.muted }}>{al.album || "Other"}</span>
-                            <span className="kl-meta" style={{ color: C.faint, fontSize: 11 }}>{al.songs.length}</span>
-                            <span style={{ flex: 1, height: 1, background: C.line, marginLeft: 4 }} />
-                          </div>
-                        )}
-                        {al.songs.map((s) => (
-                          <SongRow key={s.id} s={s} onOpen={onOpen} onTuning={setTuning} onRemove={removeUserSong}
-                            selecting={selecting} selected={sel.has(s.id)} onToggle={toggleSel} />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {shelf.map((g) => (
+            <ArtistGroup key={g.artist} g={g} isOpen={autoOpen || open.has(g.artist)} onToggle={toggle}
+              onOpen={onOpen} onTuning={setTuning} onRemove={removeUserSong}
+              selecting={selecting} sel={sel} onToggleSel={toggleSel} />
+          ))}
+          {misc.length > 0 && (
+            <div style={{ borderBottom: `1px solid ${C.line}` }}>
+              <button onClick={() => toggle("__misc__")} aria-expanded={open.has("__misc__")}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 4px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
+                <ChevronRight size={15} style={{ color: C.faint, transform: open.has("__misc__") ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
+                <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 500, fontSize: 21, color: C.muted, flex: 1 }}>Miscellaneous</span>
+                <span className="kl-meta">{misc.length} artists · {miscCount} songs</span>
+                <span className="kl-meta kl-hide-sm" style={{ color: C.faint, minWidth: 110, textAlign: "right" }}>anthologies &amp; strays</span>
+              </button>
+              {open.has("__misc__") && (
+                <div style={{ paddingBottom: 10, paddingLeft: 18, borderLeft: `2px solid ${C.line}`, marginLeft: 10 }}>
+                  {misc.map((g) => (
+                    <ArtistGroup key={g.artist} g={g} isOpen={open.has(g.artist)} onToggle={toggle} compact
+                      onOpen={onOpen} onTuning={setTuning} onRemove={removeUserSong}
+                      selecting={selecting} sel={sel} onToggleSel={toggleSel} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -282,6 +282,41 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
               click songs to pick them — any artist, any tuning
             </span>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ArtistGroup({ g, isOpen, onToggle, onOpen, onTuning, onRemove, selecting, sel, onToggleSel, compact }) {
+  const allSongs = g.albums.flatMap((a) => a.songs);
+  const sources = [...new Set(allSongs.map((s) => s.source))].map((s) => SOURCE_LABEL[s] || s);
+  return (
+    <div style={{ borderBottom: `1px solid ${C.line}` }}>
+      <button onClick={() => onToggle(g.artist)} aria-expanded={isOpen}
+        style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: compact ? "9px 4px" : "13px 4px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
+        <ChevronRight size={15} style={{ color: C.faint, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
+        <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 500, fontSize: compact ? 16.5 : 21, color: C.ink, flex: 1 }}>{g.artist}</span>
+        <span className="kl-meta">{g.count} {g.count === 1 ? "song" : "songs"}</span>
+        {!compact && <span className="kl-meta kl-hide-sm" style={{ color: C.faint, minWidth: 110, textAlign: "right" }}>{sources.join(" · ")}</span>}
+      </button>
+      {isOpen && (
+        <div style={{ paddingBottom: 10 }}>
+          {g.albums.map((al, ai) => (
+            <div key={ai}>
+              {g.multiAlbum && (
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "10px 4px 4px 31px" }}>
+                  <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 15.5, color: C.muted }}>{al.album || "Other"}</span>
+                  <span className="kl-meta" style={{ color: C.faint, fontSize: 11 }}>{al.songs.length}</span>
+                  <span style={{ flex: 1, height: 1, background: C.line, marginLeft: 4 }} />
+                </div>
+              )}
+              {al.songs.map((s) => (
+                <SongRow key={s.id} s={s} onOpen={onOpen} onTuning={onTuning} onRemove={onRemove}
+                  selecting={selecting} selected={sel.has(s.id)} onToggle={onToggleSel} />
+              ))}
+            </div>
+          ))}
         </div>
       )}
     </div>
