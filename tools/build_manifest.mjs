@@ -41,6 +41,7 @@ const EXCLUDE_ARTISTS = new Set(["Duster", "Damien Jurado", "Palace"]);
 const EXCLUDE_ID = /^(duster|damien-jurado|palace)--/;
 
 const FIX = {
+  "R.E.M.": "R.E.M.", // all-caps normalizer would render it "R.e.m."
   "CHERYL CROW": "Sheryl Crow",
   "Dan Folgerberg": "Dan Fogelberg",
   "ALLMAN BROS": "The Allman Brothers Band",
