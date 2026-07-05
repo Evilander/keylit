@@ -409,6 +409,65 @@ describe("parseChord — 6/9, parenthesized alterations, extra qualities", () =>
     expect(parseChord("And")).toBeNull();
     expect(parseChord("Be")).toBeNull();
   });
+
+  it("parses the minor-major-seventh family (Hal Leonard writes it three ways)", () => {
+    for (const sym of ["Bmmaj7", "BmM7", "Bm(maj7)", "Bm(+7)"]) {
+      const c = parseChord(sym);
+      expect(c, `${sym} should parse`).not.toBeNull();
+      expect(c.quality).toBe("m(maj7)");
+      expect(c.intervals).toEqual([0, 3, 7, 11]);
+      expect(c.rootName).toBe("B");
+    }
+  });
+
+  it("m(maj7) is minor class and renders a lowercase roman", () => {
+    expect(qualClass(parseChord("Amaj7").quality)).toBe("maj"); // guard: maj7 untouched
+    expect(qualClass(parseChord("Ammaj7").quality)).toBe("min");
+  });
+
+  it("parses no-third power voicings written as (no3)", () => {
+    const c = parseChord("C(no3)");
+    expect(c).not.toBeNull();
+    expect(c.intervals).toEqual([0, 7]);
+    expect(parseChord("D(no3rd)").intervals).toEqual([0, 7]);
+  });
+
+  it("parses Hal Leonard's minus-alteration dialect (-5, -9 for flat)", () => {
+    expect(parseChord("Bm7-5").quality).toBe("m7♭5");
+    expect(parseChord("E7-9").quality).toBe("7♭9");
+    expect(parseChord("C7-5").quality).toBe("7♭5");
+  });
+
+  it("parses m(#7) as the minor-major-seventh", () => {
+    expect(parseChord("Am(#7)").quality).toBe("m(maj7)");
+    expect(parseChord("Gm(#7)/Bb").quality).toBe("m(maj7)");
+    expect(parseChord("Gm(#7)/Bb").bassName).toBe("A#");
+  });
+
+  it("parses note-name additions: (addE) adds that pitch relative to the root", () => {
+    // Dm(addE): E is the 9th of D — lands as madd9
+    expect(parseChord("Dm(addE)").intervals).toEqual([0, 3, 7, 14]);
+    // D7(addE): the 9th over a dominant 7th
+    expect(parseChord("D7(addE)").intervals).toEqual([0, 4, 7, 10, 14]);
+    // F#m(addD): D natural is the flat 6th of F# — George's Julia color
+    expect(parseChord("F#m(addD)").intervals).toEqual([0, 3, 7, 8]);
+    // A(add2) is the plain add-9 family
+    expect(parseChord("A(add2)").intervals).toEqual([0, 4, 7, 14]);
+  });
+
+  it("parses the engraver's msus (a sus chord has no third to be minor about)", () => {
+    const c = parseChord("Dmsus/A");
+    expect(c).not.toBeNull();
+    expect(c.intervals).toEqual([0, 5, 7]);
+    expect(c.bassName).toBe("A");
+  });
+
+  it("keeps the added-note chord transposable (intervals move with the root)", () => {
+    const ch = parseChord("F#m(addD)");
+    const up = transposeChord(ch, 2);
+    expect(up.rootName).toBe("G#");
+    expect(up.intervals).toEqual([0, 3, 7, 8]); // intervals are root-relative
+  });
 });
 
 describe("normalizeChart — lone ChordPro chord vs section header", () => {
