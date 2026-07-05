@@ -34,9 +34,11 @@ const SOURCE_DEFAULT_TUNING = { sweetadeline: "dStandard" };
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public", "corpus");
 
 // Owner explicitly excluded these — keep them out of the browse index no matter
-// what lands on disk (a stray scraper kept re-adding Duster).
-const EXCLUDE_ARTISTS = new Set(["Duster", "Damien Jurado"]);
-const EXCLUDE_ID = /^(duster|damien-jurado)--/;
+// what lands on disk (a stray scraper kept re-adding Duster). "Palace" alone
+// is the London indie band, NOT Will Oldham (Palace Brothers / Palace Music
+// are his and stay) — owner asked it out, 2026-07-05.
+const EXCLUDE_ARTISTS = new Set(["Duster", "Damien Jurado", "Palace"]);
+const EXCLUDE_ID = /^(duster|damien-jurado|palace)--/;
 
 const FIX = {
   "CHERYL CROW": "Sheryl Crow",

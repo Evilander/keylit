@@ -455,6 +455,35 @@ describe("parseChord — 6/9, parenthesized alterations, extra qualities", () =>
     expect(parseChord("A(add2)").intervals).toEqual([0, 4, 7, 14]);
   });
 
+  it("re-parses its own typographic output (♭/♯ in quality names)", () => {
+    expect(parseChord("Cm7♭5").quality).toBe("m7♭5");
+    expect(parseChord("C7♯9").quality).toBe("7♯9");
+    expect(parseChord("B♭m7").rootName).toBe("A#"); // ♭ accepted on the root too
+  });
+
+  it("parses stacked-color qualities from engraved songbooks", () => {
+    expect(parseChord("A6add2").intervals).toEqual([0, 4, 7, 9, 14]);
+    expect(parseChord("C6add9").intervals).toEqual([0, 4, 7, 9, 14]); // = 6/9
+    expect(parseChord("Gmaj7sus4").intervals).toEqual([0, 5, 7, 11]);
+    expect(parseChord("A9(no3)").intervals).toEqual([0, 7, 10, 14]);
+    expect(parseChord("C(b5)").intervals).toEqual([0, 4, 6]);
+    expect(parseChord("Bbmaj7b5").intervals).toEqual([0, 4, 6, 11]);
+    expect(parseChord("Bb(#11)").intervals).toEqual([0, 4, 7, 18]);
+  });
+
+  it("parses fan-transcription shorthands: o for dim, bare 4 for sus4, add4", () => {
+    expect(parseChord("D#o").quality).toBe("dim");
+    expect(parseChord("Co7").quality).toBe("dim7");
+    expect(parseChord("A4").quality).toBe("sus4");
+    expect(parseChord("Dadd4").intervals).toEqual([0, 4, 5, 7]);
+  });
+
+  it("accepts a lowercase slash bass (D/e sounds like D/E)", () => {
+    const c = parseChord("D/e");
+    expect(c).not.toBeNull();
+    expect(c.bassName).toBe("E");
+  });
+
   it("parses the engraver's msus (a sus chord has no third to be minor about)", () => {
     const c = parseChord("Dmsus/A");
     expect(c).not.toBeNull();

@@ -22,8 +22,8 @@
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
-  background: #FAFAF8;
-  color: #2A2521;
+  background: var(--kl-base, #FAFAF8);
+  color: var(--kl-ink, #2A2521);
   font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;

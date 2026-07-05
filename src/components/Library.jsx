@@ -16,7 +16,7 @@ import { C, MONO, DISPLAY } from "../ui/theme.js";
 // search, tuning filter, and expanded artists — not a collapsed index).
 const remembered = { q: "", tuning: null, open: [] };
 
-export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard }) {
+export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, potd, onPotd }) {
   const [fetched, setFetched] = useState(null);
   const [userRows, setUserRows] = useState(() => userSongbook.rows());
   const [adding, setAdding] = useState(false);
@@ -148,6 +148,28 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard })
 
       {hearing && <Ear onLoadSheet={onHeard} onClose={() => setHearing(false)} />}
       {adding && <AddSong onSaved={onSaved} onClose={() => setAdding(false)} />}
+
+      {potd && (
+        <div className="faceplate kl-rise" style={{ marginTop: 16, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 0, flex: "1 1 320px" }}>
+            <div className="flex items-center" style={{ gap: 10, flexWrap: "wrap" }}>
+              <span className="kl-eyebrow">Progression of the day</span>
+              <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 17, color: C.ink }}>{potd.name}</span>
+              <span className="kl-meta">{potd.keyName} · {potd.style}</span>
+            </div>
+            <div className="flex items-center" style={{ gap: 6, flexWrap: "wrap", marginTop: 7 }}>
+              {potd.sheet.split(/\s+/).filter(Boolean).map((sym, i) => (
+                <span key={i} style={{ fontFamily: MONO, fontSize: 13.5, fontWeight: 700, color: C.toneText, background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 7, padding: "2px 8px" }}>{sym}</span>
+              ))}
+            </div>
+            <p style={{ margin: "8px 0 0", fontSize: 12.5, color: C.muted, lineHeight: 1.5, maxWidth: 640 }}>{potd.line}</p>
+          </div>
+          <div className="flex items-center" style={{ gap: 8 }}>
+            <button className="bench-btn" onClick={() => onPotd?.("hear")}>▶ hear it</button>
+            <button className="bench-btn primary" onClick={() => onPotd?.("open")}>Take it to the bench</button>
+          </div>
+        </div>
+      )}
 
       <div style={{ position: "relative", margin: "18px 0 10px", maxWidth: 420 }}>
         <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.faint }} />
