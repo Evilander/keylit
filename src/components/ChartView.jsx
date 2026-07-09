@@ -5,7 +5,7 @@
 import { useMemo } from "react";
 import { parseChord, transposeChord, harmonicFunction, sameChordSound } from "../lib/theory.js";
 import { spellChord } from "../lib/spelling.js";
-import { findTabBlocks, unwrapTab } from "../lib/tab.js";
+import { findTabBlocks, unwrapTab, tokenizeTabLine } from "../lib/tab.js";
 import { C, FUNCTION_COLOR, MONO } from "../ui/theme.js";
 
 const isSectionHeader = (line) => {
@@ -30,22 +30,49 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
   // and rejoin tab lines the scraper hard-wrapped (same lines the parser sees).
   const clean = useMemo(() => unwrapTab(String(text || "").replace(/\[\/?(ch|tab)\]/g, "")), [text]);
   const lines = useMemo(() => clean.split(/\r?\n/), [clean]);
-  const tabRanges = useMemo(() => {
-    const set = new Set();
+  // line index → position in its tab block, so the block reads as one shape
+  // (rounded top/bottom edge) instead of six unrelated stripes.
+  const tabLines = useMemo(() => {
+    const map = new Map();
     for (const b of findTabBlocks(clean)) {
-      for (let i = 0; i < b.lines.length; i++) set.add(b.startLine + i);
+      for (let i = 0; i < b.lines.length; i++) {
+        map.set(b.startLine + i, { first: i === 0, last: i === b.lines.length - 1 });
+      }
     }
-    return set;
+    return map;
   }, [clean]);
 
   const tonic = activeKey?.tonic ?? 0;
   const mode = activeKey?.mode ?? "major";
 
+  // Tab runs: the grid recedes, the notes pop — dashes/bars faint, frets bold
+  // ink, X mutes coral (dead string), h/p/b/s marks teal (expressive move).
+  // Built per render (not module scope) because C is re-pointed on theme swap.
+  const tabRunStyle = {
+    label: { color: C.muted, fontWeight: 700 },
+    fret: { color: C.ink, fontWeight: 700 },
+    mute: { color: C.bassText },
+    tech: { color: C.toneText },
+    grid: { color: C.faint },
+  };
+
   return (
     <div style={{ fontFamily: MONO, fontSize: 14, lineHeight: 1.6, color: C.ink, whiteSpace: "pre", overflowX: "auto" }}>
       {lines.map((line, i) => {
-        if (tabRanges.has(i)) {
-          return <div key={i} style={{ color: C.ink, background: C.panel2, padding: "0 8px", borderLeft: `2px solid ${C.lineStrong}` }}>{line || " "}</div>;
+        const tab = tabLines.get(i);
+        if (tab) {
+          return (
+            <div key={i} style={{
+              background: C.panel2, padding: "0 8px",
+              borderLeft: `2px solid ${C.lineStrong}`,
+              ...(tab.first ? { marginTop: 4, paddingTop: 3, borderTopRightRadius: 6 } : {}),
+              ...(tab.last ? { marginBottom: 4, paddingBottom: 3, borderBottomRightRadius: 6 } : {}),
+            }}>
+              {line
+                ? tokenizeTabLine(line).map((r, j) => <span key={j} style={tabRunStyle[r.kind]}>{r.text}</span>)
+                : " "}
+            </div>
+          );
         }
         if (isSectionHeader(line)) {
           return (

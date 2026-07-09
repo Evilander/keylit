@@ -192,3 +192,33 @@ export function parseTab(text, opts = {}) {
 export function tabEventsToMidi(parsed) {
   return parsed.events.map((e) => e.notes.map((n) => n.midi));
 }
+
+/**
+ * Split one tab line into display runs so a renderer can dim the grid and
+ * brighten the notes without disturbing column alignment. Kinds:
+ *   "label" — the string-name prefix ("E|", "b:")
+ *   "fret"  — digits (the notes)
+ *   "mute"  — x/X dead strings
+ *   "tech"  — h/p/b/r/s/t / \ ~ ^ articulation marks, either case
+ *   "grid"  — dashes, bars, spaces, everything else
+ * Concatenating run texts always reproduces the input line exactly.
+ */
+export function tokenizeTabLine(line) {
+  const runs = [];
+  const push = (kind, text) => {
+    const last = runs[runs.length - 1];
+    if (last && last.kind === kind) last.text += text;
+    else runs.push({ kind, text });
+  };
+  let i = 0;
+  const label = /^\s*[A-Ga-g][#b]?\s*[|:]/.exec(line);
+  if (label) { push("label", label[0]); i = label[0].length; }
+  for (; i < line.length; i++) {
+    const ch = line[i];
+    if (ch >= "0" && ch <= "9") push("fret", ch);
+    else if (ch === "x" || ch === "X") push("mute", ch);
+    else if (/[hpbrst/\\~^]/i.test(ch)) push("tech", ch);
+    else push("grid", ch);
+  }
+  return runs;
+}
