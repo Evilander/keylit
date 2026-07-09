@@ -19,13 +19,16 @@ function normCapo(v) {
 
 // A line "reads as tab" if it's dash-heavy and, after an optional string label,
 // is almost entirely tab characters starting with a dash / digit / bar.
+// Case-insensitive: real tabs mute strings with X as often as x, and write
+// H/P/B technique marks uppercase — a lowercase-only class split six-string
+// blocks at the first X-muted line.
 function isTabLine(line) {
   if (!line) return false;
   const dashes = (line.match(/-/g) || []).length;
   if (dashes < 3) return false;
   const body = line.replace(/^\s*[A-Ga-g][#b]?\s*[|:]?\s?/, "");
   if (!body) return false;
-  const tabChars = (body.match(/[-0-9|:hpbsrxt\/\\~^.()* ]/g) || []).length;
+  const tabChars = (body.match(/[-0-9|:hpbsrxt\/\\~^.()* ]/gi) || []).length;
   const frac = tabChars / body.length;
   return frac >= 0.85 && /[-0-9|]/.test(body[0]);
 }
@@ -37,7 +40,7 @@ function isTabLine(line) {
  */
 export function unwrapTab(text) {
   const lines = String(text || "").split(/\r?\n/);
-  const TAIL = /^[-0-9|:hpbrsxt/\\~^.()* ]+$/;
+  const TAIL = /^[-0-9|:hpbrsxt/\\~^.()* ]+$/i;
   const out = [];
   for (let i = 0; i < lines.length; i++) {
     let line = lines[i];
@@ -95,8 +98,8 @@ function extractLabels(lines) {
   });
 }
 
-const TECH_BEFORE = /[hpbrs/\\~^]/;
-const TECH_AFTER = /[hpbrs/\\~^x]/;
+const TECH_BEFORE = /[hpbrs/\\~^]/i;
+const TECH_AFTER = /[hpbrs/\\~^x]/i;
 
 // Pull fret numbers (with their column + adjacent technique marks) from one row.
 function parseRowDigits(line) {
