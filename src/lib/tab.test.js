@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasTab, findTabBlocks, parseTabBlock, parseTab, tabEventsToMidi, unwrapTab } from "./tab.js";
+import { hasTab, findTabBlocks, parseTabBlock, parseTab, tabEventsToMidi, unwrapTab, tokenizeTabLine } from "./tab.js";
 
 const C_CHORD = `e|---0---|
 B|---1---|
@@ -256,6 +256,50 @@ describe("hard-wrapped tab lines (scraper artifact)", () => {
     expect(unwrapTab(unwrapTab(WRAPPED))).toBe(unwrapTab(WRAPPED));
     expect(unwrapTab(CHORDS_ONLY)).toBe(CHORDS_ONLY);
     expect(unwrapTab(MIXED)).toBe(MIXED);
+  });
+});
+
+describe("tokenizeTabLine — display runs", () => {
+  it("always reproduces the exact line when runs are concatenated", () => {
+    const lines = [
+      "E|-0--0--0",
+      "A|-X--X--0--X--X--0--1-",
+      "G|--7h9--12b14r12---|",
+      "e|---0---|",
+      "|--0--|",
+      "D|-----2-------------------|-0------- 0-|",
+    ];
+    for (const l of lines) {
+      expect(tokenizeTabLine(l).map((r) => r.text).join("")).toBe(l);
+    }
+  });
+
+  it("classifies label, grid, mutes, and frets on a muted-X line", () => {
+    const runs = tokenizeTabLine("A|-X--X--0");
+    expect(runs).toEqual([
+      { kind: "label", text: "A|" },
+      { kind: "grid", text: "-" },
+      { kind: "mute", text: "X" },
+      { kind: "grid", text: "--" },
+      { kind: "mute", text: "X" },
+      { kind: "grid", text: "--" },
+      { kind: "fret", text: "0" },
+    ]);
+  });
+
+  it("tags technique marks between frets, either case", () => {
+    const runs = tokenizeTabLine("G|--7h9--12B14---|");
+    const kinds = runs.map((r) => `${r.kind}:${r.text}`);
+    expect(kinds).toEqual([
+      "label:G|", "grid:--", "fret:7", "tech:h", "fret:9",
+      "grid:--", "fret:12", "tech:B", "fret:14", "grid:---|",
+    ]);
+  });
+
+  it("handles unlabeled lines (no label run)", () => {
+    const runs = tokenizeTabLine("|--0--|");
+    expect(runs[0]).toEqual({ kind: "grid", text: "|--" });
+    expect(runs.some((r) => r.kind === "label")).toBe(false);
   });
 });
 
