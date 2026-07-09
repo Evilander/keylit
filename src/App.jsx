@@ -31,6 +31,7 @@ import KeyWheel from "./components/KeyWheel.jsx";
 import CapoTuning from "./components/CapoTuning.jsx";
 import SongTools from "./components/SongTools.jsx";
 import ImportModal from "./components/ImportModal.jsx";
+import AddToSetlist from "./components/AddToSetlist.jsx";
 import ChartView from "./components/ChartView.jsx";
 import Library from "./components/Library.jsx";
 import Practice from "./components/Practice.jsx";
@@ -139,7 +140,8 @@ export default function App() {
   const openSong = useCallback(async (entry, ctx = null) => {
     const song = await loadSong(entry);
     if (!song) return;
-    setLoaded({ title: song.title, artist: song.artist, source: song.source, sourceUrl: song.sourceUrl, tuning: song.tuning, tuningRaw: song.tuningRaw, capo: song.capo, key: song.key, format: song.format });
+    // Keep the id: setlist records need source+id to stay resolvable later.
+    setLoaded({ id: song.id ?? entry.id, title: song.title, artist: song.artist, source: song.source, sourceUrl: song.sourceUrl, tuning: song.tuning, tuningRaw: song.tuningRaw, capo: song.capo, key: song.key, format: song.format });
     loadSheet(song.body || "");
     setSetlistCtx(ctx); // opened outside a setlist clears the gig strip
     setSection("song");
@@ -774,6 +776,9 @@ export default function App() {
                 ) : null}
                 {keyPicker}
                 <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8, alignItems: "center" }}>
+                  {/* Only songs with a source+id make live setlist entries;
+                      pasted/shared/ear charts would leave dead rows. */}
+                  {loaded?.id != null && <AddToSetlist song={loaded} />}
                   {sheet.trim() && (!loaded || loaded.source === "user" || loaded.source === "shared" || loaded.source === "ear") && (
                     <ShareChart data={{
                       title: loaded?.title || "Untitled chart", artist: loaded?.artist || undefined,
