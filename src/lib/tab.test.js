@@ -149,6 +149,72 @@ describe("defaultTuning (song metadata)", () => {
   });
 });
 
+describe("muted strings — the X real tabs actually use", () => {
+  // Scraped tabs mute strings with uppercase X at least as often as x. A line
+  // like "A|-X--X--0" must still read as tab, or the block splits at the A
+  // string and the whole bottom half of the tab (the bass line!) is dropped.
+  const MUTED_X = [
+    "E|-0--0--0",
+    "B|-0--0--0",
+    "G|-2--2--2",
+    "D|-2--2--2",
+    "A|-X--X--0",
+    "E|-2--4---",
+  ].join("\n");
+
+  it("keeps X-muted string lines inside the block", () => {
+    const blocks = findTabBlocks(MUTED_X);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].lines).toHaveLength(6);
+  });
+
+  it("still reads the tuning from all six labels and keeps the bass notes", () => {
+    const block = parseTabBlock(MUTED_X.split("\n"));
+    expect(block.tuning.id).toBe("standard");
+    expect(block.events.map((e) => e.col)).toEqual([3, 6, 9]);
+    expect(block.events[0].notes.map((n) => n.midi)).toEqual([42, 52, 57, 59, 64]);
+    expect(block.events[1].notes.map((n) => n.midi)).toEqual([44, 52, 57, 59, 64]);
+    expect(block.events[2].notes.map((n) => n.midi)).toEqual([45, 52, 57, 59, 64]);
+  });
+
+  it("never turns an X into a note (only the open A sounds)", () => {
+    const block = parseTabBlock(MUTED_X.split("\n"));
+    const aString = block.events.flatMap((e) => e.notes).filter((n) => n.string === 1);
+    expect(aString).toHaveLength(1);
+    expect(aString[0].fret).toBe(0);
+  });
+
+  it("captures uppercase technique marks like 7H9", () => {
+    const lines = [
+      "e|------------|", "B|------------|", "G|--7H9--12---|",
+      "D|------------|", "A|------------|", "E|------------|",
+    ];
+    const block = parseTabBlock(lines);
+    const flat = block.events.map((e) => ({ fret: e.notes[0].fret, tech: e.notes[0].tech }));
+    expect(flat).toEqual([
+      { fret: 7, tech: "H" },
+      { fret: 9, tech: "H" },
+      { fret: 12, tech: "" },
+    ]);
+  });
+
+  it("rejoins a wrapped tail that contains muted X", () => {
+    const pad = (s, n) => s + "-".repeat(n - s.length);
+    const wrapped = [
+      pad("E|---0---", 100), "--0-|",
+      pad("B|---1---", 100), "--1-|",
+      pad("G|---0---", 100), "--0-|",
+      pad("D|---2---", 100), "--2-|",
+      pad("A|---3---", 100), "-XX-|",
+      pad("E|---X---", 100), "--0-|",
+    ].join("\n");
+    const blocks = findTabBlocks(wrapped);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].lines).toHaveLength(6);
+    expect(blocks[0].lines.every((l) => l.trimEnd().endsWith("|"))).toBe(true);
+  });
+});
+
 describe("bass tab", () => {
   it("reads a 4-string E-A-D-G bass tab an octave below guitar", () => {
     const lines = ["G|-------|", "D|-------|", "A|---3---|", "E|-0-----|"];
