@@ -206,6 +206,9 @@
 .chip:active { transform: translateY(1px); }
 .chip .lead { color: var(--kl-teal-text); }
 
+/* ---- dropdown menu rows (pick-a-setlist etc.) ---- */
+.kl-menu-item:hover { background: var(--kl-sunken); }
+
 /* ---- focus visibility (a11y floor) ---- */
 :focus-visible { outline: 2px solid var(--kl-teal-ui); outline-offset: 2px; border-radius: 4px; }
 
