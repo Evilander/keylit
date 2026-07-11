@@ -93,14 +93,33 @@ function scoreShape(frets, fingers, barre, ctx) {
   const distinctFingers = new Set(fingers.filter((f) => f != null)).size;
   const coversAll = [...chordPcsAll].every((p) => soundedPcs.has(p));
 
-  // An open string beside a finger planted at fret 3+ is an arched-finger
+  // An open string beside a finger planted at fret 4+ is an arched-finger
   // stunt, not a chord box (kills the "harp voicings" the raw search loves).
+  // Fret 3 is exempt: the cowboy G (320003) arches over its open B just fine.
   let awkwardOpens = 0;
   for (let s = 0; s < n; s++) {
     if (frets[s] !== 0) continue;
     const left = s > 0 ? frets[s - 1] : null;
     const right = s < n - 1 ? frets[s + 1] : null;
-    if ((left != null && left >= 3) || (right != null && right >= 3)) awkwardOpens++;
+    if ((left != null && left >= 4) || (right != null && right >= 4)) awkwardOpens++;
+  }
+
+  // Split reach: two unbarred fingers at the SAME fret with a string between
+  // them fretted 2+ frets higher — the hand can't claw that cleanly (the Bb7
+  // "x10131 zigzag" from the shape audit). One fret higher is fine: the open
+  // D triangle (xx0232) is built on exactly that.
+  let splitReach = false;
+  const frettedIdx = [];
+  for (let s = 0; s < n; s++) if (frets[s] != null && frets[s] > 0) frettedIdx.push(s);
+  for (let i = 0; i < frettedIdx.length && !splitReach; i++) {
+    for (let j = i + 1; j < frettedIdx.length && !splitReach; j++) {
+      const a = frettedIdx[i], b = frettedIdx[j];
+      if (frets[a] !== frets[b]) continue;
+      if (barre && frets[a] === barre.fret) continue;
+      for (let s = a + 1; s < b; s++) {
+        if (frets[s] != null && frets[s] >= frets[a] + 2) { splitReach = true; break; }
+      }
+    }
   }
 
   // Tensions (the 9 in add9/9, the sus tone) belong above the root's octave;
@@ -127,6 +146,7 @@ function scoreShape(frets, fingers, barre, ctx) {
     0.8 * trailing -
     0.5 * leading -
     1.8 * awkwardOpens -
+    (splitReach ? 1.5 : 0) -
     4.5 * lowTensions +
     (coversAll ? 0.7 : 0) +
     (interior === 0 ? 2.5 : 0) + // one contiguous strum
@@ -155,9 +175,17 @@ export function chordShapes(chord, { tuning = STANDARD_TUNING, limit = 6, maxFre
     chordPcsAll.add(bassPc);
     const required = requiredPcs(chord);
     const nStrings = tuning.length;
-    // A power chord is a compact low growl, not a six-string jangle.
+    // A power chord is a compact low growl, not a six-string jangle — and the
+    // bare two-note root+fifth is its most iconic form.
     const isPower = new Set(chord.intervals.map(pcOf)).size < 3;
     const maxSounding = isPower ? 4 : Infinity;
+    const minSounding = isPower ? 2 : 3;
+    // In an open tuning, the tuning itself is a chord: a shape that is (nearly)
+    // all open strings may carry the FIFTH in the bass, the way every open-G
+    // player strums all six for G. Never for slash chords — those name their bass.
+    const fifthIv = [7, 6, 8].find((i) => chord.intervals.some((x) => pcOf(x) === i));
+    const openFifthBassPc = chord.bassSemitone == null && fifthIv != null
+      ? pcOf(chord.rootSemitone + fifthIv) : null;
     // Which pcs behave as tensions: real extensions (9/11/13), and the sus
     // tone when there is no third to anchor it.
     const hasThird = chord.intervals.some((i) => pcOf(i) === 3 || pcOf(i) === 4);
@@ -195,7 +223,10 @@ export function chordShapes(chord, { tuning = STANDARD_TUNING, limit = 6, maxFre
           let first = firstSoundPc;
           if (f != null && first == null) {
             first = pcOf(tuning[s] + f);
-            if (first !== bassPc) { frets[s] = null; continue; } // bass rule, pruned early
+            // Bass rule, pruned early: root (or the named slash bass) on the
+            // bottom — an OPEN fifth squeaks through to the ≥5-opens check.
+            const fifthOk = f === 0 && openFifthBassPc != null && first === openFifthBassPc;
+            if (first !== bassPc && !fifthOk) { frets[s] = null; continue; }
           }
           walk(s + 1, first);
         }
@@ -212,17 +243,27 @@ export function chordShapes(chord, { tuning = STANDARD_TUNING, limit = 6, maxFre
           sounded.push(tuning[s] + fr[s]);
           soundedPcs.add(pcOf(tuning[s] + fr[s]));
         }
-        if (sounded.length < 3 || sounded.length > maxSounding) return;
+        if (sounded.length < minSounding || sounded.length > maxSounding) return;
         for (const p of required) if (!soundedPcs.has(p)) return;
         if (!soundedPcs.has(rootPc)) return;
         sounded.sort((a, b) => a - b);
-        if (pcOf(sounded[0]) !== bassPc) return; // the PITCH on the bottom, not just the string
+        // The PITCH on the bottom, not just the string: root or slash bass —
+        // or the fifth, but ONLY when the shape IS the tuning (all strings
+        // open, the every-open-G-player's strum). Anything fretted must obey.
+        let bassIsOpenFifth = false;
+        if (pcOf(sounded[0]) !== bassPc) {
+          bassIsOpenFifth = openFifthBassPc != null &&
+            pcOf(sounded[0]) === openFifthBassPc &&
+            fr.every((f) => f === 0);
+          if (!bassIsOpenFifth) return;
+        }
         const fretted = fr.filter((f) => f != null && f > 0);
         if (fretted.length && Math.max(...fretted) - Math.min(...fretted) > SPAN) return;
         const fing = fingerings(fr);
         if (!fing) return;
         const snapshot = fr.slice();
-        const score = scoreShape(snapshot, fing.fingers, fing.barre, scoreCtx);
+        const score = scoreShape(snapshot, fing.fingers, fing.barre, scoreCtx) -
+          (bassIsOpenFifth ? 0.4 : 0);
         const baseFret = fretted.length && Math.max(...fretted) > 4 ? Math.min(...fretted) : 1;
         found.set(k, {
           frets: snapshot, fingers: fing.fingers, barre: fing.barre,
