@@ -37,12 +37,12 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
   // Measure at OPEN time, not enter time — the page can scroll during the
   // delay (keyboard nav, programmatic scrolls) and a stale rect floats the
   // card into nowhere.
-  const armCard = (el, chord, key, delay) => {
+  const armCard = (el, chord, key, delay, focus = false) => {
     if (!guitar) return;
     cancelTimers();
     openT.current = setTimeout(() => {
       if (!el.isConnected) return;
-      setHover({ chord, rect: el.getBoundingClientRect(), key });
+      setHover({ chord, rect: el.getBoundingClientRect(), key, el, focus });
     }, delay);
   };
   const disarmCard = () => {
@@ -55,7 +55,11 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
   useEffect(() => { setHover(null); }, [text, transpose]);
   useEffect(() => {
     if (!hover) return;
-    const onKey = (e) => { if (e.key === "Escape") setHover(null); };
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      hover.el?.focus?.(); // hand focus back to the token that opened it
+      setHover(null);
+    };
     const onScroll = () => setHover(null);
     window.addEventListener("keydown", onKey);
     window.addEventListener("scroll", onScroll, true);
@@ -83,6 +87,27 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
   const tonic = activeKey?.tonic ?? 0;
   const mode = activeKey?.mode ?? "major";
 
+  // Parse once per text/lens change, not per hover: hovering (and playback
+  // stepping) restyles tokens but never re-parses the chart.
+  const plan = useMemo(() => lines.map((line, i) => {
+    const pos = tabLines.get(i);
+    if (pos) return { kind: "tab", pos, line };
+    if (isSectionHeader(line)) return { kind: "header", line };
+    const info = chordLineInfo(line);
+    if (!info) return { kind: "lyric", line };
+    return {
+      kind: "chords",
+      line,
+      tokens: info.tokens.map((tok) => {
+        if (!tok.trim()) return { text: tok, gap: true };
+        const parsed = parseChord(tok);
+        if (!parsed) return { text: tok, plain: true };
+        const view = transpose ? transposeChord(parsed, transpose) : parsed;
+        return { text: tok, view, fn: harmonicFunction(view, tonic, mode), label: spellChord(view, activeKey) };
+      }),
+    };
+  }), [lines, tabLines, transpose, tonic, mode, activeKey]);
+
   // Tab runs: the grid recedes, the notes pop — dashes/bars faint, frets bold
   // ink, X mutes coral (dead string), h/p/b/s marks teal (expressive move).
   // Built per render (not module scope) because C is re-pointed on theme swap.
@@ -96,8 +121,9 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
 
   return (
     <div style={{ fontFamily: MONO, fontSize: 14, lineHeight: 1.6, color: C.ink, whiteSpace: "pre", overflowX: "auto" }}>
-      {lines.map((line, i) => {
-        const tab = tabLines.get(i);
+      {plan.map((entry, i) => {
+        const line = entry.line;
+        const tab = entry.kind === "tab" ? entry.pos : null;
         if (tab) {
           return (
             <div key={i} style={{
@@ -112,7 +138,7 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
             </div>
           );
         }
-        if (isSectionHeader(line)) {
+        if (entry.kind === "header") {
           return (
             <div key={i} style={{ marginTop: 14, marginBottom: 2 }}>
               <span style={{ fontFamily: "var(--kl-sans)", textTransform: "uppercase", letterSpacing: "0.09em", fontSize: 11.5, fontWeight: 700, color: C.muted }}>
@@ -121,35 +147,36 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
             </div>
           );
         }
-        const info = chordLineInfo(line);
-        if (info) {
+        if (entry.kind === "chords") {
           return (
             <div key={i}>
-              {info.tokens.map((tok, j) => {
-                if (!tok.trim()) return <span key={j}>{tok}</span>;
-                const parsed = parseChord(tok);
-                if (!parsed) return <span key={j} style={{ color: C.muted }}>{tok}</span>;
-                const view = transpose ? transposeChord(parsed, transpose) : parsed;
-                const fn = harmonicFunction(view, tonic, mode);
-                const color = FUNCTION_COLOR[fn] || C.ink;
-                // The chart is a playing surface: always honor its selected
-                // chord-name lens, even when the pitches have not moved.
-                const label = spellChord(view, activeKey);
+              {entry.tokens.map((t, j) => {
+                if (t.gap) return <span key={j}>{t.text}</span>;
+                if (t.plain) return <span key={j} style={{ color: C.muted }}>{t.text}</span>;
+                // Colors resolve at render (theme swap re-points the live C).
+                const color = FUNCTION_COLOR[t.fn] || C.ink;
+                const fnName = t.fn === "?" ? "chromatic" : t.fn;
                 // Sound-based match: survives respelling (A# vs B♭) and transposition.
-                const active = activeChord && sameChordSound(view, activeChord);
+                const active = activeChord && sameChordSound(t.view, activeChord);
                 const tokenKey = `${i}:${j}`;
                 const lit = active || hover?.key === tokenKey;
                 return (
                   <span key={j} role="button" tabIndex={0}
-                    onClick={() => onChordClick?.(view)}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChordClick?.(view); } }}
-                    onMouseEnter={(e) => armCard(e.currentTarget, view, tokenKey, 160)}
+                    aria-label={guitar
+                      ? `${t.label} — ${fnName} function. Enter hears it; ArrowDown opens the guitar grip.`
+                      : undefined}
+                    onClick={() => onChordClick?.(t.view)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChordClick?.(t.view); }
+                      else if (e.key === "ArrowDown" && guitar) { e.preventDefault(); armCard(e.currentTarget, t.view, tokenKey, 0, true); }
+                    }}
+                    onMouseEnter={(e) => armCard(e.currentTarget, t.view, tokenKey, 160)}
                     onMouseLeave={disarmCard}
-                    onFocus={(e) => armCard(e.currentTarget, view, tokenKey, 0)}
+                    onFocus={(e) => armCard(e.currentTarget, t.view, tokenKey, 0)}
                     onBlur={disarmCard}
-                    title={guitar ? undefined : `${label} — ${fn === "?" ? "chromatic" : fn} function · click to hear`}
+                    title={guitar ? undefined : `${t.label} — ${fnName} function · click to hear`}
                     style={{ color, fontWeight: 700, cursor: "pointer", borderBottom: `2px solid ${color}`, background: lit ? `${color}1f` : "transparent" }}>
-                    {label}
+                    {t.label}
                   </span>
                 );
               })}
@@ -160,9 +187,10 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
       })}
       {guitar && hover && (
         <ChordHoverCard chord={hover.chord} anchor={hover.rect} activeKey={activeKey}
-          strumTuning={guitar.strumTuning} strumCapo={guitar.strumCapo}
+          shapeTuning={guitar.shapeTuning} strumTuning={guitar.strumTuning} strumCapo={guitar.strumCapo}
           onPlayPiano={onChordClick} onStrum={guitar.onStrum}
-          onPointerEnter={holdCard} onPointerLeave={disarmCard} />
+          onPointerEnter={holdCard} onPointerLeave={disarmCard}
+          focusOnOpen={hover.focus} />
       )}
     </div>
   );

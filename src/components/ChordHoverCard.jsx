@@ -3,7 +3,7 @@
 // paged best-first, the fret string guitarists trade, and two ways to hear
 // it — the piano voicing, or the actual guitar voicing rolled string by
 // string at concert pitch. Presentational: ChartView decides when it lives.
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Guitar, Piano } from "lucide-react";
 import { chordShapes, shapeFingerString, shapeMidi } from "../lib/chordShapes.js";
@@ -18,16 +18,23 @@ const CARD_W = 216;
 
 export default function ChordHoverCard({
   chord, anchor, activeKey,
+  // Patterns are searched in shapeTuning; the strum sounds through
+  // strumTuning + capo. For a uniformly detuned guitar those differ on
+  // purpose — the reading chord already carries the shift, so the player
+  // fingers familiar STANDARD shapes. A non-uniform (drop/open) tuning
+  // must search its own fretboard or the frets would lie.
+  shapeTuning = STANDARD_TUNING,
   strumTuning = STANDARD_TUNING, strumCapo = 0,
   onPlayPiano, onStrum,
   onPointerEnter, onPointerLeave,
+  focusOnOpen = false,
 }) {
   const [variant, setVariant] = useState(0);
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
 
   const label = spellChord(chord, activeKey);
-  const shapes = useMemo(() => chordShapes(chord, { limit: 5 }), [chord]);
+  const shapes = useMemo(() => chordShapes(chord, { tuning: shapeTuning, limit: 5 }), [chord, shapeTuning]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useMemo(() => setVariant(0), [label]);
   const shape = shapes[Math.min(variant, shapes.length - 1)] || null;
@@ -38,9 +45,15 @@ export default function ChordHoverCard({
   const noteLabels = useMemo(() => {
     if (!shape) return null;
     return shape.frets.map((f, s) =>
-      f == null ? null : spellDegreePc(pcOf(STANDARD_TUNING[s] + f), activeKey)
+      f == null ? null : spellDegreePc(pcOf(shapeTuning[s] + f), activeKey)
     );
-  }, [shape, activeKey]);
+  }, [shape, shapeTuning, activeKey]);
+
+  // Keyboard path: ArrowDown on a chord token lands focus on the first
+  // button in here; focus anywhere inside keeps the card alive.
+  useEffect(() => {
+    if (focusOnOpen) ref.current?.querySelector("button")?.focus();
+  }, [focusOnOpen]);
 
   // Place beside the token: below by default, above when the bottom is tight.
   useLayoutEffect(() => {
@@ -71,6 +84,8 @@ export default function ChordHoverCard({
   return createPortal(
     <div ref={ref} role="dialog" aria-label={`${label} on guitar`} className="kl-pop"
       onMouseEnter={onPointerEnter} onMouseLeave={onPointerLeave}
+      onFocus={onPointerEnter}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) onPointerLeave?.(); }}
       style={{
         position: "fixed", zIndex: 1000, width: CARD_W,
         left: pos ? pos.left : -9999, top: pos ? pos.top : -9999,
@@ -88,7 +103,7 @@ export default function ChordHoverCard({
       {shape ? (
         <>
           <div style={{ display: "flex", justifyContent: "center", marginTop: 4 }}>
-            <ChordDiagram shape={shape} tuning={STANDARD_TUNING}
+            <ChordDiagram shape={shape} tuning={shapeTuning}
               rootPc={pcOf(chord.rootSemitone)} bassPc={chord.bassSemitone}
               noteLabels={noteLabels} width={128} />
           </div>
@@ -102,7 +117,7 @@ export default function ChordHoverCard({
                   onClick={(e) => { e.stopPropagation(); setVariant((v) => (v - 1 + shapes.length) % shapes.length); }}>
                   <ChevronLeft size={12} />
                 </button>
-                <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.faint }}>
+                <span style={{ fontFamily: MONO, fontSize: 10.5, color: C.muted }}>
                   {Math.min(variant, shapes.length - 1) + 1}/{shapes.length}
                 </span>
                 <button style={pagerBtn} aria-label="next shape"
@@ -131,7 +146,7 @@ export default function ChordHoverCard({
           </button>
         )}
         {strumCapo > 0 && (
-          <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: C.faint }}>
+          <span style={{ marginLeft: "auto", fontFamily: MONO, fontSize: 10, color: C.muted }}>
             capo {strumCapo}
           </span>
         )}
