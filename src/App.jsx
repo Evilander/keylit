@@ -45,7 +45,7 @@ import { benchBook, userSongbook } from "./storage.js";
 import { slugSongKey } from "./lib/bench.js";
 import { decodeShare } from "./lib/sharelink.js";
 import { buildUserSong } from "./lib/usersong.js";
-import { chartShiftForGuitar } from "./lib/tuning.js";
+import { chartShiftForGuitar, TUNINGS } from "./lib/tuning.js";
 import GuitarSetup from "./components/GuitarSetup.jsx";
 
 const DEFAULT_SHEET = `[Intro]
@@ -409,6 +409,31 @@ export default function App() {
   const step = (d) => { arm(); setIsPlaying(false); setCurrentIdx((i) => Math.max(0, Math.min(view.prog.length - 1, i + d))); };
   const togglePlay = () => { arm(); stopArrangement(); if (!isPlaying && currentIdx >= view.prog.length - 1) setCurrentIdx(0); setIsPlaying((p) => !p); };
   const playSingleKey = (midi) => { arm(); ensureAndPlay([midi], 1.0); setFlash(new Set([midi])); setTimeout(() => setFlash(new Set()), 260); };
+
+  // A chord clicked (or heard from the hover card) in the chart: land the
+  // piano there and SOUND it — even when it's already the current chord (the
+  // currentIdx effect only fires on change, which used to leave a re-click
+  // silent). Chords outside the parsed progression play at sounding pitch.
+  const hearReadingChord = useCallback((ch) => {
+    arm();
+    const i = readingView.prog.findIndex((c) => sameChordSound(c, ch));
+    if (i >= 0) {
+      setIsPlaying(false);
+      if (i === currentIdx) ensureAndPlay(audioVoicingRef.current[i]);
+      else setCurrentIdx(i);
+    } else {
+      ensureAndPlay(rootPositionFull(transposeChord(ch, pitchShift - readingShift)), 1.4);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readingView, currentIdx, ensureAndPlay, pitchShift, readingShift]);
+
+  // The hover card's strum: the guitar voicing rolled low string to high,
+  // through whatever instrument is loaded. 58ms per string ≈ a relaxed strum.
+  const strumNotes = useCallback((midis) => {
+    arm();
+    midis.forEach((m, i) => setTimeout(() => ensureAndPlay([m], 1.9 - i * 0.08), i * 58));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ensureAndPlay]);
 
   const auditionChords = useCallback((chords) => {
     arm();
@@ -827,12 +852,11 @@ export default function App() {
               <section style={{ marginTop: 18 }}>
                 <ChartView text={sheet} activeKey={readingKey} transpose={readingShift}
                   activeChord={readingView.prog[currentIdx] || null}
-                  onChordClick={(ch) => {
-                    arm();
-                    // Match by position in the reading view (indexes align across
-                    // views), then let playback speak sounding pitch as always.
-                    const i = readingView.prog.findIndex((c) => sameChordSound(c, ch));
-                    if (i >= 0) { setIsPlaying(false); setCurrentIdx(i); }
+                  onChordClick={hearReadingChord}
+                  guitar={{
+                    strumTuning: (TUNINGS[guitarTuning] || TUNINGS.standard).notes,
+                    strumCapo: effectiveCapo,
+                    onStrum: strumNotes,
                   }} />
               </section>
               {chartInput}

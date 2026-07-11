@@ -2,11 +2,14 @@
 // One monospace column (Berkeley Mono) so columns line up the way songbooks do.
 // Lines are classified: section header, ASCII tab block, chord-over-lyric, or
 // lyric. Chord tokens are colored by harmonic function (T/S/D) and clickable.
-import { useMemo } from "react";
+// Hovering (or focusing) a chord raises the guitar-grip card: diagram,
+// variants, and piano/strum playback — pass `guitar` to enable it.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { parseChord, transposeChord, harmonicFunction, sameChordSound } from "../lib/theory.js";
 import { spellChord } from "../lib/spelling.js";
 import { findTabBlocks, unwrapTab, tokenizeTabLine } from "../lib/tab.js";
 import { C, FUNCTION_COLOR, MONO } from "../ui/theme.js";
+import ChordHoverCard from "./ChordHoverCard.jsx";
 
 const isSectionHeader = (line) => {
   const t = line.trim();
@@ -25,7 +28,42 @@ function chordLineInfo(line) {
   return hits >= 1 && hits / words.length >= 0.5 ? { tokens } : null;
 }
 
-export default function ChartView({ text, activeKey, transpose = 0, onChordClick, activeChord }) {
+export default function ChartView({ text, activeKey, transpose = 0, onChordClick, activeChord, guitar }) {
+  // The grip card. One card serves every token: enter arms it after a beat,
+  // leave gives a grace period so the pointer can travel into the card.
+  const [hover, setHover] = useState(null); // { chord, rect, key }
+  const openT = useRef(null), closeT = useRef(null);
+  const cancelTimers = () => { clearTimeout(openT.current); clearTimeout(closeT.current); };
+  // Measure at OPEN time, not enter time — the page can scroll during the
+  // delay (keyboard nav, programmatic scrolls) and a stale rect floats the
+  // card into nowhere.
+  const armCard = (el, chord, key, delay) => {
+    if (!guitar) return;
+    cancelTimers();
+    openT.current = setTimeout(() => {
+      if (!el.isConnected) return;
+      setHover({ chord, rect: el.getBoundingClientRect(), key });
+    }, delay);
+  };
+  const disarmCard = () => {
+    if (!guitar) return;
+    cancelTimers();
+    closeT.current = setTimeout(() => setHover(null), 240);
+  };
+  const holdCard = () => cancelTimers();
+  useEffect(() => cancelTimers, []);
+  useEffect(() => { setHover(null); }, [text, transpose]);
+  useEffect(() => {
+    if (!hover) return;
+    const onKey = (e) => { if (e.key === "Escape") setHover(null); };
+    const onScroll = () => setHover(null);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [hover]);
   // Strip Ultimate-Guitar [ch]/[tab] wrappers so pasted UG charts render clean,
   // and rejoin tab lines the scraper hard-wrapped (same lines the parser sees).
   const clean = useMemo(() => unwrapTab(String(text || "").replace(/\[\/?(ch|tab)\]/g, "")), [text]);
@@ -99,12 +137,18 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
                 const label = spellChord(view, activeKey);
                 // Sound-based match: survives respelling (A# vs B♭) and transposition.
                 const active = activeChord && sameChordSound(view, activeChord);
+                const tokenKey = `${i}:${j}`;
+                const lit = active || hover?.key === tokenKey;
                 return (
                   <span key={j} role="button" tabIndex={0}
                     onClick={() => onChordClick?.(view)}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChordClick?.(view); } }}
-                    title={`${label} — ${fn === "?" ? "chromatic" : fn} function · click to hear`}
-                    style={{ color, fontWeight: 700, cursor: "pointer", borderBottom: `2px solid ${color}`, background: active ? `${color}1f` : "transparent" }}>
+                    onMouseEnter={(e) => armCard(e.currentTarget, view, tokenKey, 160)}
+                    onMouseLeave={disarmCard}
+                    onFocus={(e) => armCard(e.currentTarget, view, tokenKey, 0)}
+                    onBlur={disarmCard}
+                    title={guitar ? undefined : `${label} — ${fn === "?" ? "chromatic" : fn} function · click to hear`}
+                    style={{ color, fontWeight: 700, cursor: "pointer", borderBottom: `2px solid ${color}`, background: lit ? `${color}1f` : "transparent" }}>
                     {label}
                   </span>
                 );
@@ -114,6 +158,12 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
         }
         return <div key={i} style={{ color: C.ink }}>{line || " "}</div>;
       })}
+      {guitar && hover && (
+        <ChordHoverCard chord={hover.chord} anchor={hover.rect} activeKey={activeKey}
+          strumTuning={guitar.strumTuning} strumCapo={guitar.strumCapo}
+          onPlayPiano={onChordClick} onStrum={guitar.onStrum}
+          onPointerEnter={holdCard} onPointerLeave={disarmCard} />
+      )}
     </div>
   );
 }
