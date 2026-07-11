@@ -17,7 +17,8 @@ const soundingPcs = (shape, tuning = STANDARD_TUNING) =>
 describe("open-position majors and minors (the first-week chords)", () => {
   it("C major is x32010", () => expect(top("C")).toBe("x32010"));
   it("A major is x02220", () => expect(top("A")).toBe("x02220"));
-  it("G major reads 320003 up top", () => expect(names("G")).toContain("320003"));
+  it("G major is 320003 — the full six-string cowboy chord ranks first", () =>
+    expect(top("G")).toBe("320003"));
   it("E major is 022100", () => expect(top("E")).toBe("022100"));
   it("D major is xx0232", () => expect(top("D")).toBe("xx0232"));
   it("A minor is x02210", () => expect(top("Am")).toBe("x02210"));
@@ -74,6 +75,22 @@ describe("sus, add and power", () => {
   it("Cadd9 finds x32030", () => expect(names("Cadd9")).toContain("x32030"));
   it("E5 finds the power chord 022xxx", () => expect(names("E5")).toContain("022xxx"));
   it("A5 finds x022xx", () => expect(names("A5")).toContain("x022xx"));
+  it("C5 can be the bare two-note growl x35xxx", () =>
+    expect(names("C5", 6)).toContain("x35xxx"));
+});
+
+describe("audit regressions (found by the shape-audit workflow)", () => {
+  it("Bb7 leads with the A7-shape barre, not a crossed-finger zigzag", () => {
+    expect(top("Bb7")).toBe("x13131");
+  });
+  it("in Open G, the G chord is the tuning itself — all six strings open", () => {
+    expect(top("G", { tuning: TUNINGS.openG.notes })).toBe("000000");
+  });
+  it("a fifth may only sit in the bass when the shape is (nearly) the open tuning", () => {
+    // Am in standard tuning must NOT become Am/E (002210) — x02210 stays.
+    expect(top("Am")).toBe("x02210");
+    for (const s of shapes("Am")) expect(pcOf(s.midi[0])).toBe(9);
+  });
 });
 
 describe("slash chords put the named bass on the bottom", () => {
