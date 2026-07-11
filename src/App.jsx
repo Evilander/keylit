@@ -45,7 +45,7 @@ import { benchBook, userSongbook } from "./storage.js";
 import { slugSongKey } from "./lib/bench.js";
 import { decodeShare } from "./lib/sharelink.js";
 import { buildUserSong } from "./lib/usersong.js";
-import { chartShiftForGuitar, TUNINGS } from "./lib/tuning.js";
+import { chartShiftForGuitar, STANDARD_TUNING, TUNINGS, uniformTuningOffset } from "./lib/tuning.js";
 import GuitarSetup from "./components/GuitarSetup.jsx";
 
 const DEFAULT_SHEET = `[Intro]
@@ -854,6 +854,12 @@ export default function App() {
                   activeChord={readingView.prog[currentIdx] || null}
                   onChordClick={hearReadingChord}
                   guitar={{
+                    // A uniformly detuned guitar fingers familiar STANDARD
+                    // shapes (the reading chord carries the shift); a drop/
+                    // open tuning must search its own fretboard.
+                    shapeTuning: uniformTuningOffset(guitarTuning) != null
+                      ? STANDARD_TUNING
+                      : (TUNINGS[guitarTuning] || TUNINGS.standard).notes,
                     strumTuning: (TUNINGS[guitarTuning] || TUNINGS.standard).notes,
                     strumCapo: effectiveCapo,
                     onStrum: strumNotes,
