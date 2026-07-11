@@ -140,34 +140,166 @@ TUNING_MAP = {
     "standard": "standard",
     "eadgbe": "standard",
     "standard tuning": "standard",
+    "eb standard": "ebStandard",
+    "ebstandard": "ebStandard",
+    "eb ab db gb bb eb": "ebStandard",
+    "ebabdbgbbbeb": "ebStandard",
+    "d# g# c# f# a# d#": "ebStandard",
+    "d#g#c#f#a#d#": "ebStandard",
+    "d standard": "dStandard",
+    "dstandard": "dStandard",
+    "dgcfad": "dStandard",
     "drop d": "dropD",
     "dropd": "dropD",
     "dadgbe": "dropD",
+    "double drop d": "doubleDropD",
+    "doubledropd": "doubleDropD",
+    "dadgbd": "doubleDropD",
+    "drop c": "dropC",
+    "dropc": "dropC",
+    "cgcfad": "dropC",
+    "drop c#": "dropCsharp",
+    "drop c sharp": "dropCsharp",
+    "dropcsharp": "dropCsharp",
+    "c#g#c#f#a#d#": "dropCsharp",
     "open d": "openD",
     "open d tuning": "openD",
+    "dadf#ad": "openD",
     "open e": "openE",
+    "ebeg#be": "openE",
     "open g": "openG",
     "open g tuning": "openG",
+    "dgdgbd": "openG",
     "open a": "openA",
+    "eaeac#e": "openA",
     "open c": "openC",
+    "cgcgce": "openC",
+    "open csus2": "openCsus2",
+    "open c sus2": "openCsus2",
+    "cgcgcd": "openCsus2",
     "dadgad": "DADGAD",
+    "eadeae": "EADEAE",
+}
+
+TUNING_NAMES = {
+    "standard": "Standard",
+    "ebStandard": "Eb Standard",
+    "dStandard": "D Standard",
+    "dropD": "Drop D",
+    "doubleDropD": "Double Drop D",
+    "dropC": "Drop C",
+    "dropCsharp": "Drop C#",
+    "openD": "Open D",
+    "openE": "Open E",
+    "openG": "Open G",
+    "openA": "Open A",
+    "openC": "Open C",
+    "openCsus2": "Open Csus2",
+    "DADGAD": "DADGAD",
+    "CGCGCD": "C Modal",
+    "DADGBD": "D A D G B D",
+    "EADEAE": "EADEAE",
 }
 
 TUNING_LINE_RE = re.compile(r"^\s*Tuning\s*[:=]\s*(.+)$", re.I | re.M)
 CAPO_LINE_RE = re.compile(r"^\s*Capo\s*[:=]?\s*(\d+)", re.I | re.M)
 TRANSCRIBER_RE = re.compile(r"(?:tabbed|transcribed|arranged)\s+by\s*[:\-]?\s*(.*)", re.I)
+COMPACT_TUNING_RE = re.compile(r"\b(?:[A-Ga-g][#b]?){6}\b")
+CHAINED_TUNING_RE = re.compile(r"^[A-Ga-g][#b]?(?:\s*[-,./|]\s*[A-Ga-g][#b]?){5}$")
+NOTE_TOKEN_RE = re.compile(r"[A-Ga-g][#b]?")
+
+
+def normalize_note_token(tok: str) -> str:
+    return tok[0].upper() + tok[1:]
+
+
+def note_spelling_from_declaration(raw: str) -> list[str] | None:
+    stripped = clean_text(raw).replace("♭", "b").replace("♯", "#")
+    compact = COMPACT_TUNING_RE.search(stripped)
+    if compact:
+        notes = [normalize_note_token(m.group(0)) for m in NOTE_TOKEN_RE.finditer(compact.group(0))]
+        if len(notes) == 6:
+            return notes
+    if CHAINED_TUNING_RE.match(stripped):
+        notes = [normalize_note_token(m.group(0)) for m in NOTE_TOKEN_RE.finditer(stripped)]
+        if len(notes) == 6:
+            return notes
+    if re.fullmatch(r"[A-Ga-g#b♭♯\s]+", stripped):
+        notes = [normalize_note_token(m.group(0)) for m in NOTE_TOKEN_RE.finditer(stripped)]
+        if len(notes) == 6:
+            return notes
+    return None
+
+
+def find_tuning_declaration(body: str) -> str | None:
+    m = TUNING_LINE_RE.search(body)
+    if m:
+        return clean_text(m.group(1))
+    for raw in body.splitlines():
+        line = clean_text(raw)
+        if not line or len(line) > 60 or re.search(r"\bquarter|1/4\b", line, re.I):
+            continue
+        if COMPACT_TUNING_RE.fullmatch(line) or CHAINED_TUNING_RE.match(line):
+            return line
+    for raw in body.splitlines():
+        line = clean_text(raw)
+        if not line or len(line) > 120 or re.search(r"\bquarter|1/4\b", line, re.I):
+            continue
+        if re.search(r"\bin tune with\b", line, re.I):
+            continue
+        if re.search(r"\b(?:tune|tuned|tuning|dropped?|drop|open\s+[a-g]|dadgad|standard|step\s+down)\b", line, re.I):
+            return line
+        if re.search(r"\b(?:EADGBE|DGCFAD|DADGBE|DADGBD|DADGAD|CGCGCD|CGCGCE|EADEAE)\b", line):
+            return line
+    return None
 
 
 def extract_tuning_capo(body: str) -> tuple[str, str | None, int | None]:
-    tuning_raw = None
+    tuning_raw = find_tuning_declaration(body)
     tuning_id = "standard"
-    m = TUNING_LINE_RE.search(body)
-    if m:
-        tuning_raw = clean_text(m.group(1))
-        if tuning_raw:
-            key_compact = re.sub(r"[^a-z0-9 ]", "", tuning_raw.lower()).strip()
-            key_nospace = key_compact.replace(" ", "")
-            tuning_id = TUNING_MAP.get(key_compact) or TUNING_MAP.get(key_nospace) or "standard"
+    if tuning_raw:
+        key_compact = re.sub(r"sharp", "#", tuning_raw.lower())
+        key_compact = re.sub(r"[^a-z0-9# ]", " ", key_compact).strip()
+        key_compact = re.sub(r"\s+", " ", key_compact)
+        key_nospace = key_compact.replace(" ", "")
+        tuning_id = TUNING_MAP.get(key_compact) or TUNING_MAP.get(key_nospace) or "standard"
+        spelled_notes = note_spelling_from_declaration(tuning_raw)
+        if spelled_notes:
+            note_key = "".join(n.lower() for n in spelled_notes)
+            reverse_key = "".join(n.lower() for n in reversed(spelled_notes))
+            tuning_id = (
+                TUNING_MAP.get(note_key)
+                or TUNING_MAP.get(reverse_key)
+                or " ".join(spelled_notes)
+            )
+        if tuning_id == "standard":
+            for marker, mapped in (
+                ("dadgbe", "dropD"),
+                ("dadgbd", "doubleDropD"),
+                ("dadgad", "DADGAD"),
+                ("dgcfad", "dStandard"),
+                ("cgcgcd", "openCsus2"),
+                ("cgcgce", "openC"),
+                ("eadeae", "EADEAE"),
+            ):
+                if marker in key_nospace:
+                    tuning_id = mapped
+                    break
+        if tuning_id == "standard":
+            open_name = re.search(r"\bopen\s+([a-g])\b", key_compact)
+            if open_name:
+                tuning_id = TUNING_MAP.get(f"open {open_name.group(1)}", "standard")
+        if tuning_id == "standard" and re.search(r"\bdrop(?:ped)?\s*d\b", key_compact):
+            tuning_id = "dropD"
+        if "drop" in key_compact and "d" in key_compact:
+            if re.search(r"\b(half|1\s*2)\s+step\s+down\b", key_compact):
+                tuning_id = "dropCsharp"
+            elif re.search(r"\b(whole|full|one|1)\s+step\s+down\b", key_compact):
+                tuning_id = "dropC"
+        elif re.search(r"\b(half|1\s*2)\s+step\s+down\b", key_compact):
+            tuning_id = "ebStandard"
+        elif re.search(r"\b(whole|full|one|1)\s+step\s+down\b", key_compact):
+            tuning_id = "dStandard"
 
     capo = None
     m2 = CAPO_LINE_RE.search(body)
@@ -322,6 +454,8 @@ def write_manifest(manifest: dict[str, dict]) -> None:
 
 
 def manifest_entry(record: dict) -> dict:
+    tuning_id = record.get("tuning") or "standard"
+    tuning_name = TUNING_NAMES.get(tuning_id, tuning_id if tuning_id != "standard" else "Standard")
     return {
         "id": record["id"],
         "artist": record["artist"],
@@ -330,7 +464,10 @@ def manifest_entry(record: dict) -> dict:
         "albumOrder": record.get("albumOrder", 9999),
         "source": record["source"],
         "sourceUrl": record["sourceUrl"],
-        "tuning": record["tuning"],
+        "tuning": tuning_id,
+        "tuningRaw": record.get("tuningRaw"),
+        "tuningId": tuning_id,
+        "tuningName": tuning_name,
         "capo": record["capo"],
         "format": record["format"],
         "hasTab": record["format"] in ("tab", "mixed"),
@@ -1010,7 +1147,7 @@ def backfill_album_from_record(session: requests.Session, source: str, record: d
 
 def clean_source(session: requests.Session, source: str) -> dict:
     out_dir = CORPUS_DIR / source
-    stats = {"junk_removed": 0, "dupes_removed": 0, "format_changed": 0, "album_backfilled": 0, "remaining": 0}
+    stats = {"junk_removed": 0, "dupes_removed": 0, "format_changed": 0, "tuning_changed": 0, "album_backfilled": 0, "remaining": 0}
     if not out_dir.exists():
         return stats
 
@@ -1057,10 +1194,19 @@ def clean_source(session: requests.Session, source: str) -> dict:
                 stats["dupes_removed"] += 1
 
     for f, d in survivors:
-        new_fmt = detect_format(d.get("body") or "")
+        body = d.get("body") or ""
+        new_fmt = detect_format(body)
         if new_fmt != d.get("format"):
             d["format"] = new_fmt
             stats["format_changed"] += 1
+        tuning_id, tuning_raw, capo = extract_tuning_capo(body)
+        if tuning_id != (d.get("tuning") or "standard"):
+            d["tuning"] = tuning_id
+            stats["tuning_changed"] += 1
+        if tuning_raw and tuning_raw != d.get("tuningRaw"):
+            d["tuningRaw"] = tuning_raw
+        if capo is not None and capo != d.get("capo"):
+            d["capo"] = capo
         if "albumOrder" not in d:
             album, order = backfill_album_from_record(session, source, d)
             d["album"] = album
@@ -1109,13 +1255,14 @@ def main():
         sources = list(SOURCES.keys()) if not args.source or args.source == "all" else [args.source]
         session = requests.Session()
         session.headers.update(BROWSER_HEADERS)
-        grand = {"junk_removed": 0, "dupes_removed": 0, "format_changed": 0, "album_backfilled": 0, "remaining": 0}
+        grand = {"junk_removed": 0, "dupes_removed": 0, "format_changed": 0, "tuning_changed": 0, "album_backfilled": 0, "remaining": 0}
         for source in sources:
             print(f"\n=== cleaning {source} ===")
             stats = clean_source(session, source)
             print(
                 f"{source}: junk_removed={stats['junk_removed']} dupes_removed={stats['dupes_removed']} "
-                f"format_changed={stats['format_changed']} album_backfilled={stats['album_backfilled']} "
+                f"format_changed={stats['format_changed']} tuning_changed={stats['tuning_changed']} "
+                f"album_backfilled={stats['album_backfilled']} "
                 f"remaining={stats['remaining']}"
             )
             for k in grand:

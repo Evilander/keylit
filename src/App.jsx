@@ -45,6 +45,8 @@ import { benchBook, userSongbook } from "./storage.js";
 import { slugSongKey } from "./lib/bench.js";
 import { decodeShare } from "./lib/sharelink.js";
 import { buildUserSong } from "./lib/usersong.js";
+import { chartShiftForGuitar } from "./lib/tuning.js";
+import GuitarSetup from "./components/GuitarSetup.jsx";
 
 const DEFAULT_SHEET = `[Intro]
 E       A       E
@@ -76,6 +78,23 @@ const NAV = [
   { id: "shed", label: "The Shed", icon: BookOpen },
 ];
 
+const GUITAR_TUNING_KEY = "keylit.guitar-tuning.v1";
+const CHART_SPELLING_KEY = "keylit.chart-spelling.v1";
+const GUITAR_TUNINGS = new Set(["standard", "ebStandard", "dStandard"]);
+const CHART_SPELLINGS = new Set(["guitar", "key", "flats", "sharps"]);
+
+function savedChoice(key, allowed, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    if (allowed.has(value)) return value;
+  } catch { /* storage is optional */ }
+  return fallback;
+}
+
+function persistChoice(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* storage is optional */ }
+}
+
 export default function App() {
   const [sheet, setSheet] = useState(DEFAULT_SHEET);
   const [loaded, setLoaded] = useState(null); // corpus song metadata, or null for a custom chart
@@ -103,6 +122,10 @@ export default function App() {
   // "Cover it capo'd": null = read the chart as written; a number = re-render
   // the chart as the shapes you'd finger with a capo there (sound unchanged).
   const [playCapo, setPlayCapo] = useState(null);
+  // The physical guitar is a playing lens, not a song transpose. D standard
+  // moves familiar shapes +2 while the piano and playback stay at concert pitch.
+  const [guitarTuning, setGuitarTuning] = useState(() => savedChoice(GUITAR_TUNING_KEY, GUITAR_TUNINGS, "standard"));
+  const [chartSpelling, setChartSpelling] = useState(() => savedChoice(CHART_SPELLING_KEY, CHART_SPELLINGS, "guitar"));
   // Opened from a setlist: { name, rows, idx } drives the gig strip (prev/next).
   const [setlistCtx, setSetlistCtx] = useState(null);
 
@@ -116,6 +139,9 @@ export default function App() {
   const [midiOutputs, setMidiOutputs] = useState([]);
   const [midiOutId, setMidiOutId] = useState("");
   const midiOutRef = useRef(null);
+
+  useEffect(() => persistChoice(GUITAR_TUNING_KEY, guitarTuning), [guitarTuning]);
+  useEffect(() => persistChoice(CHART_SPELLING_KEY, chartSpelling), [chartSpelling]);
 
   const pickMidiOut = useCallback(async (id) => {
     if (!id) { midiOutRef.current = null; setMidiOutId(""); return; }
@@ -187,12 +213,12 @@ export default function App() {
   }, [loaded, sheet]);
   const pitchShift = transpose + capoShift;
 
-  const computeView = (shift) => {
+  const computeView = (shift, spelling = "key") => {
     const raw = sourceProg.map((ch) => transposeChord(ch, shift));
     const detected = detectKey(raw);
     const keyCtx = keyOverride
-      ? { tonic: (keyOverride.tonic + (shift - transpose)) % 12, mode: keyOverride.mode }
-      : { tonic: detected.tonic, mode: detected.mode };
+      ? { tonic: ((keyOverride.tonic + (shift - transpose)) % 12 + 12) % 12, mode: keyOverride.mode, spelling }
+      : { tonic: detected.tonic, mode: detected.mode, spelling };
     const prog = raw.map((ch) => respell(ch, keyCtx));
     const uniqMap = new Map();
     for (const ch of prog) { const k = chordSymbol(ch); if (!uniqMap.has(k)) uniqMap.set(k, ch); }
@@ -205,7 +231,7 @@ export default function App() {
       smoothFull.push(clampVoicing(addBass(up, ch)));
       prevUp = up;
     }
-    return { prog, unique, rootFull, smoothFull, detected };
+    return { prog, unique, rootFull, smoothFull, detected, keyCtx };
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const view = useMemo(() => computeView(transpose), [sourceProg, transpose, keyOverride]);
@@ -220,19 +246,22 @@ export default function App() {
     setCurrentIdx((i) => (view.prog.length ? Math.min(i, view.prog.length - 1) : 0));
   }, [view.prog.length]);
 
-  // The reading surface under a CHOSEN capo: same sound, different shapes.
-  // playCapo === null reads the paper as written; playCapo === N re-renders
-  // every chord as its capo-N shape (transposed down N from sounding pitch).
-  // Picking the chart's own capo reproduces the written document exactly.
-  const readingShift = playCapo == null ? transpose : pitchShift - playCapo;
+  // Reading is a guitar-shape lens over concert pitch. A capo raises shapes;
+  // a uniformly detuned guitar lowers them. Solve the inverse so the chart can
+  // move while the piano/audio stay exactly where the song sounds.
+  const effectiveCapo = playCapo ?? capoShift;
+  const readingShift = chartShiftForGuitar({
+    transpose,
+    sourceCapo: capoShift,
+    capo: effectiveCapo,
+    tuning: guitarTuning,
+  }) ?? transpose;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const readingView = useMemo(
-    () => (playCapo == null || playCapo === capoShift ? view : computeView(readingShift)),
-    [view, playCapo, capoShift, readingShift, sourceProg, keyOverride]
+    () => (readingShift === transpose && chartSpelling === "key" ? view : computeView(readingShift, chartSpelling)),
+    [view, readingShift, chartSpelling, sourceProg, keyOverride, transpose]
   );
-  const readingKey = playCapo == null
-    ? null
-    : { tonic: ((readingView.detected.tonic % 12) + 12) % 12, mode: readingView.detected.mode };
+  const readingKey = readingView.keyCtx;
   // Where the capo makes the shapes easiest, judged on the SOUNDING chords.
   const capoBest = useMemo(() => {
     if (!soundingView.prog.length) return null;
@@ -241,6 +270,7 @@ export default function App() {
   }, [soundingView]);
 
   const current = view.prog[currentIdx] || null;
+  const shapeCurrent = readingView.prog[currentIdx] || null;
   const soundingCurrent = soundingView.prog[currentIdx] || null;
   const activeKey = keyOverride || { tonic: view.detected.tonic, mode: view.detected.mode };
   const soundingKey = { tonic: soundingView.detected.tonic, mode: soundingView.detected.mode };
@@ -450,6 +480,7 @@ export default function App() {
   };
   const keyName = `${spellPc(activeKey.tonic, activeKey)} ${activeKey.mode}`;
   const soundingKeyName = `${spellPc(soundingKey.tonic, soundingKey)} ${soundingKey.mode}`;
+  const shapeKeyName = `${spellPc(readingKey.tonic, readingKey)} ${readingKey.mode}`;
   // e.g. "D major · capo 5 sounds in F major" — the paper vs the air.
   const keyNameFull = capoShift ? `${keyName} · capo ${capoShift} sounds in ${soundingKeyName}` : keyName;
   const roleForKeyboard = (midi) => {
@@ -515,6 +546,16 @@ export default function App() {
     }
     if (keyOverride) setKeyOverride({ tonic: target, mode: keyOverride.mode });
   };
+  const useDetunedSetup = (id) => {
+    setGuitarTuning(id);
+    if (keyOverride && transpose) {
+      setKeyOverride({
+        ...keyOverride,
+        tonic: ((keyOverride.tonic - transpose) % 12 + 12) % 12,
+      });
+    }
+    setTranspose(0);
+  };
   const keyPicker = (
     <Readout style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
       <EngLabel>key</EngLabel>
@@ -535,8 +576,9 @@ export default function App() {
   );
 
   const transposeCtl = (
-    <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "6px 8px", display: "inline-flex", alignItems: "center", gap: 8 }}>
-      <span className="kl-eyebrow">Transpose</span>
+    <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "6px 8px", display: "inline-flex", alignItems: "center", gap: 8 }}
+      title="Moves the song's concert pitch. To compensate for a down-tuned guitar without moving the song, use Guitar setup below.">
+      <span className="kl-eyebrow">Song transpose</span>
       <button onClick={() => setTranspose((t) => Math.max(-11, t - 1))} style={miniBtn} aria-label="Transpose down"><Minus size={14} /></button>
       <span style={{ fontFamily: MONO, fontSize: 14, minWidth: 34, textAlign: "center", color: transpose ? C.toneText : C.muted }}>{transpose > 0 ? "+" : ""}{transpose}</span>
       <button onClick={() => setTranspose((t) => Math.min(11, t + 1))} style={miniBtn} aria-label="Transpose up"><Plus size={14} /></button>
@@ -572,17 +614,19 @@ export default function App() {
       onPlay={(midis) => { arm(); ensureAndPlay(midis, 1.2); }} />
   );
 
-  const numbersRailPanel = view.prog.length > 0 && (
+  const makeNumbersRail = (railView, railKey, shift, label, hint) => railView.prog.length > 0 && (
     <section style={{ marginTop: 18 }}>
-      <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
-        <span className="kl-eyebrow">Progression · {keyName}</span>
-        <span className="kl-eyebrow" style={{ color: C.faint }}>the numbers stay · the key moves</span>
+      <div className="flex items-center justify-between" style={{ marginBottom: 8, gap: 12 }}>
+        <span className="kl-eyebrow">Progression · {label}</span>
+        <span className="kl-eyebrow" style={{ color: C.faint, textAlign: "right" }}>{hint}</span>
       </div>
       <div ref={stripRef}>
-        <NumbersRail prog={view.prog} activeKey={activeKey} currentIdx={currentIdx} transpose={transpose} onSelect={selectIdx} />
+        <NumbersRail prog={railView.prog} activeKey={railKey} currentIdx={currentIdx} transpose={shift} onSelect={selectIdx} />
       </div>
     </section>
   );
+  const numbersRailPanel = makeNumbersRail(view, activeKey, transpose, keyName, "the numbers stay · the key moves");
+  const songNumbersRailPanel = makeNumbersRail(readingView, readingKey, readingShift, shapeKeyName, "the numbers stay · shapes follow your setup");
 
   const aiPanel = ai.open && (
     <section style={{ marginTop: 18, borderTop: `1px solid ${C.line}`, paddingTop: 16 }}>
@@ -743,37 +787,6 @@ export default function App() {
               <SongHeader loaded={loaded} keyName={keyNameFull} />
               <div className="flex items-center" style={{ gap: 12, flexWrap: "wrap", margin: "14px 0 4px" }}>
                 {transposeCtl}
-                <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "6px 8px", display: "inline-flex", alignItems: "center", gap: 8 }}
-                  title="Re-render the chart as the shapes you'd finger with a capo there — the song keeps sounding at the same pitch, like covering it capo'd somewhere new.">
-                  <span className="kl-eyebrow">Play with capo</span>
-                  <button onClick={() => setPlayCapo((c) => Math.max(0, (c == null ? capoShift : c) - 1))} style={miniBtn} aria-label="capo down a fret"><Minus size={14} /></button>
-                  <span style={{ fontFamily: MONO, fontSize: 14, minWidth: 58, textAlign: "center", color: playCapo != null && playCapo !== capoShift ? C.toneText : C.muted }}>
-                    {playCapo == null ? (capoShift > 0 ? `${capoShift} · chart` : "none") : playCapo === 0 ? "none" : playCapo}
-                  </span>
-                  <button onClick={() => setPlayCapo((c) => Math.min(11, (c == null ? capoShift : c) + 1))} style={miniBtn} aria-label="capo up a fret"><Plus size={14} /></button>
-                  {capoBest != null && capoBest !== (playCapo == null ? capoShift : playCapo) && (
-                    <button onClick={() => setPlayCapo(capoBest)} className="chip" style={{ padding: "3px 9px", fontSize: 11.5 }}
-                      title="the capo with the friendliest open shapes for this song">
-                      easiest: {capoBest === 0 ? "none" : capoBest}
-                    </button>
-                  )}
-                  {playCapo != null && playCapo !== capoShift && (
-                    <button onClick={() => setPlayCapo(null)} className="chip" style={{ padding: "3px 9px", fontSize: 11.5 }}>as written</button>
-                  )}
-                </div>
-                {playCapo != null && playCapo !== capoShift ? (
-                  <Readout style={{ display: "inline-flex", alignItems: "center", gap: 7 }}
-                    title="The shapes changed; the sound didn't. Playback and the Piano room stay at the song's real pitch.">
-                    <EngLabel>{playCapo === 0 ? "no capo" : `capo ${playCapo}`}</EngLabel>
-                    <span style={{ fontFamily: MONO, fontSize: 13, color: C.rootText }}>still sounds in {soundingKeyName}</span>
-                  </Readout>
-                ) : capoShift > 0 ? (
-                  <Readout style={{ display: "inline-flex", alignItems: "center", gap: 7 }}
-                    title={`The chart reads as written; with the capo it SOUNDS in ${soundingKeyName}. The Piano room and playback use the sounding pitch.`}>
-                    <EngLabel>capo {capoShift}</EngLabel>
-                    <span style={{ fontFamily: MONO, fontSize: 13, color: C.rootText }}>sounds in {soundingKeyName}</span>
-                  </Readout>
-                ) : null}
                 {keyPicker}
                 <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8, alignItems: "center" }}>
                   {/* Only songs with a source+id make live setlist entries;
@@ -791,11 +804,28 @@ export default function App() {
                   </BenchButton>
                 </span>
               </div>
-              {numbersRailPanel}
+              <GuitarSetup
+                tuningId={guitarTuning}
+                onTuningChange={setGuitarTuning}
+                capo={effectiveCapo}
+                chartCapo={capoShift}
+                onCapoChange={setPlayCapo}
+                onResetCapo={() => setPlayCapo(null)}
+                bestCapo={capoBest}
+                spelling={chartSpelling}
+                onSpellingChange={setChartSpelling}
+                shapeChord={shapeCurrent}
+                soundingChord={soundingCurrent}
+                shapeKey={readingKey}
+                soundingKey={soundingKey}
+                transpose={transpose}
+                onUseDetunedSetup={useDetunedSetup}
+              />
+              {songNumbersRailPanel}
               {aiPanel}
               {tabKeysPanel}
               <section style={{ marginTop: 18 }}>
-                <ChartView text={sheet} activeKey={readingKey || activeKey} transpose={readingShift}
+                <ChartView text={sheet} activeKey={readingKey} transpose={readingShift}
                   activeChord={readingView.prog[currentIdx] || null}
                   onChordClick={(ch) => {
                     arm();

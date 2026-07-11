@@ -94,9 +94,9 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
                 const view = transpose ? transposeChord(parsed, transpose) : parsed;
                 const fn = harmonicFunction(view, tonic, mode);
                 const color = FUNCTION_COLOR[fn] || C.ink;
-                // When transposed, the label is the TRANSPOSED chord, spelled
-                // for the active key (was showing the original, untransposed name).
-                const label = transpose ? spellChord(view, activeKey) : tok;
+                // The chart is a playing surface: always honor its selected
+                // chord-name lens, even when the pitches have not moved.
+                const label = spellChord(view, activeKey);
                 // Sound-based match: survives respelling (A# vs B♭) and transposition.
                 const active = activeChord && sameChordSound(view, activeChord);
                 return (

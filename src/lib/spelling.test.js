@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { parseChord, buildChord } from "./theory.js";
-import { keyPrefersFlats, spellPc, spellDegreePc, spellChord, respell, FLAT_NAMES } from "./spelling.js";
+import { parseChord, buildChord, transposeChord } from "./theory.js";
+import {
+  keyPrefersFlats,
+  spellPc,
+  spellDegreePc,
+  spellChord,
+  respell,
+  GUITAR_NAMES,
+} from "./spelling.js";
 
 describe("keyPrefersFlats", () => {
   it("flat keys use flats", () => {
@@ -31,6 +38,17 @@ describe("spellPc", () => {
   it("defaults to sharps with no key context", () => {
     expect(spellPc(6, null)).toBe("F#");
   });
+
+  it("offers the common guitar chord-name vocabulary", () => {
+    expect(GUITAR_NAMES).toEqual(["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]);
+    expect(spellPc(8, { tonic: 4, mode: "major", spelling: "guitar" })).toBe("Ab");
+    expect(spellPc(3, { tonic: 11, mode: "major", spelling: "guitar" })).toBe("Eb");
+  });
+
+  it("allows an explicit all-flats or all-sharps chart lens", () => {
+    expect(spellPc(6, { tonic: 7, mode: "major", spelling: "flats" })).toBe("Gb");
+    expect(spellPc(3, { tonic: 10, mode: "major", spelling: "sharps" })).toBe("D#");
+  });
 });
 
 describe("spellChord", () => {
@@ -43,6 +61,10 @@ describe("spellChord", () => {
     expect(spellChord(c, { tonic: 5, mode: "major" })).toBe("C/E");
     const ab = buildChord(8, "maj7", 3); // pc8 maj7 over pc3 bass, flat key
     expect(spellChord(ab, { tonic: 3, mode: "major" })).toBe("Abmaj7/Eb");
+  });
+
+  it("uses guitar-friendly roots and slash basses in the guitar lens", () => {
+    expect(spellChord(parseChord("G#m7/D#"), { tonic: 4, mode: "major", spelling: "guitar" })).toBe("Abm7/Eb");
   });
 });
 
@@ -59,6 +81,12 @@ describe("respell", () => {
     const r = respell(c, { tonic: 5, mode: "major" });
     expect(r.rootName).toBe("C");
     expect(r.raw).toBe("Cm7");
+  });
+
+  it("names F# transposed +2 as Ab without changing the resulting pitch", () => {
+    const r = respell(transposeChord(parseChord("F#"), 2), { tonic: 8, mode: "major", spelling: "guitar" });
+    expect(r.raw).toBe("Ab");
+    expect(r.rootSemitone).toBe(8);
   });
 });
 

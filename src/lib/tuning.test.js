@@ -10,6 +10,9 @@ import {
   shapeToMidi,
   tuningSpelling,
   relativeToStandard,
+  uniformTuningOffset,
+  shapeShiftForTuning,
+  chartShiftForGuitar,
   pcOfString,
 } from "./tuning.js";
 
@@ -193,6 +196,32 @@ describe("display helpers", () => {
     expect(relativeToStandard(TUNINGS.dropD.notes)).toEqual([-2, 0, 0, 0, 0, 0]);
     // open E: 5th,4th,3rd strings raised
     expect(relativeToStandard(TUNINGS.openE.notes)).toEqual([0, 2, 2, 1, 0, 0]);
+  });
+
+  it("recognizes uniform down-tunings that can reuse standard chord shapes", () => {
+    expect(uniformTuningOffset("standard")).toBe(0);
+    expect(uniformTuningOffset("ebStandard")).toBe(-1);
+    expect(uniformTuningOffset("dStandard")).toBe(-2);
+    expect(uniformTuningOffset("dropD")).toBeNull();
+    expect(uniformTuningOffset("openD")).toBeNull();
+  });
+
+  it("returns the shape compensation needed to preserve concert pitch", () => {
+    expect(shapeShiftForTuning("standard")).toBe(0);
+    expect(shapeShiftForTuning("ebStandard")).toBe(1);
+    expect(shapeShiftForTuning("dStandard")).toBe(2);
+    expect(shapeShiftForTuning("dropD")).toBeNull();
+  });
+
+  it("combines song transpose, source capo, playing capo, and down-tuning without moving concert pitch", () => {
+    expect(chartShiftForGuitar()).toBe(0);
+    expect(chartShiftForGuitar({ transpose: 2 })).toBe(2);
+    expect(chartShiftForGuitar({ sourceCapo: 5, capo: 5 })).toBe(0);
+    expect(chartShiftForGuitar({ sourceCapo: 5, capo: 3 })).toBe(2);
+    expect(chartShiftForGuitar({ tuning: "dStandard" })).toBe(2);
+    expect(chartShiftForGuitar({ capo: 2, tuning: "dStandard" })).toBe(0);
+    expect(chartShiftForGuitar({ transpose: -2, capo: 1, tuning: "ebStandard" })).toBe(-2);
+    expect(chartShiftForGuitar({ tuning: "dropD" })).toBeNull();
   });
 
   it("pcOfString gives the pitch class of an open string", () => {

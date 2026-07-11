@@ -144,6 +144,40 @@ export function relativeToStandard(notes) {
   return notes.map((m, i) => m - STANDARD_TUNING[i]);
 }
 
+/** A uniform tuning keeps every standard-tuning interval and moves all six
+ * strings by the same amount. Those tunings can reuse ordinary chord shapes.
+ * Returns the signed semitone offset from standard, or null for drop/open/
+ * modal tunings whose strings moved by different amounts. */
+export function uniformTuningOffset(idOrSpelling) {
+  const notes = getTuning(idOrSpelling).notes;
+  const offsets = relativeToStandard(notes);
+  return offsets.every((n) => n === offsets[0]) ? offsets[0] : null;
+}
+
+/** Semitones to move a familiar standard-tuning chord shape so a uniformly
+ * detuned guitar still reaches the same concert pitch. D standard is -2, so
+ * its player fingers shapes +2. */
+export function shapeShiftForTuning(idOrSpelling) {
+  const offset = uniformTuningOffset(idOrSpelling);
+  if (offset === null) return null;
+  return offset === 0 ? 0 : -offset;
+}
+
+/** Absolute transposition for the chart a guitarist should READ. The source
+ * capo establishes concert pitch; the player's chosen capo and uniform tuning
+ * are then inverted into familiar chord shapes. Returns null when an alternate
+ * tuning cannot be represented by one chromatic shift. */
+export function chartShiftForGuitar({
+  transpose = 0,
+  sourceCapo = 0,
+  capo = sourceCapo,
+  tuning = "standard",
+} = {}) {
+  const tuningShift = shapeShiftForTuning(tuning);
+  if (tuningShift === null) return null;
+  return transpose + sourceCapo - capo + tuningShift;
+}
+
 /* ---- tuning declared in the chart text ---------------------------------
  * Real charts carry their tuning as prose ("Tuning: 1 step down", "drop d,
  * half step down") that scrapers store as metadata "standard". This reads
