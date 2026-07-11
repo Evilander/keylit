@@ -9,6 +9,11 @@ import { SHARP_NAMES, symFromName } from "./theory.js";
 
 export const FLAT_NAMES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 
+// The names guitarists most often use for movable chord shapes. This is not a
+// key signature: it is a practical fretboard vocabulary (F# is the familiar
+// barre shape, while Eb / Ab / Bb avoid the awkward D# / G# / A# labels).
+export const GUITAR_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+
 // Relative-major tonic pitch classes whose key signatures use flats.
 // (F, Bb, Eb, Ab, Db, Gb majors — and their relative minors via the +3 mapping.)
 const FLAT_REL_MAJORS = new Set([5, 10, 3, 8, 1, 6]);
@@ -23,6 +28,9 @@ export function keyPrefersFlats(tonic, mode = "major") {
 // Spell one pitch class for a key context { tonic, mode }.
 export function spellPc(pc, keyCtx) {
   const p = (((pc % 12) + 12) % 12);
+  if (keyCtx?.spelling === "guitar") return GUITAR_NAMES[p];
+  if (keyCtx?.spelling === "flats") return FLAT_NAMES[p];
+  if (keyCtx?.spelling === "sharps") return SHARP_NAMES[p];
   const flats = keyCtx ? keyPrefersFlats(keyCtx.tonic, keyCtx.mode) : false;
   return (flats ? FLAT_NAMES : SHARP_NAMES)[p];
 }
@@ -37,6 +45,7 @@ const FLAT_DEGREES = new Set([1, 3, 6, 8, 10]);
 export function spellDegreePc(pc, keyCtx) {
   const p = (((pc % 12) + 12) % 12);
   if (!keyCtx) return SHARP_NAMES[p];
+  if (keyCtx.spelling && keyCtx.spelling !== "key") return spellPc(p, keyCtx);
   const rel = (((p - keyCtx.tonic) % 12) + 12) % 12;
   if (FLAT_DEGREES.has(rel)) return FLAT_NAMES[p];
   return spellPc(p, keyCtx);

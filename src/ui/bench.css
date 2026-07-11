@@ -183,7 +183,8 @@
   transition: background 140ms ease, color 140ms ease;
 }
 .kl-seg button:hover { color: var(--kl-ink); }
-.kl-seg button[aria-selected="true"] { background: var(--kl-raised); color: var(--kl-ink); box-shadow: 0 1px 2px var(--kl-shadow-soft); }
+.kl-seg button[aria-selected="true"],
+.kl-seg button[aria-checked="true"] { background: var(--kl-raised); color: var(--kl-ink); box-shadow: 0 1px 2px var(--kl-shadow-soft); }
 
 /* legacy room-tabs (kept for compatibility, light styling) */
 .room-tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 11px; background: var(--kl-sunken); border: 1px solid var(--kl-hair); }
