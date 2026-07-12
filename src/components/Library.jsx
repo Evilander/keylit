@@ -9,6 +9,7 @@ import { loadManifest, loadSong, groupByArtist, isCoreArtist, SOURCE_LABEL } fro
 import { userSongbook, benchBook } from "../storage.js";
 import { slugSongKey } from "../lib/bench.js";
 import { makeZip } from "../lib/zip.js";
+import { pickQuote } from "../lib/quotes.js";
 import AddSong from "./AddSong.jsx";
 import Ear from "./Ear.jsx";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
@@ -16,6 +17,10 @@ import { C, MONO, DISPLAY } from "../ui/theme.js";
 // Browse state survives leaving the room (Back returns you to the same
 // search, tuning filter, and expanded artists — not a collapsed index).
 const remembered = { q: "", tuning: null, open: [] };
+
+// One line per LOGIN, not per visit — module scope pins it for the session,
+// so walking rooms doesn't reshuffle the hero.
+const quote = pickQuote();
 
 export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, potd, onPotd }) {
   const [fetched, setFetched] = useState(null);
@@ -187,13 +192,14 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
 
   return (
     <div className="kl-section">
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <div className="kl-eyebrow">The catalog</div>
-          <h1 className="kl-title" style={{ marginTop: 4 }}>Library</h1>
-        </div>
-        <div className="flex items-center" style={{ gap: 12 }}>
-          <span className="kl-meta kl-hide-sm">{rows.length} songs · {new Set(rows.map((r) => r.artist || "Various")).size} artists</span>
+      {/* The hero speaks in borrowed lines — a new one each time the app opens. */}
+      <div className="kl-eyebrow faint">The songbook</div>
+      <h1 className="kl-title hero" style={{ margin: "14px 0 0", maxWidth: 640 }}>{quote.q}</h1>
+      <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: C.muted, marginTop: 14 }}>— {quote.by}</div>
+
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginTop: 30 }}>
+        <span className="kl-meta">{rows.length} songs · {new Set(rows.map((r) => r.artist || "Various")).size} artists</span>
+        <div className="flex items-center" style={{ gap: 12, flexWrap: "wrap" }}>
           <button className={`bench-btn${selecting ? " primary" : ""}`} style={{ padding: "7px 13px", fontSize: 13 }}
             onClick={() => { setSelecting((v) => !v); setSel(new Map()); }} aria-pressed={selecting}
             title="pick songs across the library and stack them into a setlist">
@@ -228,29 +234,9 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
       {hearing && <Ear onLoadSheet={onHeard} onClose={() => setHearing(false)} />}
       {adding && <AddSong onSaved={onSaved} onClose={() => setAdding(false)} />}
 
-      {potd && (
-        <div className="faceplate kl-rise" style={{ marginTop: 16, padding: "13px 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <div style={{ minWidth: 0, flex: "1 1 320px" }}>
-            <div className="flex items-center" style={{ gap: 10, flexWrap: "wrap" }}>
-              <span className="kl-eyebrow">Progression of the day</span>
-              <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 17, color: C.ink }}>{potd.name}</span>
-              <span className="kl-meta">{potd.keyName} · {potd.style}</span>
-            </div>
-            <div className="flex items-center" style={{ gap: 6, flexWrap: "wrap", marginTop: 7 }}>
-              {potd.sheet.split(/\s+/).filter(Boolean).map((sym, i) => (
-                <span key={i} style={{ fontFamily: MONO, fontSize: 13.5, fontWeight: 700, color: C.toneText, background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 7, padding: "2px 8px" }}>{sym}</span>
-              ))}
-            </div>
-            <p style={{ margin: "8px 0 0", fontSize: 12.5, color: C.muted, lineHeight: 1.5, maxWidth: 640 }}>{potd.line}</p>
-          </div>
-          <div className="flex items-center" style={{ gap: 8 }}>
-            <button className="bench-btn" onClick={() => onPotd?.("hear")}>▶ hear it</button>
-            <button className="bench-btn primary" onClick={() => onPotd?.("open")}>Take it to the bench</button>
-          </div>
-        </div>
-      )}
-
-      <div style={{ position: "relative", margin: "18px 0 10px", maxWidth: 420 }}>
+      <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", gap: 48, alignItems: "start", marginTop: 8 }}>
+      <div style={{ minWidth: 0 }}>
+      <div style={{ position: "relative", margin: "10px 0 10px", maxWidth: 420 }}>
         <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.faint }} />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search songs, albums, artists" aria-label="Search the library"
           style={{ width: "100%", padding: "10px 12px 10px 34px", fontFamily: "var(--kl-sans)", fontSize: 14, color: C.ink, background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 10, outline: "none" }} />
@@ -281,7 +267,7 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
       {tuning ? (
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 6px" }}>
-            <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 19, color: C.ink }}>Songs in {tuningName}</span>
+            <span style={{ fontFamily: DISPLAY, fontSize: 19, color: C.ink }}>Songs in {tuningName}</span>
             <span className="kl-meta">{filtered.length}</span>
             <button onClick={() => setTuning(null)} className="chip" style={{ padding: "3px 10px", fontSize: 12 }}><X size={12} /> clear</button>
           </div>
@@ -291,7 +277,7 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
                 style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "9px 4px", borderBottom: `1px solid ${C.line}`, background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = C.panel2)} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
                 {selecting && <SelMark on={sel.has(s.id)} />}
-                <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 15, color: C.muted, minWidth: 160 }}>{s.artist || "Various"}</span>
+                <span style={{ fontFamily: DISPLAY, fontSize: 15, color: C.muted, minWidth: 160 }}>{s.artist || "Various"}</span>
                 <span style={{ fontFamily: "var(--kl-sans)", fontSize: 14.5, color: C.ink, flex: 1 }}>{s.title}</span>
                 {s.capo ? <Tag color={C.rootText}>capo {s.capo}</Tag> : null}
               </button>
@@ -310,7 +296,7 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
               <button onClick={() => toggle("__misc__")} aria-expanded={open.has("__misc__")}
                 style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 4px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
                 <ChevronRight size={15} style={{ color: C.faint, transform: open.has("__misc__") ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
-                <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 500, fontSize: 21, color: C.muted, flex: 1 }}>Miscellaneous</span>
+                <span style={{ fontFamily: DISPLAY, fontSize: 21, color: C.muted, flex: 1 }}>Miscellaneous</span>
                 <span className="kl-meta">{misc.length} artists · {miscCount} songs</span>
                 <span className="kl-meta kl-hide-sm" style={{ color: C.faint, minWidth: 110, textAlign: "right" }}>anthologies &amp; strays</span>
               </button>
@@ -327,6 +313,24 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
           )}
         </div>
       )}
+      </div>
+
+      {potd && (
+        <aside className="faceplate hero kl-rise" style={{ position: "sticky", top: 12 }}>
+          <div className="kl-eyebrow" style={{ color: C.rootText }}>Progression of the day</div>
+          <div style={{ fontFamily: DISPLAY, fontSize: 22, marginTop: 12, color: C.ink }}>{potd.name}</div>
+          <div className="kl-meta" style={{ marginTop: 3 }}>{potd.keyName} · {potd.style}</div>
+          <div style={{ fontFamily: MONO, fontSize: 19, fontWeight: 600, marginTop: 16, letterSpacing: "0.04em", color: C.ink, overflowWrap: "anywhere" }}>
+            {potd.sheet.split(/\s+/).filter(Boolean).join("  ")}
+          </div>
+          <p style={{ fontSize: 13.5, lineHeight: 1.55, color: C.muted, margin: "10px 0 0" }}>{potd.line}</p>
+          <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
+            <button className="bench-btn primary" onClick={() => onPotd?.("hear")}>Hear it</button>
+            <button className="bench-btn" onClick={() => onPotd?.("open")}>Take it to the bench</button>
+          </div>
+        </aside>
+      )}
+      </div>
 
       {selecting && (
         <div style={{ position: "sticky", bottom: 12, marginTop: 16, zIndex: 20 }}>
@@ -365,7 +369,7 @@ function ArtistGroup({ g, isOpen, onToggle, onOpen, onTuning, onRemove, selectin
       <button onClick={() => onToggle(g.artist)} aria-expanded={isOpen}
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: compact ? "9px 4px" : "13px 4px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
         <ChevronRight size={15} style={{ color: C.faint, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
-        <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontWeight: 500, fontSize: compact ? 16.5 : 21, color: C.ink, flex: 1 }}>{g.artist}</span>
+        <span style={{ fontFamily: DISPLAY, fontSize: compact ? 16.5 : 21, color: C.ink, flex: 1 }}>{g.artist}</span>
         <span className="kl-meta">{g.count} {g.count === 1 ? "song" : "songs"}</span>
         {!compact && <span className="kl-meta kl-hide-sm" style={{ color: C.faint, minWidth: 110, textAlign: "right" }}>{sources.join(" · ")}</span>}
       </button>
@@ -375,7 +379,7 @@ function ArtistGroup({ g, isOpen, onToggle, onOpen, onTuning, onRemove, selectin
             <div key={ai}>
               {g.multiAlbum && (
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "10px 4px 4px 31px" }}>
-                  <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 15.5, color: C.muted }}>{al.album || "Other"}</span>
+                  <span style={{ fontFamily: DISPLAY, fontSize: 15.5, color: C.muted }}>{al.album || "Other"}</span>
                   <span className="kl-meta" style={{ color: C.faint, fontSize: 11 }}>{al.songs.length}</span>
                   <span style={{ flex: 1, height: 1, background: C.line, marginLeft: 4 }} />
                 </div>

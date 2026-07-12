@@ -2,8 +2,8 @@
 // and a quality (or look one up by name) and the book derives every playable
 // grip live via chordShapes — which is why this bible reopens correctly in
 // whatever tuning the Guitar setup says is in your hands. Selecting a grip
-// lights the SAME notes on the piano below: one chord, two instruments.
-// Audio + naming preferences come from App; no state leaks back out.
+// lights the SAME notes on the dock's piano (via onDockLight): one chord,
+// two instruments. Audio + naming preferences come from App.
 import { useEffect, useMemo, useState } from "react";
 import { Guitar, Piano, Search } from "lucide-react";
 import { CHORD_FAMILIES, qualityLabel, bookChord, findInBook } from "../lib/chordbook.js";
@@ -13,13 +13,12 @@ import { parseChord } from "../lib/theory.js";
 import { spellChord, spellPc } from "../lib/spelling.js";
 import { rootPositionFull } from "../lib/voicing.js";
 import ChordDiagram from "./ChordDiagram.jsx";
-import Keyboard from "./Keyboard.jsx";
 import { Faceplate, EngLabel, RoomTitle } from "../ui/Bench.jsx";
 import { C, MONO } from "../ui/theme.js";
 
 const pcOf = (m) => ((m % 12) + 12) % 12;
 
-export default function ChordBook({ tuningId = "standard", spelling = "sharps", onStrum, onPlay }) {
+export default function ChordBook({ tuningId = "standard", spelling = "sharps", onStrum, onPlay, onDockLight }) {
   const [rootPc, setRootPc] = useState(4); // E — the first chord anyone learns
   const [familyId, setFamilyId] = useState("major");
   const [qKey, setQKey] = useState("");
@@ -48,17 +47,19 @@ export default function ChordBook({ tuningId = "standard", spelling = "sharps", 
     ? [...new Set(chord.intervals.map((iv) => pcOf(chord.rootSemitone + iv)))].map((pc) => spellPc(pc, nameCtx))
     : [];
 
-  // The selected grip's exact notes light solid (this grip IS these keys);
-  // the chord's other octaves ghost, so the pitch classes read as one idea.
+  // The selected grip's exact notes light solid on the dock (this grip IS
+  // these keys); the chord's other octaves ghost, so the pitch classes read
+  // as one idea. Handed up to App — the dock is the room's instrument.
   const litMidis = useMemo(() => new Set(shape ? shape.midi : []), [shape]);
-  const roleFor = (midi) => {
-    const pc = pcOf(midi);
-    if (litMidis.has(midi)) {
-      return { role: pc === pcOf(chord.rootSemitone) ? "root" : "tone", label: spellPc(pc, nameCtx) };
-    }
-    if (chordPcs.has(pc)) return { role: pc === pcOf(chord.rootSemitone) ? "root" : "tone", ghost: true };
-    return null;
-  };
+  useEffect(() => {
+    if (!chord || !onDockLight) return;
+    const labels = new Map([...litMidis].map((m) => [m, spellPc(pcOf(m), { tonic: rootPc, mode: "major", spelling })]));
+    onDockLight({
+      label: `chordbook · ${spellChord(chord, { tonic: rootPc, mode: "major", spelling })}${shapes.length ? ` · grip ${Math.min(sel, shapes.length - 1) + 1}` : ""}`,
+      litMidis, pcs: chordPcs, rootPc: pcOf(chord.rootSemitone), labels,
+    });
+  }, [chord, litMidis, chordPcs, shapes.length, sel, rootPc, spelling, onDockLight]);
+  useEffect(() => () => onDockLight?.(null), [onDockLight]);
 
   const pickFamily = (id) => {
     const f = CHORD_FAMILIES.find((x) => x.id === id);
@@ -196,16 +197,9 @@ export default function ChordBook({ tuningId = "standard", spelling = "sharps", 
           {shapes.length > 0 && (
             <p style={{ margin: "12px 0 0", fontSize: 11.5, color: C.faint, lineHeight: 1.5 }}>
               {shapes.length} grip{shapes.length === 1 ? "" : "s"}, best first — open strings, low frets and
-              full strums win. Grip {Math.min(sel, shapes.length - 1) + 1} is on the piano below.
+              full strums win. Grip {Math.min(sel, shapes.length - 1) + 1} is lit on the dock below.
             </p>
           )}
-        </div>
-      </div>
-
-      <div className="deck" style={{ padding: "14px 12px", marginTop: 18 }}>
-        <div className="key-felt" style={{ padding: "12px 10px 8px" }}>
-          <Keyboard roleFor={chord ? roleFor : null} onKey={(m) => onPlay?.([m], 1.0)}
-            ariaLabel="piano keyboard — the selected guitar grip is lit, other octaves ghosted" />
         </div>
       </div>
     </div>

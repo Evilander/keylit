@@ -1,11 +1,11 @@
 // theme.js — shared palette + style helpers. Single source of truth so App.jsx
 // and the components don't drift apart.
 //
-// TWO registers of the same instrument:
-//   • "The Fretboard Press" (light) — a warm songbook: near-white paper, warm
-//     brown-black ink, one dark element (the keyboard's recessed deck).
-//   • "After Hours" (dark) — the same shop with the lamps low: warm dark wood,
-//     lamplit ink, the deck sinking a shade deeper. Never slate, never blue.
+// "Color-Shift" (design handoff 2026-07-12) — TWO registers of one room:
+//   • "Daylight" (light) — cream paper, warm ink, saturated tangerine/cyan/gold
+//     accents, high-contrast serif headlines. Airy and editorial.
+//   • "After hours" (dark) — warm brown-black, never slate; the accents don't
+//     change, the paper does. The instrument dock stays #0D0C09 in both.
 //
 // C is a LIVE object: applyTheme() re-points its values and flips the CSS
 // custom properties (bench.css [data-kl-theme="dark"]). Components read C in
@@ -13,37 +13,38 @@
 // context plumbing. FUNCTION_COLOR/FILL are getters for the same reason.
 
 const LIGHT = {
-  // light surfaces
-  bg: "#FAFAF8", panel: "#FFFFFF", panel2: "#F2EFEA",
-  line: "#E5E0D8", lineStrong: "#D2CABE",
-  // warm-brown inks
-  ink: "#2A2521", muted: "#6B645C", faint: "#9A938A",
-  // the dark keyboard stage (the one place dark material survives)
-  deck: "#171310", deckEdge: "#0d0a08", felt: "#2a1714",
+  // cream paper surfaces
+  bg: "#F7F3E9", panel: "#FFFDF6", panel2: "#F0EAD9",
+  line: "#E3DCC9", lineStrong: "#CFC6AE",
+  // warm inks
+  ink: "#221F1A", muted: "#6E6553", faint: "#A29578",
+  // the instrument dock (the ONE dark element, both themes)
+  deck: "#0D0C09", deckEdge: "#050403", felt: "#14110C",
   // piano keys (rendered on the dark deck)
-  white: "#f3ede2", whiteShadow: "#cfc6b6", black: "#221d18",
-  // raw harmonic hues — key-lighting + large fills/badges only
-  root: "#f0b429", rootGlow: "#f6c95a", rootText: "#966C0B", rootUi: "#BD880D",
-  tone: "#46cfc2", toneGlow: "#74e3d8", toneText: "#218178", toneUi: "#2AA296",
-  bass: "#f08a5d", bassGlow: "#f6a982", bassText: "#C94A13", bassUi: "#EC6B32",
+  white: "#F5F0E1", whiteShadow: "#E4DCC8", black: "#211E19",
+  // raw harmonic hues — key-lighting + large fills/badges only.
+  // root = tangerine, tone = cyan, bass/slash = gold (identical in dark).
+  root: "#E4602F", rootGlow: "#F0895E", rootText: "#B4491D", rootUi: "#D4552A",
+  tone: "#2E9BA6", toneGlow: "#5CC1CA", toneText: "#1F7A84", toneUi: "#28929C",
+  bass: "#D9A73E", bassGlow: "#E8C168", bassText: "#95701C", bassUi: "#BC8E28",
   // a 4th hue reserved strictly for the keyboard's "pedal" role glow — never UI chrome
   ai: "#8b7bd0", aiGlow: "#b6a6ef",
 };
 
 const DARK = {
-  // warm dark wood, not slate
-  bg: "#161210", panel: "#1F1A15", panel2: "#292219",
-  line: "#383026", lineStrong: "#4C4234",
+  // warm brown-black, not slate
+  bg: "#171511", panel: "#1F1C16", panel2: "#26221A",
+  line: "#332F26", lineStrong: "#453F31",
   // lamplit inks
-  ink: "#EDE6DA", muted: "#A99F90", faint: "#7B7266",
-  // the deck sinks one shade deeper than the room
-  deck: "#0D0A08", deckEdge: "#050303", felt: "#26120F",
+  ink: "#F0EADB", muted: "#A79C86", faint: "#79705C",
+  // the dock doesn't move between themes
+  deck: "#0D0C09", deckEdge: "#050403", felt: "#14110C",
   // keys read the same under the lamp
-  white: "#f3ede2", whiteShadow: "#cfc6b6", black: "#221d18",
-  // raw hues unchanged (they were born for dark surfaces); text/UI variants brighten
-  root: "#f0b429", rootGlow: "#f6c95a", rootText: "#DCA62F", rootUi: "#C9962C",
-  tone: "#46cfc2", toneGlow: "#74e3d8", toneText: "#54C9BB", toneUi: "#3AB3A6",
-  bass: "#f08a5d", bassGlow: "#f6a982", bassText: "#F09363", bassUi: "#E97B47",
+  white: "#F5F0E1", whiteShadow: "#E4DCC8", black: "#211E19",
+  // raw hues unchanged (semantic, not decorative); text/UI variants brighten
+  root: "#E4602F", rootGlow: "#F0895E", rootText: "#F08A5A", rootUi: "#E4602F",
+  tone: "#2E9BA6", toneGlow: "#5CC1CA", toneText: "#57BEC8", toneUi: "#3AAAB4",
+  bass: "#D9A73E", bassGlow: "#E8C168", bassText: "#E0B453", bassUi: "#D9A73E",
   ai: "#9d8ee0", aiGlow: "#b6a6ef",
 };
 
@@ -72,11 +73,12 @@ export function applyTheme(mode) {
 }
 
 // Harmonic-function colors for TEXT on the current surface (Tonic / Subdominant /
-// Dominant). Getters so a theme swap re-reads the live palette.
+// Dominant). Getters so a theme swap re-reads the live palette. Tonic rests in
+// cyan (home), Subdominant leans gold (motion away), Dominant pulls tangerine.
 export const FUNCTION_COLOR = {
   get T() { return C.toneText; },  // home / rest
-  get S() { return C.rootText; },  // motion away
-  get D() { return C.bassText; },  // tension / pull home
+  get S() { return C.bassText; },  // motion away
+  get D() { return C.rootText; },  // tension / pull home
   get "?"() { return C.faint; },
   get color() { return C.muted; },
 };
@@ -84,8 +86,8 @@ export const FUNCTION_COLOR = {
 // Raw fills for key-lighting / large badges on the dark deck.
 export const FUNCTION_FILL = {
   get T() { return C.tone; },
-  get S() { return C.root; },
-  get D() { return C.bass; },
+  get S() { return C.bass; },
+  get D() { return C.root; },
   get "?"() { return C.faint; },
   get color() { return C.ai; },
 };
@@ -95,7 +97,8 @@ export const FUNCTION_LABEL = {
 };
 
 // Three deliberate voices — no system-font fallback as the primary face.
-// Newsreader (display/editorial serif) · Bricolage Grotesque (UI/body) · Berkeley Mono (data).
-export const MONO = "'Berkeley Mono', ui-monospace, Menlo, Consolas, monospace";
-export const SANS = "'Bricolage Grotesque', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
-export const DISPLAY = "'Newsreader', Georgia, 'Times New Roman', serif";
+// Gloock (display/editorial serif) · Onest (UI/body) · Martian Mono (data).
+// Berkeley Mono stays in the mono stack as the licensed fallback.
+export const MONO = "'Martian Mono', 'Berkeley Mono', ui-monospace, Menlo, Consolas, monospace";
+export const SANS = "'Onest', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
+export const DISPLAY = "'Gloock', Georgia, 'Times New Roman', serif";

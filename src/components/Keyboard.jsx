@@ -1,110 +1,120 @@
-// Keyboard.jsx — the shared instrument. One lit keyboard every room writes to.
-// Pure presentational: caller supplies roleFor(midi) -> { role, label, ghost } | null.
-// Tactile "Bench" rendering (key depth, felt, tube-glow on lit keys).
-import { KEYS, KEY_W, KEY_H, BLK_W, BLK_H, midiOctave } from "../lib/voicing.js";
+// Keyboard.jsx — the shared instrument. One lit keyboard every room writes to,
+// now living in the persistent dock. Pure presentational: caller supplies
+// roleFor(midi) -> { role, label, ghost } | null.
+//
+// DOM keys (not SVG) so the instrument stretches to ANY container height —
+// the dock's 76px↔220px morph is a plain CSS height transition on the parent
+// and the keys simply fill it. Same public API as the old SVG version.
+import { KEYS, midiOctave } from "../lib/voicing.js";
 import { C } from "../ui/theme.js";
 
-// role -> [fill, glow]
-const ROLE_COLORS = {
-  root: [C.root, C.rootGlow],
-  tone: [C.tone, C.toneGlow],
-  bass: [C.bass, C.bassGlow],
-  scale: [C.tone, C.toneGlow],
-  pedal: [C.ai, C.aiGlow],
+// role -> [fill, glow], read at render time so applyTheme's live palette applies
+const roleColors = (role) => {
+  switch (role) {
+    case "root": return [C.root, C.rootGlow];
+    case "bass": return [C.bass, C.bassGlow];
+    case "pedal": return [C.ai, C.aiGlow];
+    default: return [C.tone, C.toneGlow]; // tone, scale
+  }
 };
 
+// Real off-center nudges (fraction of a white key's width) so the black keys
+// sit the way a piano actually casts them, not on a grid.
+const BLACK_NUDGE = { 1: -0.13, 3: 0.13, 6: -0.16, 8: 0, 10: 0.16 };
+
+const WHITE_GRADIENT = "linear-gradient(180deg,#FBF7EC 0%,#F1EBDC 82%,#E4DCC8 100%)";
+const BLACK_GRADIENT = "linear-gradient(180deg,#3A362E 0%,#211E19 12%,#16130F 100%)";
+
 export default function Keyboard({ roleFor, onKey, flash, ariaLabel = "piano keyboard" }) {
+  const whites = KEYS.whiteKeys;
+  const whiteW = 100 / whites.length;
   const isFlash = (m) => flash && flash.has(m);
 
-  const renderWhite = (k) => {
-    const info = roleFor ? roleFor(k.midi) : null;
-    const flashed = isFlash(k.midi);
-    const role = info?.role || null;
-    const ghost = info?.ghost;
-    const lit = (!!role && !ghost) || flashed;
-    const [rc, rg] = role ? (ROLE_COLORS[role] || ROLE_COLORS.tone) : [C.toneGlow, C.toneGlow];
-    const fill = role && !ghost ? rc : flashed ? C.toneGlow : "url(#klWhite)";
-    const isC = k.midi % 12 === 0;
-    return (
-      <g key={k.midi} onClick={() => onKey?.(k.midi)} style={{ cursor: onKey ? "pointer" : "default" }}>
-        <rect
-          x={k.x + 1} y={2} width={KEY_W - 2} height={KEY_H} rx={6}
-          fill={fill}
-          stroke={lit ? rg : ghost && role ? rc : C.whiteShadow}
-          strokeWidth={lit ? 1.6 : ghost && role ? 1.5 : 1}
-          style={{
-            filter: lit ? `drop-shadow(0 0 13px ${rg}cc)` : "none",
-            transition: "fill 130ms ease, filter 180ms ease, stroke 130ms ease",
-          }}
-        />
-        {ghost && role && (
-          <circle cx={k.x + KEY_W / 2} cy={KEY_H - 26} r={4} fill={rc} opacity={0.9} />
-        )}
-        {info?.label && (
-          <text x={k.x + KEY_W / 2} y={KEY_H - 13} textAnchor="middle" fontSize="12" fontWeight="700"
-            fill={role && !ghost ? "#241a08" : C.muted}
-            style={{ fontFamily: "var(--kl-mono)", pointerEvents: "none" }}>{info.label}</text>
-        )}
-        {!info?.label && isC && !lit && (
-          <text x={k.x + KEY_W / 2} y={KEY_H - 12} textAnchor="middle" fontSize="9" fill={C.faint}
-            style={{ fontFamily: "var(--kl-mono)", pointerEvents: "none" }}>C{midiOctave(k.midi)}</text>
-        )}
-      </g>
-    );
-  };
+  const whiteInfo = whites.map((k) => (roleFor ? roleFor(k.midi) : null));
 
-  const renderBlack = (k) => {
-    const info = roleFor ? roleFor(k.midi) : null;
-    const flashed = isFlash(k.midi);
-    const role = info?.role || null;
-    const ghost = info?.ghost;
-    const lit = (!!role && !ghost) || flashed;
-    const [rc, rg] = role ? (ROLE_COLORS[role] || ROLE_COLORS.tone) : [C.toneGlow, C.toneGlow];
-    const fill = role && !ghost ? rc : flashed ? C.toneGlow : "url(#klBlack)";
-    return (
-      <g key={k.midi} onClick={() => onKey?.(k.midi)} style={{ cursor: onKey ? "pointer" : "default" }}>
-        <rect
-          x={k.x} y={2} width={BLK_W} height={BLK_H} rx={4}
-          fill={fill}
-          stroke={lit ? rg : ghost && role ? rc : "#0c0a08"}
-          strokeWidth={lit ? 1.6 : ghost && role ? 1.4 : 1}
-          style={{
-            filter: lit ? `drop-shadow(0 0 12px ${rg}dd)` : "none",
-            transition: "fill 130ms ease, filter 180ms ease, stroke 130ms ease",
-          }}
-        />
-        {ghost && role && (
-          <circle cx={k.x + BLK_W / 2} cy={BLK_H - 16} r={3.5} fill={rc} opacity={0.95} />
-        )}
-        {info?.label && (
-          <text x={k.x + BLK_W / 2} y={BLK_H - 10} textAnchor="middle" fontSize="9.5" fontWeight="700"
-            fill={role && !ghost ? "#241a08" : C.toneGlow}
-            style={{ fontFamily: "var(--kl-mono)", pointerEvents: "none" }}>{info.label}</text>
-        )}
-      </g>
-    );
-  };
+  const blacks = KEYS.blackKeys.map((k) => {
+    const wi = whites.findIndex((w) => w.midi === k.midi - 1);
+    const bw = whiteW * 0.58;
+    return {
+      midi: k.midi,
+      left: (wi + 1) * whiteW - bw / 2 + (BLACK_NUDGE[k.midi % 12] || 0) * whiteW,
+      width: bw,
+      info: roleFor ? roleFor(k.midi) : null,
+    };
+  });
 
   return (
-    <div style={{ width: "100%", overflowX: "auto" }}>
-      <svg viewBox={`0 0 ${KEYS.width} ${KEY_H + 8}`} width="100%"
-        style={{ display: "block", maxWidth: KEYS.width, margin: "0 auto", minWidth: 470 }}
-        role="img" aria-label={ariaLabel}>
-        <defs>
-          <linearGradient id="klWhite" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fbf6ec" />
-            <stop offset="62%" stopColor={C.white} />
-            <stop offset="100%" stopColor={C.whiteShadow} />
-          </linearGradient>
-          <linearGradient id="klBlack" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#342d26" />
-            <stop offset="48%" stopColor={C.black} />
-            <stop offset="100%" stopColor="#15110d" />
-          </linearGradient>
-        </defs>
-        {KEYS.whiteKeys.map(renderWhite)}
-        {KEYS.blackKeys.map(renderBlack)}
-      </svg>
+    <div role="group" aria-label={ariaLabel}
+      style={{ position: "relative", height: "100%", minHeight: 56, userSelect: "none" }}>
+      <div style={{ display: "flex", gap: 1, height: "100%" }}>
+        {whites.map((k, i) => {
+          const info = whiteInfo[i];
+          const role = info?.role || null;
+          const ghost = info?.ghost;
+          const flashed = isFlash(k.midi);
+          const lit = (!!role && !ghost) || flashed;
+          const [fill, glow] = role ? roleColors(role) : [null, null];
+          const isC = k.midi % 12 === 0;
+          return (
+            <div key={k.midi} onClick={() => onKey?.(k.midi)}
+              style={{
+                flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end",
+                alignItems: "center", minWidth: 0,
+                background: flashed ? "#fff" : lit ? fill : WHITE_GRADIENT,
+                borderRadius: "0 0 2px 2px",
+                cursor: onKey ? "pointer" : "default",
+                transition: "background 180ms ease, box-shadow 250ms ease",
+                boxShadow: lit
+                  ? `0 0 14px ${glow || "#fff"}`
+                  : "inset -1px 0 0 rgba(0,0,0,.08), inset 0 -2px 0 rgba(0,0,0,.1)",
+              }}>
+              {ghost && role && (
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: fill, marginBottom: 8, boxShadow: `0 0 8px ${fill}` }} />
+              )}
+              {info?.label ? (
+                <span style={{ fontFamily: "var(--kl-mono)", fontSize: 10, fontWeight: 600, color: lit ? "rgba(13,12,9,.72)" : "#8C8272", paddingBottom: 5, pointerEvents: "none" }}>
+                  {info.label}
+                </span>
+              ) : isC && !lit && !ghost ? (
+                <span style={{ fontFamily: "var(--kl-mono)", fontSize: 8, color: "#B7AD99", paddingBottom: 4, pointerEvents: "none" }}>
+                  C{midiOctave(k.midi)}
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {blacks.map((b) => {
+        const role = b.info?.role || null;
+        const ghost = b.info?.ghost;
+        const flashed = isFlash(b.midi);
+        const lit = (!!role && !ghost) || flashed;
+        const [fill, glow] = role ? roleColors(role) : [null, null];
+        return (
+          <div key={b.midi} onClick={() => onKey?.(b.midi)}
+            style={{
+              position: "absolute", top: 0, left: `${b.left.toFixed(3)}%`, width: `${b.width.toFixed(3)}%`,
+              height: "63%", zIndex: 2,
+              display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center",
+              background: flashed ? "#fff" : lit ? fill : BLACK_GRADIENT,
+              borderRadius: "0 0 3px 3px",
+              cursor: onKey ? "pointer" : "default",
+              transition: "background 180ms ease, box-shadow 250ms ease",
+              boxShadow: lit
+                ? `0 0 12px ${glow || "#fff"}`
+                : "inset 0 -4px 0 rgba(255,255,255,.06), 0 3px 5px rgba(0,0,0,.55)",
+            }}>
+            {ghost && role && (
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: fill, marginBottom: 6, boxShadow: `0 0 7px ${fill}` }} />
+            )}
+            {b.info?.label && (
+              <span style={{ fontFamily: "var(--kl-mono)", fontSize: 9, fontWeight: 600, color: lit ? "rgba(13,12,9,.72)" : "#C7BFAE", paddingBottom: 4, pointerEvents: "none" }}>
+                {b.info.label}
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

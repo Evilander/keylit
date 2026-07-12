@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
   Play, Pause, ChevronLeft, ChevronRight, Volume2, VolumeX,
-  RotateCcw, Upload, Minus, Plus, Loader2, Piano as PianoIcon, Undo2, Lightbulb,
-  Library as LibraryIcon, ScrollText, Compass, GraduationCap, PenLine, Target,
-  ArrowLeft, Moon, Sun, BookOpen, Guitar,
+  RotateCcw, Upload, Minus, Plus, Loader2, Undo2, Lightbulb,
 } from "lucide-react";
 import {
   SHARP_NAMES, parseSheet, transposeChord, chordSymbol, displaySymbol,
@@ -70,15 +68,15 @@ A      E/G#      F#m                    E
 Well, how could you, baby?`;
 
 const NAV = [
-  { id: "library", label: "Library", icon: LibraryIcon },
-  { id: "song", label: "Song", icon: ScrollText },
-  { id: "piano", label: "Piano", icon: PianoIcon },
-  { id: "theory", label: "Theory", icon: Compass },
-  { id: "learn", label: "Learn", icon: GraduationCap },
-  { id: "write", label: "Write", icon: PenLine },
-  { id: "practice", label: "Practice", icon: Target },
-  { id: "chords", label: "Chordbook", icon: Guitar },
-  { id: "shed", label: "The Shed", icon: BookOpen },
+  { id: "library", label: "Library" },
+  { id: "song", label: "Song" },
+  { id: "piano", label: "Piano" },
+  { id: "theory", label: "Theory" },
+  { id: "learn", label: "Learn" },
+  { id: "write", label: "Write" },
+  { id: "practice", label: "Practice" },
+  { id: "chords", label: "Chordbook" },
+  { id: "shed", label: "The Shed" },
 ];
 
 const GUITAR_TUNING_KEY = "keylit.guitar-tuning.v1";
@@ -142,6 +140,9 @@ export default function App() {
   const [chartSpelling, setChartSpelling] = useState(savedSpelling);
   // Opened from a setlist: { name, rows, idx } drives the gig strip (prev/next).
   const [setlistCtx, setSetlistCtx] = useState(null);
+  // A room may take the dock over (the Chordbook lights its selected grip):
+  // { label, litMidis:Set<midi>, pcs:Set<pc>, rootPc, labels?:Map<midi,name> }.
+  const [dockOverride, setDockOverride] = useState(null);
 
   const armedRef = useRef(false);
   const stripRef = useRef(null);
@@ -540,6 +541,29 @@ export default function App() {
     return role ? { role } : null;
   };
 
+  // The persistent dock reads whoever holds the stage: a room override (the
+  // Chordbook's selected grip — exact notes solid, other octaves ghosted),
+  // otherwise the current chord / lesson through roleForKeyboard.
+  const dockRoleFor = (midi) => {
+    if (dockOverride) {
+      const pc = ((midi % 12) + 12) % 12;
+      const isRoot = pc === dockOverride.rootPc;
+      if (dockOverride.litMidis?.has(midi)) {
+        return { role: isRoot ? "root" : "tone", label: dockOverride.labels?.get(midi) };
+      }
+      if (dockOverride.pcs?.has(pc)) return { role: isRoot ? "root" : "tone", ghost: true };
+      return null;
+    }
+    return roleForKeyboard(midi);
+  };
+  const dockLabel = dockOverride
+    ? dockOverride.label
+    : section === "learn"
+      ? `${keyName} · ${lessonHL ? "the lesson is lit" : "the tutor's instrument"}`
+      : soundingCurrent
+        ? `now · ${displaySymbol(soundingCurrent, pitchShift)} — ${nashville(soundingCurrent, soundingKey.tonic)} · ${soundingCurrent.section || `${currentIdx + 1}/${view.prog.length}`}`
+        : "ready — every chord you click lands here";
+
   const tutor = {
     activeKey,
     setKey: (tonic, m) => setKeyOverride({ tonic, mode: m }),
@@ -624,11 +648,11 @@ export default function App() {
   );
 
   const transposeCtl = (
-    <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "6px 8px", display: "inline-flex", alignItems: "center", gap: 8 }}
+    <div style={{ border: `1.5px solid ${C.lineStrong}`, borderRadius: 999, padding: "6px 8px 6px 16px", display: "inline-flex", alignItems: "center", gap: 10 }}
       title="Moves the song's concert pitch. To compensate for a down-tuned guitar without moving the song, use Guitar setup below.">
-      <span className="kl-eyebrow">Song transpose</span>
+      <span className="kl-eyebrow">Transpose</span>
       <button onClick={() => setTranspose((t) => Math.max(-11, t - 1))} style={miniBtn} aria-label="Transpose down"><Minus size={14} /></button>
-      <span style={{ fontFamily: MONO, fontSize: 14, minWidth: 34, textAlign: "center", color: transpose ? C.toneText : C.muted }}>{transpose > 0 ? "+" : ""}{transpose}</span>
+      <span style={{ fontFamily: MONO, fontSize: 13, minWidth: 30, textAlign: "center", color: transpose ? C.rootText : C.muted }}>{transpose > 0 ? "+" : ""}{transpose}</span>
       <button onClick={() => setTranspose((t) => Math.min(11, t + 1))} style={miniBtn} aria-label="Transpose up"><Plus size={14} /></button>
     </div>
   );
@@ -647,7 +671,7 @@ export default function App() {
       <div className="flex items-center" style={{ gap: 8 }}>
         <span style={{ fontSize: 11, color: C.faint }}>slow</span>
         <input type="range" min={600} max={2400} step={100} value={2400 - (tempo - 600)}
-          onChange={(e) => setTempo(2400 - (Number(e.target.value) - 600))} style={{ width: 90, accentColor: C.toneUi }} aria-label="playback speed" />
+          onChange={(e) => setTempo(2400 - (Number(e.target.value) - 600))} style={{ width: 110, accentColor: C.root }} aria-label="playback speed" />
         <span style={{ fontSize: 11, color: C.faint }}>fast</span>
       </div>
     </div>
@@ -749,62 +773,36 @@ export default function App() {
 
   return (
     <div className="kl-app">
-      {/* ---- SIDEBAR ---- */}
-      <aside className="kl-sidebar">
-        <div className="kl-brand">
-          <div className="mark">Keylit</div>
-          <div className="kicker">the songbook that thinks in numbers</div>
-        </div>
-        <nav className="kl-nav" aria-label="Sections">
-          {NAV.map((n) => {
-            const Icon = n.icon;
-            return (
-              <button key={n.id} className="kl-nav-item" aria-current={section === n.id} onClick={() => setSection(n.id)}>
-                <span className="ico"><Icon size={17} /></span>{n.label}
-              </button>
-            );
-          })}
+      {/* ---- TOP BAR: brand · room tabs · key readout · theme pill ---- */}
+      <header className="kl-topnav">
+        <div className="kl-wordmark">Keylit<b>.</b></div>
+        <nav className="kl-roomtabs" aria-label="Rooms">
+          {NAV.map((n) => (
+            <button key={n.id} className="kl-roomtab" aria-current={section === n.id} onClick={() => setSection(n.id)}>
+              {n.label}
+            </button>
+          ))}
         </nav>
-        <div className="kl-side-foot">
-          <EnginePill engine={engineState.engine} loading={engineState.loading} />
-          <button onClick={toggleTheme} aria-label={theme === "dark" ? "lights up" : "lights down"}
-            title={theme === "dark" ? "back to the daylight songbook" : "after hours — lamps low"}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8, padding: "5px 10px",
-              borderRadius: 999, background: "transparent", color: C.muted, border: `1px solid ${C.line}`,
-              cursor: "pointer", fontSize: 11.5 }}>
-            {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
-            {theme === "dark" ? "daylight" : "after hours"}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16, flex: "0 0 auto", minWidth: 0 }}>
+          <span className="kl-hide-sm" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase",
+            color: transpose || keyOverride ? C.rootText : C.faint,
+            maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            Key of {keyNameFull}
+          </span>
+          <button onClick={toggleTheme}
+            aria-label={theme === "dark" ? "back to daylight" : "lamps low"}
+            title={theme === "dark" ? "Back to daylight" : "Lamps low"}
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10,
+              letterSpacing: "0.1em", textTransform: "uppercase", color: C.muted, background: "transparent",
+              border: `1.5px solid ${C.line}`, borderRadius: 999, padding: "7px 14px", cursor: "pointer", whiteSpace: "nowrap" }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: theme === "dark" ? C.bass : C.root, transition: "background 300ms" }} />
+            {theme === "dark" ? "After hours" : "Daylight"}
           </button>
         </div>
-      </aside>
+      </header>
 
-      {/* ---- MAIN ---- */}
+      {/* ---- THE ROOM ---- */}
       <main className="kl-main">
-        <div className="kl-topbar">
-          <button onClick={() => window.history.back()} aria-label="go back" title="back"
-            style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, marginRight: 10,
-              borderRadius: 8, background: "transparent", color: section === "library" ? C.faint : C.muted,
-              border: `1px solid ${C.line}`, cursor: "pointer", flex: "0 0 auto" }}>
-            <ArrowLeft size={15} />
-          </button>
-          <div className="kl-crumb">
-            {(section === "song" || section === "piano") && loaded ? (
-              <>
-                <button onClick={() => setSection("library")}
-                  style={{ background: "transparent", border: 0, padding: 0, cursor: "pointer", color: "inherit", font: "inherit" }}>
-                  Library
-                </button>
-                <span className="sep">/</span><span>{loaded.artist}</span><span className="sep">/</span><span className="cur">{loaded.title}</span>
-              </>
-            ) : (
-              <span className="cur">{NAV.find((n) => n.id === section)?.label}</span>
-            )}
-          </div>
-          <div style={{ marginLeft: "auto" }} className="flex items-center">
-            <span className="kl-meta">Key of {keyNameFull}</span>
-          </div>
-        </div>
-
         <div className={`kl-content${section === "library" || section === "song" ? "" : " wide"}`}>
           {section === "library" && (
             <Library onOpen={openSong}
@@ -901,65 +899,68 @@ export default function App() {
 
           {section === "piano" && (
             <div className="kl-section">
-              <div className="kl-eyebrow">The instrument</div>
-              <h1 className="kl-title" style={{ marginTop: 4 }}>Piano</h1>
-              <p className="kl-prose" style={{ maxWidth: 560, marginTop: 6, marginBottom: 16 }}>
-                {loaded ? <>The chords of <em>{loaded.title}</em>, lit on the keys.</> : <>The chords of your chart, lit on the keys — the proper notes for each shape.</>}
-              </p>
-              <div className="deck" style={{ padding: "16px 16px 14px" }}>
-                <div className="flex items-center justify-between" style={{ gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
-                  <div style={{ minWidth: 200 }}>
-                    {soundingCurrent ? (
-                      <div className="flex items-center" style={{ gap: 16 }}>
-                        <div key={currentIdx + chordSymbol(soundingCurrent)} className="kl-pop" style={{ fontFamily: MONO, fontSize: 42, fontWeight: 700, lineHeight: 1, color: "#f3ede2" }}>{displaySymbol(soundingCurrent, pitchShift)}</div>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 32, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 320 }}>
+                  <div className="kl-eyebrow faint">The instrument</div>
+                  {soundingCurrent ? (
+                    <>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 22, marginTop: 14, flexWrap: "wrap" }}>
+                        <div key={currentIdx + chordSymbol(soundingCurrent)} className="kl-noteswap"
+                          style={{ fontFamily: MONO, fontSize: "clamp(44px, 8vw, 88px)", fontWeight: 600, lineHeight: 0.95, letterSpacing: "-0.02em", color: C.ink }}>
+                          {displaySymbol(soundingCurrent, pitchShift)}
+                        </div>
                         <div>
-                          <div className="flex items-center" style={{ gap: 8 }}>
-                            <span style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700, color: C.rootGlow }}>{nashville(soundingCurrent, soundingKey.tonic)}</span>
-                            <span style={{ fontFamily: MONO, fontSize: 13, color: "#b8b0a4" }}>{romanNumeral(soundingCurrent, soundingKey.tonic)}</span>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                            <span style={{ fontFamily: MONO, fontSize: 26, fontWeight: 600, color: C.root }}>{nashville(soundingCurrent, soundingKey.tonic)}</span>
+                            <span style={{ fontFamily: MONO, fontSize: 16, color: C.toneText }}>{romanNumeral(soundingCurrent, soundingKey.tonic)}</span>
                           </div>
-                          <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#8b8378", marginTop: 6 }}>
-                            {soundingCurrent.section || "now playing"} · {currentIdx + 1}/{view.prog.length}
+                          <div className="kl-eyebrow faint" style={{ marginTop: 10 }}>
+                            {soundingCurrent.section || "now playing"} · {currentIdx + 1} / {view.prog.length}
                             {capoShift > 0 && current && <> · written {displaySymbol(current, transpose)} (capo {capoShift})</>}
                           </div>
                         </div>
                       </div>
-                    ) : (
-                      <div style={{ color: "#8b8378", fontFamily: MONO }}>
-                        <div>Nothing loaded yet.</div>
-                        <div className="flex items-center" style={{ gap: 8, marginTop: 10 }}>
-                          <BenchButton onClick={() => setSection("library")}>Pick from the Library</BenchButton>
-                          <BenchButton onClick={() => setImportOpen(true)}>Paste a chart or tab</BenchButton>
+                      {soundingView.unique.length > 0 && (
+                        <div style={{ marginTop: 26, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {soundingView.unique.map((ch, i) => {
+                            const active = soundingCurrent && chordSymbol(soundingCurrent) === chordSymbol(ch);
+                            const shown = displaySymbol(ch, pitchShift);
+                            const piano = spellChord(ch, soundingKey);
+                            return (
+                              <button key={i} onClick={() => selectUnique(ch, soundingView.prog)}
+                                title={piano !== shown ? `piano says ${piano}` : undefined}
+                                style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 2,
+                                  fontFamily: MONO, padding: "9px 15px", borderRadius: 12, cursor: "pointer",
+                                  transition: "background 150ms ease, color 150ms ease, border-color 150ms ease",
+                                  border: `1.5px solid ${active ? C.ink : C.lineStrong}`,
+                                  background: active ? C.ink : "transparent",
+                                  color: active ? "var(--kl-on-ink)" : C.ink }}>
+                                <span style={{ fontSize: 14, fontWeight: 600 }}>{shown}</span>
+                                <span style={{ fontSize: 10, opacity: 0.6 }}>{nashville(ch, soundingKey.tonic)}</span>
+                              </button>
+                            );
+                          })}
                         </div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ marginTop: 14 }}>
+                      <h1 className="kl-title">Nothing on the stand yet.</h1>
+                      <div className="flex items-center" style={{ gap: 8, marginTop: 16 }}>
+                        <BenchButton onClick={() => setSection("library")}>Pick from the Library</BenchButton>
+                        <BenchButton onClick={() => setImportOpen(true)}>Paste a chart or tab</BenchButton>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 18, alignItems: "flex-end" }}>
                   <Segmented label="Keys" value={mode} onChange={(v) => { arm(); setMode(v); }}
-                    options={[{ v: "shape", t: "Shape" }, { v: "voicing", t: "Voicing" }, { v: "smooth", t: "Smooth" }]} dark />
+                    options={[{ v: "shape", t: "Shape" }, { v: "voicing", t: "Voicing" }, { v: "smooth", t: "Smooth" }]} />
+                  {transport}
                 </div>
-                <div className="key-felt" style={{ padding: "14px 12px 10px" }}>
-                  <Keyboard roleFor={roleForKeyboard} onKey={playSingleKey} flash={flash} ariaLabel="piano keyboard — the current chord is lit" />
-                </div>
-                <div style={{ marginTop: 14 }}>{transport}</div>
               </div>
-              {soundingView.unique.length > 0 && (
-                <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {soundingView.unique.map((ch, i) => {
-                    const active = soundingCurrent && chordSymbol(soundingCurrent) === chordSymbol(ch);
-                    const shown = displaySymbol(ch, pitchShift);
-                    const piano = spellChord(ch, soundingKey);
-                    return (
-                      <button key={i} onClick={() => selectUnique(ch, soundingView.prog)}
-                        title={piano !== shown ? `piano says ${piano}` : undefined}
-                        style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "7px 12px", borderRadius: 9, cursor: "pointer", background: active ? C.panel2 : C.panel, border: `1px solid ${active ? C.toneUi : C.line}` }}>
-                        <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.ink }}>{shown}</span>
-                        <span style={{ fontFamily: MONO, fontSize: 10, color: C.faint }}>{nashville(ch, soundingKey.tonic)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              <p style={{ color: C.faint, fontSize: 12, marginTop: 14, maxWidth: 620 }}>
-                <b style={{ color: C.muted }}>Shape</b> lights every note in the chord. <b style={{ color: C.muted }}>Voicing</b> shows one close hand position. <b style={{ color: C.muted }}>Smooth</b> voice-leads from the chord before it.
+              <p style={{ color: C.faint, fontSize: 12.5, marginTop: 26, maxWidth: 620 }}>
+                <b style={{ color: C.muted }}>Shape</b> lights every note of the chord across the deck. <b style={{ color: C.muted }}>Voicing</b> shows one close hand position. <b style={{ color: C.muted }}>Smooth</b> voice-leads from the chord before it — the least your hand can move.
               </p>
               <Arranger prog={soundingView.prog} title={loaded?.title || "your chart"}
                 onStart={startArrangement} onStepIdx={setCurrentIdx} />
@@ -991,7 +992,7 @@ export default function App() {
                     {Object.entries(wheelMoves(activeKey)).map(([k, mv]) => (
                       <div key={k} style={{ borderTop: `1px solid ${C.line}`, marginTop: 12, paddingTop: 12 }}>
                         <div className="flex items-center justify-between" style={{ gap: 8 }}>
-                          <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 17, color: C.ink }}>{mv.title}</span>
+                          <span style={{ fontFamily: DISPLAY, fontSize: 17, color: C.ink }}>{mv.title}</span>
                           {mv.chords ? (
                             <button className="bench-btn" style={{ padding: "4px 11px", fontSize: 12 }}
                               onClick={() => auditionChords(mv.chords)}>
@@ -1019,13 +1020,13 @@ export default function App() {
 
           {section === "learn" && (
             <div className="kl-section">
-              <div className="kl-eyebrow">The tutor</div>
-              <h1 className="kl-title" style={{ marginTop: 4, marginBottom: 16 }}>Learn</h1>
-              <div className="deck" style={{ padding: "14px 12px", marginBottom: 18 }}>
-                <div className="key-felt" style={{ padding: "12px 10px 8px" }}>
-                  <Keyboard roleFor={roleForKeyboard} onKey={playSingleKey} flash={flash} ariaLabel="piano keyboard — the lesson is lit" />
-                </div>
-              </div>
+              <div className="kl-eyebrow faint">The theory tutor</div>
+              <h1 className="kl-title" style={{ marginTop: 12, marginBottom: 8 }}>
+                Scales are just a recipe: <span style={{ color: C.root }}>whole, whole, half.</span>
+              </h1>
+              <p style={{ color: C.faint, fontSize: 12.5, margin: "0 0 28px" }}>
+                Every lesson lights the shared instrument in the dock below.
+              </p>
               <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 18 }}>
                 <ScaleBuilder tutor={tutor} onIntent={onChipIntent} />
                 <DegreeFinder tutor={tutor} onIntent={onChipIntent} />
@@ -1090,13 +1091,39 @@ export default function App() {
 
           {section === "chords" && (
             <ChordBook tuningId={guitarTuning} spelling={chartSpelling}
-              onStrum={strumNotes}
+              onStrum={strumNotes} onDockLight={setDockOverride}
               onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }} />
           )}
 
           {section === "shed" && <Shed />}
         </div>
       </main>
+
+      {/* ---- THE DOCK: one shared instrument, always present, reshaping per room ---- */}
+      <footer className={`kl-dock${section === "piano" ? " tall" : ""}`}>
+        <div className="kl-dock-slab">
+          <div className="kl-dock-head">
+            <span className={`dot${isPlaying ? " kl-pulse" : ""}`}
+              style={{ background: isPlaying ? C.root : "#4A4438", boxShadow: isPlaying ? `0 0 10px ${C.root}` : "none" }} />
+            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dockLabel}</span>
+            <span style={{ marginLeft: "auto", display: "flex", gap: 16, alignItems: "center", flex: "0 0 auto" }}>
+              <EnginePill engine={engineState.engine} loading={engineState.loading} />
+              <button onClick={() => setSoundOn((s) => !s)} style={{ color: soundOn ? C.tone : "#79705C" }}>
+                {soundOn ? "sound on" : "muted"}
+              </button>
+              {section === "piano" ? (
+                <span className="kl-hide-sm">the shared instrument</span>
+              ) : (
+                <button onClick={() => setSection("piano")}>open the piano ↗</button>
+              )}
+            </span>
+          </div>
+          <div className="kl-dock-keys">
+            <Keyboard roleFor={dockRoleFor} onKey={playSingleKey} flash={flash}
+              ariaLabel="piano keyboard — the current chord is lit" />
+          </div>
+        </div>
+      </footer>
 
       <ImportModal open={importOpen} onLoad={(s) => { setLoaded(null); loadSheet(s); }} onClose={() => setImportOpen(false)} />
       <style>{`.spin{animation:kl-spin 1s linear infinite}`}</style>
@@ -1134,8 +1161,8 @@ function SongHeader({ loaded, keyName }) {
 
 const miniBtn = {
   display: "inline-flex", alignItems: "center", justifyContent: "center",
-  width: 26, height: 26, borderRadius: 7, background: C.panel2,
-  color: C.ink, border: `1px solid ${C.line}`, cursor: "pointer",
+  width: 26, height: 26, borderRadius: "50%", background: "transparent",
+  color: C.ink, border: `1.5px solid ${C.lineStrong}`, cursor: "pointer",
 };
 const navChip = {
   display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -1147,13 +1174,14 @@ const selStyle = {
   borderRadius: 7, padding: "4px 6px", fontSize: 13, fontFamily: MONO, cursor: "pointer",
 };
 
+// Lives in the dock head: a quiet mono readout of what instrument will speak.
 function EnginePill({ engine, loading }) {
-  const label = engine === "piano" ? "Sampled grand piano" : engine === "synth" ? (loading ? "Synth · loading piano…" : "Synth") : "Audio ready on first note";
+  const label = engine === "piano" ? "sampled grand" : engine === "synth" ? (loading ? "synth · loading piano…" : "synth") : "audio on first note";
   return (
-    <div className="eng-pill">
-      {loading ? <Loader2 size={14} className="kl-spin" /> : <PianoIcon size={14} />}
-      <span>{label}</span>
-    </div>
+    <span className="kl-hide-sm" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#5E5546" }}>
+      {loading && <Loader2 size={11} className="kl-spin" />}
+      {label}
+    </span>
   );
 }
 
@@ -1171,7 +1199,7 @@ function Segmented({ label, value, onChange, options, dark }) {
 function IconButton({ children, onClick, disabled, label, active }) {
   return (
     <button onClick={onClick} disabled={disabled} aria-label={label} title={label}
-      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: 10, background: C.panel, color: active ? C.toneText : C.ink, border: `1px solid ${C.line}`, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1 }}>
+      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: "50%", background: "transparent", color: active ? C.toneText : C.ink, border: `1.5px solid ${C.lineStrong}`, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1 }}>
       {children}
     </button>
   );

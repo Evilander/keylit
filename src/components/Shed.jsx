@@ -86,7 +86,7 @@ export default function Shed() {
   if (!shelf.length) {
     return (
       <div style={{ marginTop: 18, color: C.muted, fontSize: 14, maxWidth: 560 }}>
-        <p style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 19, color: C.ink }}>The shed is empty.</p>
+        <p style={{ fontFamily: DISPLAY, fontSize: 19, color: C.ink }}>The shed is empty.</p>
         <p style={{ marginTop: 8 }}>Run <code style={{ fontFamily: MONO }}>node tools/build_shed.mjs</code> after pointing it at your method books.</p>
       </div>
     );
