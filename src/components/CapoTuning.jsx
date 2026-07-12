@@ -38,7 +38,7 @@ export default function CapoTuning({ prog }) {
             {arrangements.map((a, i) => (
               <div key={`${a.tuningId}-${a.capo}`} style={{ borderBottom: `1px solid ${C.line}`, padding: "13px 4px" }}>
                 <div className="flex items-center" style={{ gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 18, color: C.ink }}>
+                  <span style={{ fontFamily: DISPLAY, fontSize: 18, color: C.ink }}>
                     {a.tuningName}{a.capo > 0 ? ` · capo ${a.capo}` : a.tuningId === "standard" ? " · no capo" : " · open"}
                   </span>
                   {i === 0 && <span style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 700, color: C.toneText, border: `1px solid ${C.toneText}66`, borderRadius: 5, padding: "1px 6px" }}>easiest</span>}
@@ -71,7 +71,7 @@ export default function CapoTuning({ prog }) {
           {tunings.map((t) => (
             <div key={t.id} style={{ borderBottom: `1px solid ${C.line}`, padding: "13px 4px" }}>
               <div className="flex items-center" style={{ gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 18, color: C.ink }}>{t.name}</span>
+                <span style={{ fontFamily: DISPLAY, fontSize: 18, color: C.ink }}>{t.name}</span>
                 <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: C.toneText, letterSpacing: "0.06em" }}>{t.strings}</span>
                 <span className="kl-meta" style={{ marginLeft: "auto", color: C.faint }}>{FAMILY_LABEL[t.family] || t.family}</span>
               </div>

@@ -1,196 +1,206 @@
 /* ================================================================== *
- * bench.css — "The Fretboard Press" material layer (LIGHT).
- * Warm near-white surfaces, hairline rules (not cards), warm-brown ink.
- * The ONE dark element is the keyboard deck (.deck/.key-felt), where the
- * saturated T/S/D hues glow as lit keys. Content color stays in theme.js `C`.
+ * bench.css — "Color-Shift" material layer (design handoff 2026-07-12).
+ * Cream paper, hairline rules (not cards), pill controls with 1.5px
+ * borders that darken to ink on hover. The ONE dark element is the
+ * persistent instrument dock (.deck), where the saturated role hues
+ * glow as lit keys. Content color stays in theme.js `C`.
  * ================================================================== */
 
 :root {
-  --kl-base: #FAFAF8;
-  --kl-raised: #FFFFFF;
-  --kl-sunken: #F2EFEA;
-  --kl-hair: #E5E0D8;
-  --kl-line: #D2CABE;
-  --kl-ink: #2A2521;
-  --kl-muted: #6B645C;
-  --kl-faint: #9A938A;
-  --kl-shadow: rgba(42, 37, 33, 0.08);
-  --kl-shadow-soft: rgba(42, 37, 33, 0.05);
-  --kl-glass: rgba(250, 250, 248, 0.86);
-  --kl-on-ink: #FAFAF8;
-  --kl-amber: #f0b429; --kl-amber-text: #966C0B; --kl-amber-ui: #BD880D;
-  --kl-teal: #46cfc2;  --kl-teal-text: #218178;  --kl-teal-ui: #2AA296;
-  --kl-coral: #f08a5d; --kl-coral-text: #C94A13; --kl-coral-ui: #EC6B32;
-  --kl-mono: "Berkeley Mono", ui-monospace, Menlo, Consolas, monospace;
-  --kl-display: "Newsreader", Georgia, "Times New Roman", serif;
-  --kl-sans: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --kl-base: #F7F3E9;
+  --kl-raised: #FFFDF6;
+  --kl-sunken: #F0EAD9;
+  --kl-hair: #E3DCC9;
+  --kl-line: #CFC6AE;
+  --kl-ink: #221F1A;
+  --kl-muted: #6E6553;
+  --kl-faint: #A29578;
+  --kl-shadow: rgba(34, 31, 26, 0.08);
+  --kl-shadow-soft: rgba(34, 31, 26, 0.05);
+  --kl-glass: rgba(247, 243, 233, 0.88);
+  --kl-on-ink: #F7F3E9;
+  --kl-deck: #0D0C09;
+  /* semantic accents — identical in both themes; -text/-ui shift for contrast */
+  --kl-root: #E4602F; --kl-root-text: #B4491D; --kl-root-ui: #D4552A;
+  --kl-tone: #2E9BA6; --kl-tone-text: #1F7A84; --kl-tone-ui: #28929C;
+  --kl-bass: #D9A73E; --kl-bass-text: #95701C; --kl-bass-ui: #BC8E28;
+  --kl-mono: "Martian Mono", "Berkeley Mono", ui-monospace, Menlo, Consolas, monospace;
+  --kl-display: "Gloock", Georgia, "Times New Roman", serif;
+  --kl-sans: "Onest", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: light;
 }
 
-/* ---- "After Hours": the same shop with the lamps low. Warm dark wood,
- * never slate. Content colors swap in theme.js (applyTheme) — this layer
- * keeps the structural material in step. ---- */
+/* ---- "After hours": warm brown-black, never slate. Accents stay put;
+ * the paper changes. Content colors swap in theme.js (applyTheme). ---- */
 :root[data-kl-theme="dark"] {
-  --kl-base: #161210;
-  --kl-raised: #1F1A15;
-  --kl-sunken: #292219;
-  --kl-hair: #383026;
-  --kl-line: #4C4234;
-  --kl-ink: #EDE6DA;
-  --kl-muted: #A99F90;
-  --kl-faint: #7B7266;
-  --kl-shadow: rgba(0, 0, 0, 0.45);
-  --kl-shadow-soft: rgba(0, 0, 0, 0.3);
-  --kl-glass: rgba(22, 18, 16, 0.86);
-  --kl-on-ink: #171310;
-  --kl-amber-text: #DCA62F; --kl-amber-ui: #C9962C;
-  --kl-teal-text: #54C9BB;  --kl-teal-ui: #3AB3A6;
-  --kl-coral-text: #F09363; --kl-coral-ui: #E97B47;
+  --kl-base: #171511;
+  --kl-raised: #1F1C16;
+  --kl-sunken: #26221A;
+  --kl-hair: #332F26;
+  --kl-line: #453F31;
+  --kl-ink: #F0EADB;
+  --kl-muted: #A79C86;
+  --kl-faint: #79705C;
+  --kl-shadow: rgba(0, 0, 0, 0.5);
+  --kl-shadow-soft: rgba(0, 0, 0, 0.32);
+  --kl-glass: rgba(23, 21, 17, 0.88);
+  --kl-on-ink: #171511;
+  --kl-root-text: #F08A5A; --kl-root-ui: #E4602F;
+  --kl-tone-text: #57BEC8; --kl-tone-ui: #3AAAB4;
+  --kl-bass-text: #E0B453; --kl-bass-ui: #D9A73E;
   color-scheme: dark;
 }
 
-/* ---- app shell: persistent left sidebar + content column ---- */
+/* ---- app shell: top bar · scrolling room · persistent instrument dock ---- */
 .kl-app {
-  min-height: 100%;
-  display: grid;
-  grid-template-columns: 236px minmax(0, 1fr);
+  height: 100vh;
+  display: flex; flex-direction: column;
   background: var(--kl-base);
   color: var(--kl-ink);
   font-family: var(--kl-sans);
+  transition: background 450ms ease, color 450ms ease;
 }
-.kl-sidebar {
-  position: sticky; top: 0; align-self: start;
-  height: 100vh; overflow-y: auto;
-  background: var(--kl-raised);
-  border-right: 1px solid var(--kl-hair);
-  padding: 20px 14px;
-  display: flex; flex-direction: column; gap: 4px;
-}
-.kl-brand { padding: 4px 10px 18px; }
-.kl-brand .mark {
-  font-family: var(--kl-display); font-style: italic; font-weight: 500;
-  font-size: 27px; letter-spacing: -0.01em; color: var(--kl-ink); line-height: 1;
-}
-.kl-brand .kicker {
-  font-family: var(--kl-sans); font-size: 10.5px; font-weight: 600;
-  letter-spacing: 0.04em; color: var(--kl-faint); margin-top: 5px;
-}
-.kl-nav { display: flex; flex-direction: column; gap: 1px; }
-.kl-nav-item {
-  position: relative; display: flex; align-items: center; gap: 11px;
-  font-family: var(--kl-sans); font-size: 14.5px; font-weight: 500;
-  color: var(--kl-muted); background: transparent; border: 0;
-  border-radius: 9px; padding: 9px 11px; cursor: pointer; text-align: left;
-  transition: background 140ms ease, color 140ms ease;
-}
-.kl-nav-item:hover { background: var(--kl-sunken); color: var(--kl-ink); }
-.kl-nav-item .ico { color: var(--kl-faint); display: inline-flex; transition: color 140ms ease; }
-.kl-nav-item:hover .ico { color: var(--kl-muted); }
-.kl-nav-item[aria-current="true"] {
-  color: var(--kl-ink); font-weight: 700; background: var(--kl-sunken);
-}
-.kl-nav-item[aria-current="true"] .ico { color: var(--kl-ink); }
-.kl-nav-item[aria-current="true"]::before {
-  content: ""; position: absolute; left: -14px; top: 8px; bottom: 8px;
-  width: 3px; border-radius: 0 3px 3px 0; background: var(--kl-ink);
-}
-.kl-nav-sep { height: 1px; background: var(--kl-hair); margin: 8px 8px; }
-.kl-side-foot { margin-top: auto; padding: 10px; color: var(--kl-faint); font-size: 11px; }
-
-.kl-main { min-width: 0; display: flex; flex-direction: column; }
-.kl-topbar {
-  position: sticky; top: 0; z-index: 20;
-  display: flex; align-items: center; gap: 14px;
-  min-height: 56px; padding: 0 26px;
-  background: var(--kl-glass); backdrop-filter: saturate(1.2) blur(8px);
+.kl-topnav {
+  flex: none; z-index: 30;
+  display: flex; align-items: center; gap: 34px;
+  height: 78px; padding: 0 44px;
   border-bottom: 1px solid var(--kl-hair);
+  background: var(--kl-glass); backdrop-filter: saturate(1.2) blur(8px);
 }
-.kl-crumb { font-family: var(--kl-mono); font-size: 12.5px; color: var(--kl-faint); display: flex; align-items: center; gap: 7px; }
-.kl-crumb .cur { color: var(--kl-ink); }
-.kl-crumb .sep { color: var(--kl-line); }
-.kl-content { padding: 26px 26px 64px; max-width: 1080px; width: 100%; margin-inline: auto; }
+.kl-topnav .kl-wordmark {
+  font-family: var(--kl-display); font-size: 27px; letter-spacing: 0.01em;
+  color: var(--kl-ink); line-height: 1; white-space: nowrap;
+}
+.kl-topnav .kl-wordmark b { color: var(--kl-root); font-weight: 400; }
+.kl-roomtabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.kl-roomtabs::-webkit-scrollbar { display: none; }
+.kl-roomtab {
+  font-family: var(--kl-sans); font-size: 12.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
+  color: var(--kl-muted); background: transparent; border: 0;
+  padding: 10px 13px; cursor: pointer; transition: color 200ms ease, box-shadow 200ms ease;
+}
+.kl-roomtab:hover { color: var(--kl-ink); }
+.kl-roomtab[aria-current="true"] {
+  color: var(--kl-ink);
+  box-shadow: inset 0 -2px 0 var(--kl-root);
+}
+
+.kl-main { flex: 1; overflow-y: auto; min-height: 0; }
+.kl-content { padding: 48px 44px 40px; max-width: 1080px; width: 100%; margin-inline: auto; }
 .kl-content.wide { max-width: 1280px; }
+
+/* the persistent dock (footer). Padding morphs with the room; the keys well
+ * inside morphs height — the app's signature moment. */
+.kl-dock { flex: none; padding: 0 24px 16px; transition: padding 450ms cubic-bezier(.22, 1, .36, 1); }
+.kl-dock.tall { padding: 10px 44px 26px; }
+.kl-dock-slab {
+  background: var(--kl-deck); border-radius: 18px; padding: 12px 18px 14px;
+  box-shadow: inset 0 3px 16px rgba(0, 0, 0, 0.6), 0 1px 3px var(--kl-shadow);
+}
+.kl-dock-head {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 10px;
+  font-family: var(--kl-mono); font-size: 10.5px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: #8C8272;
+}
+.kl-dock-head .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.kl-dock-head button {
+  font-family: var(--kl-mono); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; background: transparent; border: 0; cursor: pointer;
+  color: #8C8272; transition: color 180ms ease; padding: 2px 0;
+}
+.kl-dock-head button:hover { color: #F0EADB; }
+.kl-dock-keys { position: relative; height: 76px; transition: height 450ms cubic-bezier(.22, 1, .36, 1); }
+.kl-dock.tall .kl-dock-keys { height: 220px; }
 
 /* ---- editorial type helpers ---- */
 .kl-eyebrow {
-  font-family: var(--kl-sans); text-transform: uppercase;
-  letter-spacing: 0.09em; font-size: 11px; font-weight: 700; color: var(--kl-muted);
+  font-family: var(--kl-mono); text-transform: uppercase;
+  letter-spacing: 0.16em; font-size: 10px; font-weight: 500; color: var(--kl-muted);
 }
-.kl-title { font-family: var(--kl-display); font-style: italic; font-weight: 500; font-size: 32px; line-height: 1.12; letter-spacing: -0.01em; color: var(--kl-ink); margin: 0; }
-.kl-h2 { font-family: var(--kl-sans); font-weight: 700; font-size: 19px; line-height: 1.3; color: var(--kl-ink); margin: 0; }
-.kl-prose { font-family: var(--kl-display); font-size: 17px; line-height: 1.55; color: var(--kl-ink); }
+.kl-eyebrow.faint { color: var(--kl-faint); letter-spacing: 0.18em; }
+.kl-title { font-family: var(--kl-display); font-weight: 400; font-size: 46px; line-height: 1.05; letter-spacing: 0; color: var(--kl-ink); margin: 0; }
+.kl-title.hero { font-size: 58px; line-height: 1.02; }
+.kl-h2 { font-family: var(--kl-display); font-weight: 400; font-size: 25px; line-height: 1.2; color: var(--kl-ink); margin: 0; }
+.kl-prose { font-family: var(--kl-sans); font-size: 14.5px; line-height: 1.55; color: var(--kl-ink); }
 .kl-rule { height: 1px; background: var(--kl-hair); border: 0; margin: 18px 0; }
-.kl-meta { font-family: var(--kl-mono); font-size: 12px; color: var(--kl-muted); letter-spacing: 0.01em; }
+.kl-meta { font-family: var(--kl-mono); font-size: 11px; color: var(--kl-muted); letter-spacing: 0.06em; }
 
-/* ---- hairline rows (replaces the old card stack) ---- */
+/* ---- hairline rows (the editorial list — never a card stack) ---- */
 .kl-rows { display: flex; flex-direction: column; }
-.kl-row { display: flex; align-items: center; gap: 14px; padding: 12px 4px; border-bottom: 1px solid var(--kl-hair); }
-.kl-row:first-child { border-top: 1px solid var(--kl-hair); }
+.kl-row {
+  display: flex; align-items: center; gap: 14px; padding: 15px 6px;
+  border-bottom: 1px solid var(--kl-hair);
+  transition: background 180ms ease, padding-left 180ms ease;
+}
+.kl-row.click { cursor: pointer; }
+.kl-row.click:hover { background: var(--kl-sunken); padding-left: 14px; }
 
-/* a soft raised panel — used sparingly (the Bench faceplate, now light) */
+/* a raised panel. Default = quiet hairline; .hero = the 1.5px ink frame the
+ * design reserves for its few statement cards (POTD, drills). */
 .faceplate {
   position: relative; background: var(--kl-raised);
-  border: 1px solid var(--kl-hair); border-radius: 14px; padding: 16px;
-  box-shadow: 0 1px 2px var(--kl-shadow-soft);
+  border: 1px solid var(--kl-hair); border-radius: 16px; padding: 16px;
+  transition: background 450ms ease;
 }
+.faceplate.hero { border: 1.5px solid var(--kl-ink); padding: 22px 24px; }
 .plate-screws::before, .plate-screws::after { content: none; }
 
-/* ---- the recessed DARK keyboard stage (the one dark element) ---- */
+/* ---- the recessed DARK instrument well (shared with the dock) ---- */
 .deck {
-  background: radial-gradient(130% 120% at 50% 0%, #1d1711 0%, var(--kl-deck, #171310) 74%);
-  border: 1px solid #0d0a08; border-radius: 16px;
-  box-shadow: inset 0 3px 14px rgba(0, 0, 0, 0.55), 0 1px 2px var(--kl-shadow);
+  background: var(--kl-deck);
+  border: 0; border-radius: 18px;
+  box-shadow: inset 0 3px 16px rgba(0, 0, 0, 0.6), 0 1px 3px var(--kl-shadow);
 }
-.key-felt { background: linear-gradient(180deg, #3a1714 0%, #2a100e 100%); border-radius: 8px 8px 3px 3px; box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5); }
+/* legacy inner felt — now just the deck itself (keys sit straight on the slab) */
+.key-felt { background: transparent; border-radius: 8px; box-shadow: none; }
 
-/* ---- engraved label → light eyebrow ---- */
+/* ---- engraved label → mono eyebrow ---- */
 .engraved {
-  font-family: var(--kl-sans); text-transform: uppercase;
-  letter-spacing: 0.09em; font-size: 11px; font-weight: 700; color: var(--kl-muted);
+  font-family: var(--kl-mono); text-transform: uppercase;
+  letter-spacing: 0.16em; font-size: 10px; font-weight: 500; color: var(--kl-muted);
 }
 
-/* ---- light inset well (readouts, inputs) ---- */
+/* ---- inset well (readouts, inputs) ---- */
 .readout {
   background: var(--kl-sunken); border: 1px solid var(--kl-hair);
-  border-radius: 9px; box-shadow: inset 0 1px 2px var(--kl-shadow-soft);
+  border-radius: 12px; box-shadow: none;
   font-family: var(--kl-mono); padding: 8px 12px;
 }
 
-/* ---- buttons ---- */
+/* ---- buttons: pills, 1.5px borders, hover → ink, press → scale ---- */
 .bench-btn {
   font-family: var(--kl-sans);
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  background: var(--kl-raised); border: 1px solid var(--kl-line);
-  border-radius: 10px; color: var(--kl-ink);
-  padding: 9px 15px; font-size: 14px; font-weight: 600; cursor: pointer;
-  box-shadow: 0 1px 2px var(--kl-shadow-soft);
-  transition: transform 80ms ease, box-shadow 120ms ease, background 140ms ease, border-color 140ms ease;
+  background: transparent; border: 1.5px solid var(--kl-line);
+  border-radius: 999px; color: var(--kl-ink);
+  padding: 9px 17px; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: transform 120ms ease, border-color 200ms ease, background 200ms ease;
 }
-.bench-btn:hover { background: var(--kl-sunken); border-color: var(--kl-line); }
-.bench-btn:active { transform: translateY(1px); }
-.bench-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+.bench-btn:hover { border-color: var(--kl-ink); background: transparent; }
+.bench-btn:active { transform: scale(0.96); }
+.bench-btn:disabled { opacity: 0.4; cursor: default; transform: none; border-color: var(--kl-line); }
 .bench-btn.primary {
   background: var(--kl-ink); border-color: var(--kl-ink); color: var(--kl-on-ink);
-  box-shadow: 0 1px 3px var(--kl-shadow);
 }
 .bench-btn.primary:hover { filter: brightness(1.12); background: var(--kl-ink); }
 
-/* ---- segmented / pill toggle ---- */
-.kl-seg { display: inline-flex; gap: 3px; padding: 3px; border-radius: 10px; background: var(--kl-sunken); border: 1px solid var(--kl-hair); }
+/* ---- segmented pill (Shape/Voicing/Smooth etc.) — active is ink-filled ---- */
+.kl-seg { display: inline-flex; gap: 3px; padding: 4px; border-radius: 999px; background: transparent; border: 1.5px solid var(--kl-line); }
 .kl-seg button {
-  font-family: var(--kl-sans); font-size: 13px; font-weight: 600; color: var(--kl-muted);
-  background: transparent; border: 0; border-radius: 7px; padding: 6px 13px; cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
+  font-family: var(--kl-sans); font-size: 12.5px; font-weight: 600; color: var(--kl-muted);
+  background: transparent; border: 0; border-radius: 999px; padding: 7px 15px; cursor: pointer;
+  transition: background 200ms ease, color 200ms ease;
 }
 .kl-seg button:hover { color: var(--kl-ink); }
 .kl-seg button[aria-selected="true"],
-.kl-seg button[aria-checked="true"] { background: var(--kl-raised); color: var(--kl-ink); box-shadow: 0 1px 2px var(--kl-shadow-soft); }
+.kl-seg button[aria-checked="true"] { background: var(--kl-ink); color: var(--kl-on-ink); }
 
-/* legacy room-tabs (kept for compatibility, light styling) */
-.room-tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 11px; background: var(--kl-sunken); border: 1px solid var(--kl-hair); }
-.room-tab { display: inline-flex; align-items: center; gap: 7px; font-family: var(--kl-sans); font-size: 13px; font-weight: 600; color: var(--kl-muted); background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 6px 13px; cursor: pointer; transition: color 140ms ease, background 160ms ease; }
+/* legacy room-tabs (a few components still mount these) */
+.room-tabs { display: inline-flex; gap: 3px; padding: 4px; border-radius: 999px; background: transparent; border: 1.5px solid var(--kl-line); }
+.room-tab { display: inline-flex; align-items: center; gap: 7px; font-family: var(--kl-sans); font-size: 12.5px; font-weight: 600; color: var(--kl-muted); background: transparent; border: 0; border-radius: 999px; padding: 7px 14px; cursor: pointer; transition: color 200ms ease, background 200ms ease; }
 .room-tab:hover { color: var(--kl-ink); }
-.room-tab[aria-selected="true"] { color: var(--kl-ink); background: var(--kl-raised); box-shadow: 0 1px 2px var(--kl-shadow-soft); }
+.room-tab[aria-selected="true"] { color: var(--kl-on-ink); background: var(--kl-ink); }
 .room-tab .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
 /* ---- VU meter (Tonic / Subdominant / Dominant presence) ---- */
@@ -199,39 +209,41 @@
 .vu i.on { background: currentColor; }
 
 /* ---- now chip / pill ---- */
-.eng-pill { display: inline-flex; align-items: center; gap: 7px; font-family: var(--kl-sans); font-size: 12px; color: var(--kl-muted); background: var(--kl-sunken); border: 1px solid var(--kl-hair); border-radius: 999px; padding: 5px 11px; }
+.eng-pill { display: inline-flex; align-items: center; gap: 7px; font-family: var(--kl-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kl-muted); background: transparent; border: 1.5px solid var(--kl-line); border-radius: 999px; padding: 6px 12px; }
 
 /* ---- suggestion chip ---- */
-.chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--kl-sans); font-size: 13px; font-weight: 600; color: var(--kl-ink); background: var(--kl-raised); border: 1px solid var(--kl-line); border-radius: 999px; padding: 6px 13px; cursor: pointer; transition: transform 90ms ease, border-color 140ms ease, background 140ms ease; }
-.chip:hover { border-color: var(--kl-teal-ui); background: var(--kl-sunken); }
-.chip:active { transform: translateY(1px); }
-.chip .lead { color: var(--kl-teal-text); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--kl-sans); font-size: 13px; font-weight: 600; color: var(--kl-ink); background: transparent; border: 1.5px solid var(--kl-line); border-radius: 999px; padding: 7px 14px; cursor: pointer; transition: transform 120ms ease, border-color 200ms ease, background 200ms ease; }
+.chip:hover { border-color: var(--kl-ink); }
+.chip:active { transform: scale(0.96); }
+.chip .lead { color: var(--kl-root); }
 
 /* ---- dropdown menu rows (pick-a-setlist etc.) ---- */
 .kl-menu-item:hover { background: var(--kl-sunken); }
 
 /* ---- focus visibility (a11y floor) ---- */
-:focus-visible { outline: 2px solid var(--kl-teal-ui); outline-offset: 2px; border-radius: 4px; }
+:focus-visible { outline: 2px solid var(--kl-tone-ui); outline-offset: 2px; border-radius: 4px; }
 
 /* ================================================================== *
- * MOTION — springy, on panels/keys/reveals, never type.
+ * MOTION — rises on room entry, pulses while playing, presses scale.
+ * Never on type color alone; always still under reduced motion.
  * ================================================================== */
-@keyframes kl-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes kl-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @keyframes kl-pop  { 0% { opacity: 0; transform: translateY(6px) scale(.97); } 100% { opacity: 1; transform: none; } }
 @keyframes kl-snap { 0% { transform: translateX(-9px) scale(1.04); } 60% { transform: translateX(2px); } 100% { transform: none; } }
 @keyframes kl-spin { to { transform: rotate(360deg); } }
+@keyframes kl-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 @keyframes kl-breathe { 0%, 100% { filter: drop-shadow(0 0 6px currentColor); } 50% { filter: drop-shadow(0 0 13px currentColor); } }
-@keyframes kl-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 /* "the numbers stay, the key moves" — new note names drop in when the key changes */
 @keyframes kl-noteswap { from { opacity: 0; transform: translateY(-7px); } to { opacity: 1; transform: none; } }
 
-.kl-rise { animation: kl-rise 360ms cubic-bezier(.22, 1, .36, 1) both; }
+.kl-rise { animation: kl-rise 400ms cubic-bezier(.22, 1, .36, 1) both; }
 .kl-pop  { animation: kl-pop 300ms cubic-bezier(.34, 1.56, .64, 1) both; }
 .kl-snap { animation: kl-snap 340ms cubic-bezier(.34, 1.56, .64, 1) both; }
 .kl-spin { animation: kl-spin 1s linear infinite; }
+.kl-pulse { animation: kl-pulse 1s ease-in-out infinite; }
 .kl-noteswap { display: inline-block; animation: kl-noteswap 240ms cubic-bezier(.22, 1, .36, 1) both; }
 .kl-breathe { animation: kl-breathe 2.4s ease-in-out infinite; }
-.kl-section { animation: kl-fade 280ms cubic-bezier(.22, 1, .36, 1) both; }
+.kl-section { animation: kl-rise 400ms cubic-bezier(.22, 1, .36, 1) both; }
 
 .kl-stagger > * { animation: kl-rise 380ms cubic-bezier(.22, 1, .36, 1) both; }
 .kl-stagger > *:nth-child(1){animation-delay:0ms}.kl-stagger > *:nth-child(2){animation-delay:40ms}
@@ -241,37 +253,27 @@
 
 /* ---- responsive: phones ---- */
 @media (max-width: 560px) {
-  .kl-title { font-size: 25px; }
-  .kl-topbar { padding: 0 12px; gap: 8px; min-height: 46px; }
-  .kl-crumb { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .kl-content { padding: 16px 12px 48px; }
+  .kl-title { font-size: 30px; }
+  .kl-title.hero { font-size: 34px; }
+  .kl-content { padding: 24px 14px 32px; }
   .kl-hide-sm { display: none !important; }
-  .kl-eyebrow { letter-spacing: 0.07em; }
+  .kl-dock { padding: 0 8px 8px; }
+  .kl-dock.tall { padding: 6px 10px 12px; }
+  .kl-dock-slab { border-radius: 12px; padding: 10px 10px 10px; }
   .deck { border-radius: 12px; }
 }
 /* fingers need bigger targets than mice */
 @media (pointer: coarse) {
-  .kl-nav-item { padding: 10px 12px; }
-  .kl-seg button { padding: 8px 14px; }
-  .bench-btn { padding: 11px 16px; }
+  .kl-roomtab { padding: 12px 13px; }
+  .kl-seg button { padding: 9px 15px; }
+  .bench-btn { padding: 11px 18px; }
 }
 
-/* ---- responsive: sidebar -> top bar on narrow screens ---- */
+/* ---- responsive: the top bar compresses, tabs scroll ---- */
 @media (max-width: 920px) {
-  .kl-app { grid-template-columns: 1fr; }
-  .kl-sidebar {
-    position: sticky; top: 0; height: auto; flex-direction: row; align-items: center;
-    gap: 6px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--kl-hair);
-    padding: 10px 14px; z-index: 30;
-  }
-  .kl-brand { padding: 0 12px 0 4px; }
-  .kl-brand .kicker { display: none; }
-  .kl-brand .mark { font-size: 20px; }
-  .kl-nav { flex-direction: row; gap: 2px; }
-  .kl-nav-item { padding: 8px 11px; white-space: nowrap; }
-  .kl-nav-item[aria-current="true"]::before { left: 0; right: 0; top: auto; bottom: -10px; width: auto; height: 2px; border-radius: 2px; }
-  .kl-nav-sep, .kl-side-foot { display: none; }
-  .kl-content { padding: 20px 16px 56px; }
+  .kl-topnav { height: auto; min-height: 56px; padding: 8px 14px; gap: 14px; flex-wrap: wrap; }
+  .kl-topnav .kl-wordmark { font-size: 21px; }
+  .kl-content { padding: 26px 16px 36px; }
   .bench-cols { grid-template-columns: 1fr !important; }
 }
 
@@ -283,10 +285,10 @@
   .kl-printonly { display: block; color: #111; font-family: Georgia, "Times New Roman", serif; padding: 24px 8px; }
 }
 
-/* ---- reduced motion: the springs sit still when asked ---- */
+/* ---- reduced motion: everything sits still when asked ---- */
 @media (prefers-reduced-motion: reduce) {
-  .kl-rise, .kl-pop, .kl-snap, .kl-spin, .kl-noteswap, .kl-breathe,
-  .kl-section, .kl-stagger > * {
+  .kl-rise, .kl-pop, .kl-snap, .kl-spin, .kl-pulse, .kl-noteswap, .kl-breathe,
+  .kl-section, .kl-stagger > *, .kl-dock, .kl-dock-keys {
     animation: none !important;
     transition: none !important;
   }

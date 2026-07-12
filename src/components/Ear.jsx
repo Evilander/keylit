@@ -95,7 +95,7 @@ export default function Ear({ onLoadSheet, onClose }) {
             border: `1.5px dashed ${dragOver ? C.toneUi : C.line}`, borderRadius: 14, cursor: "pointer",
             background: dragOver ? C.panel2 : "transparent", transition: "background 140ms ease" }}>
           <FileAudio size={26} style={{ color: C.toneText }} />
-          <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 19, color: C.ink }}>
+          <span style={{ fontFamily: DISPLAY, fontSize: 19, color: C.ink }}>
             Drop a song here — mp3, wav, whatever plays
           </span>
           <span style={{ fontSize: 12.5, color: C.muted, textAlign: "center", maxWidth: 460 }}>
@@ -110,7 +110,7 @@ export default function Ear({ onLoadSheet, onClose }) {
       {(phase === "decoding" || phase === "listening") && (
         <div style={{ textAlign: "center", padding: "30px 10px" }}>
           <Disc3 size={26} className="kl-spin" style={{ color: C.toneText }} />
-          <div style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 19, color: C.ink, marginTop: 10 }}>
+          <div style={{ fontFamily: DISPLAY, fontSize: 19, color: C.ink, marginTop: 10 }}>
             {phase === "decoding" ? "Dropping the needle…" : `Listening… ${Math.round(progress * 100)}%`}
           </div>
           <div style={{ maxWidth: 320, height: 5, borderRadius: 3, background: C.panel2, margin: "14px auto 0", overflow: "hidden" }}>
@@ -123,7 +123,7 @@ export default function Ear({ onLoadSheet, onClose }) {
       {phase === "done" && result && (
         <div>
           <div className="flex items-center" style={{ gap: 14, flexWrap: "wrap", marginBottom: 12 }}>
-            <span style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 20, color: C.ink }}>{fileName}</span>
+            <span style={{ fontFamily: DISPLAY, fontSize: 20, color: C.ink }}>{fileName}</span>
             <span style={{ fontFamily: MONO, fontSize: 13, color: C.toneText }}>sounds like {result.key.name}</span>
             <span style={{ fontSize: 12, color: C.faint }}>{chords.length} changes heard</span>
           </div>

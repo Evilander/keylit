@@ -77,13 +77,13 @@ export function SuggestionChips({ chips, onIntent }) {
   );
 }
 
-// A big Fraunces section title with a mono kicker — the "room" heading.
+// A big Gloock section title with a mono kicker — the "room" heading.
 export function RoomTitle({ kicker, title, sub }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      {kicker && <div className="engraved" style={{ marginBottom: 6 }}>{kicker}</div>}
-      <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 26, fontWeight: 600, letterSpacing: "-0.01em", color: C.ink }}>{title}</h2>
-      {sub && <p style={{ margin: "6px 0 0", color: C.muted, fontSize: 13.5, lineHeight: 1.5, maxWidth: 640 }}>{sub}</p>}
+      {kicker && <div className="engraved" style={{ marginBottom: 8 }}>{kicker}</div>}
+      <h2 style={{ margin: 0, fontFamily: DISPLAY, fontSize: 32, fontWeight: 400, color: C.ink }}>{title}</h2>
+      {sub && <p style={{ margin: "8px 0 0", color: C.muted, fontSize: 13.5, lineHeight: 1.5, maxWidth: 640 }}>{sub}</p>}
     </div>
   );
 }

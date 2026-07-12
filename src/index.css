@@ -1,30 +1,24 @@
 /* Minimal reset + base + self-hosted fonts. Files live in /public/fonts. */
 
-/* Berkeley Mono — the data/notation hero (tab & chord alignment needs monospace). */
+/* ---- "Color-Shift" voices (design handoff 2026-07-12) ---- */
+/* Gloock — the display serif: headlines, song titles, lyric moments. */
+@font-face { font-family: "Gloock"; src: url("/fonts/Gloock-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+/* Onest — the UI/body sans (variable, 400–700). */
+@font-face { font-family: "Onest"; src: url("/fonts/Onest-Variable.woff2") format("woff2-variations"); font-weight: 400 700; font-style: normal; font-display: swap; }
+/* Martian Mono — every chord, number, and readout (variable, 400–600). */
+@font-face { font-family: "Martian Mono"; src: url("/fonts/MartianMono-Variable.woff2") format("woff2-variations"); font-weight: 400 600; font-style: normal; font-display: swap; }
+
+/* Berkeley Mono — licensed fallback in the mono stack (tab & chord alignment needs monospace). */
 @font-face { font-family: "Berkeley Mono"; src: url("/fonts/BerkeleyMono-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
 @font-face { font-family: "Berkeley Mono"; src: url("/fonts/BerkeleyMono-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
 @font-face { font-family: "Berkeley Mono"; src: url("/fonts/BerkeleyMono-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
 
-/* Bricolage Grotesque — the UI/body voice (characterful grotesque, not an AI-default sans). */
-@font-face { font-family: "Bricolage Grotesque"; src: url("/fonts/BricolageGrotesque-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "Bricolage Grotesque"; src: url("/fonts/BricolageGrotesque-Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
-@font-face { font-family: "Bricolage Grotesque"; src: url("/fonts/BricolageGrotesque-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
-@font-face { font-family: "Bricolage Grotesque"; src: url("/fonts/BricolageGrotesque-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
-@font-face { font-family: "Bricolage Grotesque"; src: url("/fonts/BricolageGrotesque-ExtraBold.woff2") format("woff2"); font-weight: 800; font-style: normal; font-display: swap; }
-
-/* Newsreader — the editorial serif for song/artist titles & literary copy (roman + italic). */
-@font-face { font-family: "Newsreader"; src: url("/fonts/Newsreader-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "Newsreader"; src: url("/fonts/Newsreader-Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
-@font-face { font-family: "Newsreader"; src: url("/fonts/Newsreader-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }
-@font-face { font-family: "Newsreader"; src: url("/fonts/Newsreader-Italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
-@font-face { font-family: "Newsreader"; src: url("/fonts/Newsreader-MediumItalic.woff2") format("woff2"); font-weight: 500; font-style: italic; font-display: swap; }
-
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
-  background: var(--kl-base, #FAFAF8);
-  color: var(--kl-ink, #2A2521);
-  font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--kl-base, #F7F3E9);
+  color: var(--kl-ink, #221F1A);
+  font-family: "Onest", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }

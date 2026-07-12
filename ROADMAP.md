@@ -4,6 +4,18 @@
 
 ---
 
+## v0.7 — "Color-Shift": the redesign lands *(shipped 2026-07-12 · 613 tests green)*
+
+Implemented from the Claude-design handoff (`Music Education Platform.zip` → `design_handoff_color_shift_ui/`), recreated inside the real codebase per its README — tokens swapped, mechanisms kept.
+
+- **New material**: cream paper / warm brown-black ("Daylight" / "After hours"), hairline rules, pill controls (1.5px borders, hover→ink, press→scale), ink-filled active states. Accents stay semantic and theme-stable: root/D tangerine, tone/T cyan, bass/S gold — `FUNCTION_COLOR` remapped so the hue *families* survived the palette swap.
+- **New voices**: Gloock (display serif), Onest (UI), Martian Mono (every chord and number) — self-hosted variable woff2 (82KB total), Berkeley Mono kept as the licensed mono fallback.
+- **New shell**: sidebar → 78px top bar (wordmark, uppercase room tabs with tangerine inset underline, key readout, theme pill) and the **persistent instrument dock**: one shared `Keyboard` (rewritten SVG→DOM so it stretches; API unchanged) in a dark footer slab with status row, morphing 76→220px in Piano. Piano/Learn/Chordbook lost their embedded decks; the Chordbook lights the dock via `dockOverride`.
+- **Hero screens**: Library = songwriter-quote hero (`lib/quotes.js`, one per app load, never a tagline) + shelf/POTD `1fr/320px` grid with an ink-framed aside; Song = pill controls + tangerine `[ SECTION ]` tags + function-color-filled current chord (monospace column grid untouched — alignment is music correctness); Piano = 88px Martian Mono readout + ink-filled chips; Learn = "whole, whole, half" headline, lessons light the dock.
+- Reduced-motion and focus-visible carried over; chart/tab alignment, voicings, and all 613 tests untouched.
+
+---
+
 ## v0.6.1 — the fretboard dialect + the Chordbook *(shipped 2026-07-12 · 609 tests green)*
 
 Tyler reads the fretboard in sharps — "Ab Db7 Eb" on the POTD card was the confusion that named the release.

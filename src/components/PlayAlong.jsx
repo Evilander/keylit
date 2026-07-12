@@ -313,7 +313,7 @@ function ScoreCard({ score, onAgain }) {
   return (
     <div style={{ textAlign: "center", padding: "18px 8px 10px" }}>
       <div className="kl-eyebrow" style={{ color: "#8b8378" }}>the pass</div>
-      <div className="kl-pop" style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 58, color: "#f3ede2", lineHeight: 1.1 }}>{pct}%</div>
+      <div className="kl-pop" style={{ fontFamily: DISPLAY, fontSize: 58, color: "#f3ede2", lineHeight: 1.1 }}>{pct}%</div>
       <div style={{ fontFamily: MONO, fontSize: 13, color: pct >= 90 ? C.toneGlow : pct >= 70 ? C.rootGlow : C.bassGlow }}>{grade}</div>
       <div style={{ fontFamily: MONO, fontSize: 12, color: "#8b8378", marginTop: 6 }}>{score.clean} of {score.total} chords clean on the first hold</div>
       {score.bySection.length > 1 && (

@@ -117,7 +117,7 @@ export default function BenchBook({ onOpen }) {
         <div className="faceplate" style={{ padding: 18 }}>
           {!active ? (
             <div style={{ color: C.muted, fontSize: 14 }}>
-              <p style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 19, color: C.ink }}>Nothing on the bench yet.</p>
+              <p style={{ fontFamily: DISPLAY, fontSize: 19, color: C.ink }}>Nothing on the bench yet.</p>
               <p style={{ marginTop: 8 }}>A setlist is tonight's plan: the songs, the order, the notes to self. Start one and search your library into it.</p>
               <button className="bench-btn primary" style={{ marginTop: 12 }} onClick={create}><Plus size={14} /> Start tonight's setlist</button>
             </div>
@@ -128,10 +128,10 @@ export default function BenchBook({ onOpen }) {
                   <input autoFocus defaultValue={active.name} aria-label="setlist name"
                     onBlur={(e) => { benchBook.renameSetlist(active.id, e.target.value.trim() || active.name); setRenaming(false); bump(); }}
                     onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                    style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 22, color: C.ink, background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 8, padding: "2px 8px", outline: "none", width: 220 }} />
+                    style={{ fontFamily: DISPLAY, fontSize: 22, color: C.ink, background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 8, padding: "2px 8px", outline: "none", width: 220 }} />
                 ) : (
                   <button onClick={() => setRenaming(true)} title="rename"
-                    style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 22, color: C.ink, background: "transparent", border: 0, cursor: "text", padding: 0 }}>
+                    style={{ fontFamily: DISPLAY, fontSize: 22, color: C.ink, background: "transparent", border: 0, cursor: "text", padding: 0 }}>
                     {active.name}
                   </button>
                 )}

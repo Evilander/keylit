@@ -60,7 +60,7 @@ export default function Practice({ onPlay }) {
 
       <div style={{ maxWidth: 720 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 14 }}>
-          <div style={{ fontFamily: DISPLAY, fontStyle: "italic", fontSize: 24, color: C.ink }}>{prompt.question}</div>
+          <div style={{ fontFamily: DISPLAY, fontSize: 24, color: C.ink }}>{prompt.question}</div>
           {isInterval && <button className="bench-btn" onClick={() => onPlay?.(prompt.play)} style={{ padding: "6px 12px" }}><Volume2 size={14} /> Replay</button>}
           <div className="kl-meta" style={{ marginLeft: "auto" }}>{score.right}/{score.total}</div>
         </div>

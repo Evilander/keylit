@@ -144,9 +144,9 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
         }
         if (entry.kind === "header") {
           return (
-            <div key={i} style={{ marginTop: 14, marginBottom: 2 }}>
-              <span style={{ fontFamily: "var(--kl-sans)", textTransform: "uppercase", letterSpacing: "0.09em", fontSize: 11.5, fontWeight: 700, color: C.muted }}>
-                {line.trim().replace(/^\[|\]$/g, "").replace(/:$/, "")}
+            <div key={i} style={{ marginTop: 22, marginBottom: 4 }}>
+              <span style={{ fontFamily: MONO, textTransform: "uppercase", letterSpacing: "0.2em", fontSize: 10, fontWeight: 500, color: C.rootText }}>
+                [ {line.trim().replace(/^\[|\]$/g, "").replace(/:$/, "")} ]
               </span>
             </div>
           );
@@ -179,7 +179,13 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
                     onFocus={(e) => armCard(e.currentTarget, t.view, tokenKey, 0)}
                     onBlur={disarmCard}
                     title={guitar ? undefined : `${t.label}${t.piano ? ` (piano: ${t.piano})` : ""} — ${fnName} function · click to hear`}
-                    style={{ color, fontWeight: 700, cursor: "pointer", borderBottom: `2px solid ${color}`, background: lit ? `${color}1f` : "transparent" }}>
+                    style={{
+                      fontWeight: 600, cursor: "pointer", borderRadius: 4,
+                      color: lit ? "var(--kl-on-ink)" : color,
+                      background: lit ? color : "transparent",
+                      borderBottom: lit ? "2px solid transparent" : `2px solid ${color}`,
+                      transition: "background 150ms ease, color 150ms ease",
+                    }}>
                     {t.label}
                   </span>
                 );
