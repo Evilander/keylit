@@ -76,4 +76,16 @@ describe("progressionOfTheDay", () => {
     expect(day.key.tonic).toBeGreaterThanOrEqual(0);
     expect(day.key.tonic).toBeLessThan(12);
   });
+
+  it("opts.spelling renames the chords but never the key (the backdoor in Eb)", () => {
+    // The Backdoor in Eb: 4=Ab, b77=Db7, 1=Eb by the key signature —
+    // the sharps preference reads the same pitches as G# C#7 D#.
+    const flat = progressionOfTheDay("2026-01-01", { pick: "backdoor", tonic: 3 });
+    const sharp = progressionOfTheDay("2026-01-01", { pick: "backdoor", tonic: 3, spelling: "sharps" });
+    expect(flat.sheet).toBe("Ab  Db7  Eb");
+    expect(sharp.sheet).toBe("G#  C#7  D#");
+    expect(sharp.keyName).toBe("Eb major");                 // key names stay conventional
+    expect(sharp.chords.map((c) => c.rootSemitone)).toEqual(flat.chords.map((c) => c.rootSemitone)); // labels only
+    for (const t of sharp.sheet.split(/\s+/)) expect(parseChord(t)).not.toBeNull();
+  });
 });

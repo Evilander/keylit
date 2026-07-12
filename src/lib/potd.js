@@ -96,6 +96,9 @@ function buildFromToken(token, tonic) {
 /**
  * The day's deal. Pure: pass "YYYY-MM-DD". `opts.pick`/`opts.tonic` exist for
  * tests and for a "deal me another" affordance — omit them for the real day.
+ * `opts.spelling` renames the chord symbols ("sharps"/"flats"/"guitar") the
+ * way the app's chord-name preference does; the KEY name stays conventional
+ * (a key is "Eb major" on any instrument, even when its chords read D#).
  */
 export function progressionOfTheDay(dateStr, opts = {}) {
   const h = hash(String(dateStr));
@@ -106,8 +109,9 @@ export function progressionOfTheDay(dateStr, opts = {}) {
     ? ((opts.tonic % 12) + 12) % 12
     : KEYS[(Math.imul(h, 2654435761) >>> 7) % KEYS.length]; // avalanche: near dates, far keys
   const key = { tonic, mode: "major" };
+  const nameCtx = opts.spelling ? { ...key, spelling: opts.spelling } : key;
   const chords = prog.nashville.map((t) => buildFromToken(t, tonic)).filter(Boolean);
-  const spelled = chords.map((ch) => spellChord(ch, key) || ch.raw);
+  const spelled = chords.map((ch) => spellChord(ch, nameCtx) || ch.raw);
   return {
     id: prog.id,
     name: prog.name,

@@ -6,10 +6,10 @@ import { EngLabel, Faceplate } from "../ui/Bench.jsx";
 
 const GUITAR_TUNING_IDS = ["standard", "ebStandard", "dStandard"];
 const CHORD_NAME_OPTIONS = [
-  { id: "guitar", label: "Guitar", title: "Common chord-shape names: C#, Eb, F#, Ab, Bb" },
-  { id: "key", label: "In key", title: "Follow the detected key signature" },
+  { id: "sharps", label: "Guitar ♯", title: "Sharp names everywhere — G#, C#7, D# — the way the fretboard reads" },
+  { id: "guitar", label: "Campfire", title: "The mixed set guitarists trade: C#, Eb, F#, Ab, Bb" },
+  { id: "key", label: "Piano", title: "Key-signature spelling — what a piano chart prints (Ab, Db7, Eb)" },
   { id: "flats", label: "All ♭", title: "Always name black-key roots with flats" },
-  { id: "sharps", label: "All ♯", title: "Always name black-key roots with sharps" },
 ];
 
 const signed = (n) => `${n > 0 ? "+" : ""}${n}`;
