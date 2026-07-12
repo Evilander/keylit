@@ -4,6 +4,17 @@
 
 ---
 
+## v0.6.1 — the fretboard dialect + the Chordbook *(shipped 2026-07-12 · 609 tests green)*
+
+Tyler reads the fretboard in sharps — "Ab Db7 Eb" on the POTD card was the confusion that named the release.
+
+- **Chord-name dialect, app-wide**: the Song room's naming preference now drives every reading surface (chart, both rails, Piano chips, Library POTD, ChordLab) with a new default, **Guitar ♯** (full sharps: G#, C#7, D#). Key names, Theory, and the Learn tutor keep conventional spelling. Storage key bumped to `chart-spelling.v2` because v1 auto-persisted its default (a stored "guitar" proved nothing). `potd.js` gained `opts.spelling`.
+- **"Piano says A♭"**: wherever the dialects disagree, hover reveals the key-signature name — a line in the chord grip card, and tooltips on chart tokens, rail columns, and Piano chips. The GuitarSetup readout already told this story (Finger G# → Piano Ab); now every chord symbol can.
+- **The Chordbook room** (`lib/chordbook.js` + `components/ChordBook.jsx`): the guitar chord bible with zero stored diagrams — a 28-quality catalog across 5 families; every grip derived live by `chordShapes` for the tuning in your hands, ranked campfire-first. Look up any symbol ("F#m7"), strum any grip, and the selected grip lights its EXACT notes on the piano (other octaves ghosted). Test-enforced: all 12 roots × every quality find a playable grip.
+- **Grips strip** (`components/SongGrips.jsx`): the row of chord boxes a chart should open with — the song's unique chords as tuning/capo-lens-aware diagrams above the chart, click to strum, foldable.
+
+---
+
 ## v0.6 — the Bench hires a rhythm section *(shipped 2026-07-04 · 495 tests green)*
 
 The loop closed in v0.5 (the Bench hears the record and the player); v0.6 gives it **time**: a band to play with, and two Learn modules that train the muscle no chord chart teaches — feeling meter and holding a pedal against the grind.
