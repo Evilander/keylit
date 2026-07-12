@@ -24,12 +24,13 @@ npm run test:watch   # vitest watch
 - `spelling.js` key-aware enharmonics · `suggest.js` reharmonization · `generate.js` progression templates · `scales.js` chord→scale · `midi.js` Standard MIDI File writer · `llm.js` AI-proxy client · `voice.js` the authored tutor voice (PERSONA, CONCEPTS, `reaction`, `buildSuggestionChips`).
 
 **UI — `src/`:**
-- `App.jsx` — root state + the inline Tone.js audio engine (sampler + synth fallback + reverb) + the layout. A light **"Fretboard Press"** sidebar app-shell with **seven rooms** (Library / Song / Piano / Theory / Learn / Write / Practice) around one shared `Keyboard`. *Still holds the audio engine — extracting it into `src/audio/` remains the open Phase-0 item.*
+- `App.jsx` — root state + the audio engine wiring + the layout. A light **"Fretboard Press"** sidebar app-shell with **nine rooms** (Library / Song / Piano / Theory / Learn / Write / Practice / Chordbook / The Shed) around one shared `Keyboard`.
 - `lib/tab.js` (tab→note events, tuning/capo/unwrap-aware) · `lib/tuning.js` (fretboard→MIDI) · `lib/fingering.js` (five-finger-position piano fingering) · `lib/capo.js` (capo/open-tuning advisor) — all pure, all tested.
-- The key picker in Song TRANSPOSES the song (pitches move, numbers stay); the mode select is a relabel lens. `spellDegreePc` keeps flat degrees spelled flat (♭3 in C = E♭, never D#).
+- The key picker in Song TRANSPOSES the song (pitches move, numbers stay); the mode select is a relabel lens. `spellDegreePc` keeps flat degrees spelled flat (♭3 in C = E♭, never D#) — *unless* the chord-name dialect overrides it (below).
+- **Chord-name dialect** (`keylit.chart-spelling.v2`, default `"sharps"` — Tyler reads the fretboard in sharps: G#, C#7, D#): every reading/playing surface (chart, rails, Piano chips, Library POTD, ChordLab, Chordbook, Grips) follows it; KEY names, the Theory room, and the Learn tutor stay conventionally spelled. Hover/tooltips reveal the key-signature "piano says A♭" name wherever the dialects disagree. The v1 storage key auto-persisted its default, so v1 `"guitar"` is deliberately NOT migrated.
 - Deploy: Vercel static + `api/analyze.js` serverless; `.vercelignore` excludes `public/corpus` (personal-use tabs must never ship publicly).
 - `ui/theme.js` (palette + "Bench" tokens) · `ui/bench.css` (the analog-instrument material layer) · `ui/Bench.jsx` (Faceplate/Deck/Readout/Vu/RoomTabs/SuggestionChips primitives) · `index.css` (fonts + reset + reduced-motion).
-- `components/` — `Keyboard` (the shared lit instrument), `NumbersRail` (live Nashville↔Roman↔Notes), `ScaleBuilder` + `DegreeFinder` (the Learn tutor), `ChordLab`, `CapoAdvisor`, `KeyWheel`, `SongTools`, `ImportModal`.
+- `components/` — `Keyboard` (the shared lit instrument), `NumbersRail` (live Nashville↔Roman↔Notes), `ScaleBuilder` + `DegreeFinder` (the Learn tutor), `ChordLab`, `CapoAdvisor`, `KeyWheel`, `SongTools`, `ImportModal`, `ChordBook` (the derived chord bible: `lib/chordbook.js` catalog × `chordShapes` search, grip lights the piano), `SongGrips` (the song's unique chords as tuning/capo-aware chord boxes above the chart).
 
 Design rule (from the user): **never a generic column of identical cards.** Keylit is "The Bench" — a warm analog instrument. T=teal, S=amber, D=coral is a *semantic* color system; keep it.
 

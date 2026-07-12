@@ -3,7 +3,7 @@ import {
   Play, Pause, ChevronLeft, ChevronRight, Volume2, VolumeX,
   RotateCcw, Upload, Minus, Plus, Loader2, Piano as PianoIcon, Undo2, Lightbulb,
   Library as LibraryIcon, ScrollText, Compass, GraduationCap, PenLine, Target,
-  ArrowLeft, Moon, Sun, BookOpen,
+  ArrowLeft, Moon, Sun, BookOpen, Guitar,
 } from "lucide-react";
 import {
   SHARP_NAMES, parseSheet, transposeChord, chordSymbol, displaySymbol,
@@ -12,7 +12,7 @@ import {
 } from "./lib/theory.js";
 import { rootPositionFull, smoothUpper, addBass, clampVoicing } from "./lib/voicing.js";
 import { analyzeSheet } from "./lib/llm.js";
-import { respell, spellPc } from "./lib/spelling.js";
+import { respell, spellChord, spellPc } from "./lib/spelling.js";
 import { wheelMoves } from "./lib/voice.js";
 import { progressionOfTheDay } from "./lib/potd.js";
 import { isMidiSupported, requestMidi, listOutputs, sendChordToOutput, allNotesOff } from "./webmidi.js";
@@ -33,11 +33,13 @@ import SongTools from "./components/SongTools.jsx";
 import ImportModal from "./components/ImportModal.jsx";
 import AddToSetlist from "./components/AddToSetlist.jsx";
 import ChartView from "./components/ChartView.jsx";
+import SongGrips from "./components/SongGrips.jsx";
 import Library from "./components/Library.jsx";
 import Practice from "./components/Practice.jsx";
 import TabKeys from "./components/TabKeys.jsx";
 import PlayAlong from "./components/PlayAlong.jsx";
 import BenchBook from "./components/BenchBook.jsx";
+import ChordBook from "./components/ChordBook.jsx";
 import Shed from "./components/Shed.jsx";
 import Arranger from "./components/Arranger.jsx";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
@@ -75,11 +77,13 @@ const NAV = [
   { id: "learn", label: "Learn", icon: GraduationCap },
   { id: "write", label: "Write", icon: PenLine },
   { id: "practice", label: "Practice", icon: Target },
+  { id: "chords", label: "Chordbook", icon: Guitar },
   { id: "shed", label: "The Shed", icon: BookOpen },
 ];
 
 const GUITAR_TUNING_KEY = "keylit.guitar-tuning.v1";
-const CHART_SPELLING_KEY = "keylit.chart-spelling.v1";
+const CHART_SPELLING_KEY = "keylit.chart-spelling.v2";
+const LEGACY_SPELLING_KEY = "keylit.chart-spelling.v1";
 const GUITAR_TUNINGS = new Set(["standard", "ebStandard", "dStandard"]);
 const CHART_SPELLINGS = new Set(["guitar", "key", "flats", "sharps"]);
 
@@ -89,6 +93,16 @@ function savedChoice(key, allowed, fallback) {
     if (allowed.has(value)) return value;
   } catch { /* storage is optional */ }
   return fallback;
+}
+
+// v1 auto-persisted its "guitar" default on first paint, so a stored "guitar"
+// was never evidence of a choice. v2 defaults to sharps (the fretboard dialect:
+// G#, C#7, D#); only a v1 value someone actually clicked away carries over.
+function savedSpelling() {
+  const v2 = savedChoice(CHART_SPELLING_KEY, CHART_SPELLINGS, null);
+  if (v2) return v2;
+  const v1 = savedChoice(LEGACY_SPELLING_KEY, CHART_SPELLINGS, null);
+  return v1 && v1 !== "guitar" ? v1 : "sharps";
 }
 
 function persistChoice(key, value) {
@@ -125,7 +139,7 @@ export default function App() {
   // The physical guitar is a playing lens, not a song transpose. D standard
   // moves familiar shapes +2 while the piano and playback stay at concert pitch.
   const [guitarTuning, setGuitarTuning] = useState(() => savedChoice(GUITAR_TUNING_KEY, GUITAR_TUNINGS, "standard"));
-  const [chartSpelling, setChartSpelling] = useState(() => savedChoice(CHART_SPELLING_KEY, CHART_SPELLINGS, "guitar"));
+  const [chartSpelling, setChartSpelling] = useState(savedSpelling);
   // Opened from a setlist: { name, rows, idx } drives the gig strip (prev/next).
   const [setlistCtx, setSetlistCtx] = useState(null);
 
@@ -233,12 +247,14 @@ export default function App() {
     }
     return { prog, unique, rootFull, smoothFull, detected, keyCtx };
   };
+  // Every reading/playing surface speaks the user's chord-name dialect
+  // (sharps by default); the Theory & Learn rooms keep proper key spelling.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const view = useMemo(() => computeView(transpose), [sourceProg, transpose, keyOverride]);
+  const view = useMemo(() => computeView(transpose, chartSpelling), [sourceProg, transpose, keyOverride, chartSpelling]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const sounding = useMemo(
-    () => (capoShift ? computeView(pitchShift) : null),
-    [sourceProg, pitchShift, keyOverride, capoShift]
+    () => (capoShift ? computeView(pitchShift, chartSpelling) : null),
+    [sourceProg, pitchShift, keyOverride, capoShift, chartSpelling]
   );
   const soundingView = sounding || view;
 
@@ -258,7 +274,7 @@ export default function App() {
   }) ?? transpose;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const readingView = useMemo(
-    () => (readingShift === transpose && chartSpelling === "key" ? view : computeView(readingShift, chartSpelling)),
+    () => (readingShift === transpose ? view : computeView(readingShift, chartSpelling)),
     [view, readingShift, chartSpelling, sourceProg, keyOverride, transpose]
   );
   const readingKey = readingView.keyCtx;
@@ -274,6 +290,10 @@ export default function App() {
   const soundingCurrent = soundingView.prog[currentIdx] || null;
   const activeKey = keyOverride || { tonic: view.detected.tonic, mode: view.detected.mode };
   const soundingKey = { tonic: soundingView.detected.tonic, mode: soundingView.detected.mode };
+  // activeKey + the chord-name dialect: for surfaces that DISPLAY chord symbols
+  // (ChordLab). Key names and the tutor keep plain, key-aware spelling.
+  const namedKey = useMemo(() => ({ ...activeKey, spelling: chartSpelling }),
+    [activeKey.tonic, activeKey.mode, chartSpelling]); // eslint-disable-line react-hooks/exhaustive-deps
   // The piano PLAYS sounding pitch (shapes + capo + transpose).
   const audioVoicings = mode === "smooth" ? soundingView.smoothFull : soundingView.rootFull;
   audioVoicingRef.current = audioVoicings;
@@ -309,8 +329,11 @@ export default function App() {
   }, [currentIdx, mode, pitchShift]);
 
   // The day's deal for the Library card — date-seeded, so it's the same hand
-  // all day and a new one tomorrow.
-  const potd = useMemo(() => progressionOfTheDay(new Date().toISOString().slice(0, 10)), []);
+  // all day and a new one tomorrow. Spelled in the user's chord-name dialect.
+  const potd = useMemo(
+    () => progressionOfTheDay(new Date().toISOString().slice(0, 10), { spelling: chartSpelling }),
+    [chartSpelling]
+  );
 
   const arrangementRef = useRef(null);
   // One stage, one act: whoever starts timed playback displaces whoever held
@@ -639,6 +662,19 @@ export default function App() {
       onPlay={(midis) => { arm(); ensureAndPlay(midis, 1.2); }} />
   );
 
+  // The guitar lens the Song room reads through, shared by the chart's hover
+  // grips and the Grips strip. A uniformly detuned guitar fingers familiar
+  // STANDARD shapes (the reading chord already carries the shift); a drop/
+  // open tuning must search its own fretboard or the frets would lie.
+  const guitarLens = useMemo(() => ({
+    shapeTuning: uniformTuningOffset(guitarTuning) != null
+      ? STANDARD_TUNING
+      : (TUNINGS[guitarTuning] || TUNINGS.standard).notes,
+    strumTuning: (TUNINGS[guitarTuning] || TUNINGS.standard).notes,
+    strumCapo: effectiveCapo,
+    onStrum: strumNotes,
+  }), [guitarTuning, effectiveCapo, strumNotes]);
+
   const makeNumbersRail = (railView, railKey, shift, label, hint) => railView.prog.length > 0 && (
     <section style={{ marginTop: 18 }}>
       <div className="flex items-center justify-between" style={{ marginBottom: 8, gap: 12 }}>
@@ -849,21 +885,15 @@ export default function App() {
               {songNumbersRailPanel}
               {aiPanel}
               {tabKeysPanel}
+              <SongGrips chords={readingView.unique} activeKey={readingKey}
+                shapeTuning={guitarLens.shapeTuning}
+                strumTuning={guitarLens.strumTuning} strumCapo={guitarLens.strumCapo}
+                onStrum={strumNotes} />
               <section style={{ marginTop: 18 }}>
                 <ChartView text={sheet} activeKey={readingKey} transpose={readingShift}
                   activeChord={readingView.prog[currentIdx] || null}
                   onChordClick={hearReadingChord}
-                  guitar={{
-                    // A uniformly detuned guitar fingers familiar STANDARD
-                    // shapes (the reading chord carries the shift); a drop/
-                    // open tuning must search its own fretboard.
-                    shapeTuning: uniformTuningOffset(guitarTuning) != null
-                      ? STANDARD_TUNING
-                      : (TUNINGS[guitarTuning] || TUNINGS.standard).notes,
-                    strumTuning: (TUNINGS[guitarTuning] || TUNINGS.standard).notes,
-                    strumCapo: effectiveCapo,
-                    onStrum: strumNotes,
-                  }} />
+                  guitar={guitarLens} />
               </section>
               {chartInput}
             </div>
@@ -915,10 +945,13 @@ export default function App() {
                 <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {soundingView.unique.map((ch, i) => {
                     const active = soundingCurrent && chordSymbol(soundingCurrent) === chordSymbol(ch);
+                    const shown = displaySymbol(ch, pitchShift);
+                    const piano = spellChord(ch, soundingKey);
                     return (
                       <button key={i} onClick={() => selectUnique(ch, soundingView.prog)}
+                        title={piano !== shown ? `piano says ${piano}` : undefined}
                         style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "7px 12px", borderRadius: 9, cursor: "pointer", background: active ? C.panel2 : C.panel, border: `1px solid ${active ? C.toneUi : C.line}` }}>
-                        <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.ink }}>{displaySymbol(ch, pitchShift)}</span>
+                        <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.ink }}>{shown}</span>
                         <span style={{ fontFamily: MONO, fontSize: 10, color: C.faint }}>{nashville(ch, soundingKey.tonic)}</span>
                       </button>
                     );
@@ -1013,7 +1046,7 @@ export default function App() {
                 onPickMidiOut={pickMidiOut} onRefreshMidi={refreshMidiOutputs} />
               {numbersRailPanel}
               <div style={{ marginTop: 18 }}>
-                <ChordLab prog={view.prog} activeKey={activeKey} selectedIdx={currentIdx} onSelectIdx={selectIdx} onAudition={auditionChords} onApply={applyLab} />
+                <ChordLab prog={view.prog} activeKey={namedKey} selectedIdx={currentIdx} onSelectIdx={selectIdx} onAudition={auditionChords} onApply={applyLab} />
               </div>
               {(labProg || labHistory.length > 0) && (
                 <div className="flex items-center" style={{ gap: 8, marginTop: 10 }}>
@@ -1053,6 +1086,12 @@ export default function App() {
               )}
               {practiceTab === "bench" && <BenchBook onOpen={openSong} />}
             </div>
+          )}
+
+          {section === "chords" && (
+            <ChordBook tuningId={guitarTuning} spelling={chartSpelling}
+              onStrum={strumNotes}
+              onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }} />
           )}
 
           {section === "shed" && <Shed />}
