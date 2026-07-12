@@ -3,6 +3,7 @@
 // column-locked per chord, tinted by harmonic function. Change the key and the
 // number rows hold still while the notes move — "the numbers stay, the key moves."
 import { nashville, romanNumeral, displaySymbol, harmonicFunction } from "../lib/theory.js";
+import { spellChord } from "../lib/spelling.js";
 import { C, FUNCTION_COLOR, FUNCTION_LABEL, MONO } from "../ui/theme.js";
 
 const ROWS = [
@@ -35,12 +36,17 @@ export default function NumbersRail({ prog, activeKey, currentIdx, transpose = 0
               const fn = harmonicFunction(ch, activeKey.tonic, activeKey.mode);
               const fnColor = FUNCTION_COLOR[fn] || C.faint;
               const showSection = i === 0 || prog[i - 1].section !== ch.section;
+              // Key-signature spelling in the tooltip when the displayed name
+              // speaks another dialect (sharps rail, A♭ on the piano chart).
+              const piano = spellChord(ch, { tonic: activeKey.tonic, mode: activeKey.mode });
+              const shown = displaySymbol(ch, transpose);
               return (
                 <div key={i} className="flex" style={{ alignItems: "stretch", gap: 5 }}>
                   {showSection && ch.section && i !== 0 && (
                     <div style={{ width: 1, alignSelf: "stretch", background: C.line, margin: "0 3px" }} />
                   )}
-                  <button onClick={() => onSelect?.(i)} title={`${FUNCTION_LABEL[fn]} function`}
+                  <button onClick={() => onSelect?.(i)}
+                    title={`${FUNCTION_LABEL[fn]} function${piano !== shown ? ` · piano says ${piano}` : ""}`}
                     aria-current={active}
                     style={{
                       display: "grid", gridTemplateRows: "auto 1fr 1fr 1fr", gap: 4,

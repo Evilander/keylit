@@ -103,7 +103,11 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
         const parsed = parseChord(tok);
         if (!parsed) return { text: tok, plain: true };
         const view = transpose ? transposeChord(parsed, transpose) : parsed;
-        return { text: tok, view, fn: harmonicFunction(view, tonic, mode), label: spellChord(view, activeKey) };
+        const label = spellChord(view, activeKey);
+        // Key-signature spelling for the tooltip — the piano lettering behind
+        // a sharps-dialect label (hover G#, learn it's A♭ on paper).
+        const piano = spellChord(view, activeKey ? { tonic, mode } : null);
+        return { text: tok, view, fn: harmonicFunction(view, tonic, mode), label, piano: piano !== label ? piano : null };
       }),
     };
   }), [lines, tabLines, transpose, tonic, mode, activeKey]);
@@ -163,7 +167,7 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
                 return (
                   <span key={j} role="button" tabIndex={0}
                     aria-label={guitar
-                      ? `${t.label} — ${fnName} function. Enter hears it; ArrowDown opens the guitar grip.`
+                      ? `${t.label}${t.piano ? ` (piano: ${t.piano})` : ""} — ${fnName} function. Enter hears it; ArrowDown opens the guitar grip.`
                       : undefined}
                     onClick={() => onChordClick?.(t.view)}
                     onKeyDown={(e) => {
@@ -174,7 +178,7 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
                     onMouseLeave={disarmCard}
                     onFocus={(e) => armCard(e.currentTarget, t.view, tokenKey, 0)}
                     onBlur={disarmCard}
-                    title={guitar ? undefined : `${t.label} — ${fnName} function · click to hear`}
+                    title={guitar ? undefined : `${t.label}${t.piano ? ` (piano: ${t.piano})` : ""} — ${fnName} function · click to hear`}
                     style={{ color, fontWeight: 700, cursor: "pointer", borderBottom: `2px solid ${color}`, background: lit ? `${color}1f` : "transparent" }}>
                     {t.label}
                   </span>

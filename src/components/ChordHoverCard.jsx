@@ -34,6 +34,9 @@ export default function ChordHoverCard({
   const [pos, setPos] = useState(null);
 
   const label = spellChord(chord, activeKey);
+  // The same pitches in key-signature spelling — what a piano chart prints.
+  // Shown only when the dialects disagree (G# up top, A♭ on the paper).
+  const pianoLabel = spellChord(chord, activeKey ? { tonic: activeKey.tonic, mode: activeKey.mode } : null);
   const shapes = useMemo(() => chordShapes(chord, { tuning: shapeTuning, limit: 5 }), [chord, shapeTuning]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useMemo(() => setVariant(0), [label]);
@@ -99,6 +102,11 @@ export default function ChordHoverCard({
           {degree} · {FUNCTION_LABEL[fn]}
         </span>
       </div>
+      {pianoLabel !== label && (
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 1, fontFamily: MONO, fontSize: 11.5, color: C.muted }}>
+          <Piano size={11} aria-hidden="true" /> piano says <b style={{ color: C.ink, fontWeight: 700 }}>{pianoLabel}</b>
+        </div>
+      )}
 
       {shape ? (
         <>
