@@ -140,9 +140,6 @@ export default function App() {
   const [chartSpelling, setChartSpelling] = useState(savedSpelling);
   // Opened from a setlist: { name, rows, idx } drives the gig strip (prev/next).
   const [setlistCtx, setSetlistCtx] = useState(null);
-  // A room may take the dock over (the Chordbook lights its selected grip):
-  // { label, litMidis:Set<midi>, pcs:Set<pc>, rootPc, labels?:Map<midi,name> }.
-  const [dockOverride, setDockOverride] = useState(null);
 
   const armedRef = useRef(false);
   const stripRef = useRef(null);
@@ -541,28 +538,6 @@ export default function App() {
     return role ? { role } : null;
   };
 
-  // The persistent dock reads whoever holds the stage: a room override (the
-  // Chordbook's selected grip — exact notes solid, other octaves ghosted),
-  // otherwise the current chord / lesson through roleForKeyboard.
-  const dockRoleFor = (midi) => {
-    if (dockOverride) {
-      const pc = ((midi % 12) + 12) % 12;
-      const isRoot = pc === dockOverride.rootPc;
-      if (dockOverride.litMidis?.has(midi)) {
-        return { role: isRoot ? "root" : "tone", label: dockOverride.labels?.get(midi) };
-      }
-      if (dockOverride.pcs?.has(pc)) return { role: isRoot ? "root" : "tone", ghost: true };
-      return null;
-    }
-    return roleForKeyboard(midi);
-  };
-  const dockLabel = dockOverride
-    ? dockOverride.label
-    : section === "learn"
-      ? `${keyName} · ${lessonHL ? "the lesson is lit" : "the tutor's instrument"}`
-      : soundingCurrent
-        ? `now · ${displaySymbol(soundingCurrent, pitchShift)} — ${nashville(soundingCurrent, soundingKey.tonic)} · ${soundingCurrent.section || `${currentIdx + 1}/${view.prog.length}`}`
-        : "ready — every chord you click lands here";
 
   const tutor = {
     activeKey,
@@ -784,6 +759,7 @@ export default function App() {
           ))}
         </nav>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16, flex: "0 0 auto", minWidth: 0 }}>
+          <EnginePill engine={engineState.engine} loading={engineState.loading} />
           <span className="kl-hide-sm" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase",
             color: transpose || keyOverride ? C.rootText : C.faint,
             maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -959,7 +935,11 @@ export default function App() {
                   {transport}
                 </div>
               </div>
-              <p style={{ color: C.faint, fontSize: 12.5, marginTop: 26, maxWidth: 620 }}>
+              <div className="deck" style={{ padding: "16px 18px", marginTop: 24 }}>
+                <Keyboard height={210} roleFor={roleForKeyboard} onKey={playSingleKey} flash={flash}
+                  ariaLabel="piano keyboard — the current chord is lit" />
+              </div>
+              <p style={{ color: C.faint, fontSize: 12.5, marginTop: 18, maxWidth: 620 }}>
                 <b style={{ color: C.muted }}>Shape</b> lights every note of the chord across the deck. <b style={{ color: C.muted }}>Voicing</b> shows one close hand position. <b style={{ color: C.muted }}>Smooth</b> voice-leads from the chord before it — the least your hand can move.
               </p>
               <Arranger prog={soundingView.prog} title={loaded?.title || "your chart"}
@@ -1024,9 +1004,10 @@ export default function App() {
               <h1 className="kl-title" style={{ marginTop: 12, marginBottom: 8 }}>
                 Scales are just a recipe: <span style={{ color: C.root }}>whole, whole, half.</span>
               </h1>
-              <p style={{ color: C.faint, fontSize: 12.5, margin: "0 0 28px" }}>
-                Every lesson lights the shared instrument in the dock below.
-              </p>
+              <div className="deck" style={{ padding: "14px 16px", margin: "24px 0 18px" }}>
+                <Keyboard height={150} roleFor={roleForKeyboard} onKey={playSingleKey} flash={flash}
+                  ariaLabel="piano keyboard — the lesson is lit" />
+              </div>
               <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 18 }}>
                 <ScaleBuilder tutor={tutor} onIntent={onChipIntent} />
                 <DegreeFinder tutor={tutor} onIntent={onChipIntent} />
@@ -1091,39 +1072,13 @@ export default function App() {
 
           {section === "chords" && (
             <ChordBook tuningId={guitarTuning} spelling={chartSpelling}
-              onStrum={strumNotes} onDockLight={setDockOverride}
+              onStrum={strumNotes}
               onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }} />
           )}
 
           {section === "shed" && <Shed />}
         </div>
       </main>
-
-      {/* ---- THE DOCK: one shared instrument, always present, reshaping per room ---- */}
-      <footer className={`kl-dock${section === "piano" ? " tall" : ""}`}>
-        <div className="kl-dock-slab">
-          <div className="kl-dock-head">
-            <span className={`dot${isPlaying ? " kl-pulse" : ""}`}
-              style={{ background: isPlaying ? C.root : "#4A4438", boxShadow: isPlaying ? `0 0 10px ${C.root}` : "none" }} />
-            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dockLabel}</span>
-            <span style={{ marginLeft: "auto", display: "flex", gap: 16, alignItems: "center", flex: "0 0 auto" }}>
-              <EnginePill engine={engineState.engine} loading={engineState.loading} />
-              <button onClick={() => setSoundOn((s) => !s)} style={{ color: soundOn ? C.tone : "#79705C" }}>
-                {soundOn ? "sound on" : "muted"}
-              </button>
-              {section === "piano" ? (
-                <span className="kl-hide-sm">the shared instrument</span>
-              ) : (
-                <button onClick={() => setSection("piano")}>open the piano ↗</button>
-              )}
-            </span>
-          </div>
-          <div className="kl-dock-keys">
-            <Keyboard roleFor={dockRoleFor} onKey={playSingleKey} flash={flash}
-              ariaLabel="piano keyboard — the current chord is lit" />
-          </div>
-        </div>
-      </footer>
 
       <ImportModal open={importOpen} onLoad={(s) => { setLoaded(null); loadSheet(s); }} onClose={() => setImportOpen(false)} />
       <style>{`.spin{animation:kl-spin 1s linear infinite}`}</style>
@@ -1174,11 +1129,11 @@ const selStyle = {
   borderRadius: 7, padding: "4px 6px", fontSize: 13, fontFamily: MONO, cursor: "pointer",
 };
 
-// Lives in the dock head: a quiet mono readout of what instrument will speak.
+// Lives in the top bar: a quiet mono readout of what instrument will speak.
 function EnginePill({ engine, loading }) {
   const label = engine === "piano" ? "sampled grand" : engine === "synth" ? (loading ? "synth · loading piano…" : "synth") : "audio on first note";
   return (
-    <span className="kl-hide-sm" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#5E5546" }}>
+    <span className="kl-hide-sm" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: MONO, fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: C.faint, whiteSpace: "nowrap" }}>
       {loading && <Loader2 size={11} className="kl-spin" />}
       {label}
     </span>
