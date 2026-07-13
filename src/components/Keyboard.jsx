@@ -25,7 +25,7 @@ const BLACK_NUDGE = { 1: -0.13, 3: 0.13, 6: -0.16, 8: 0, 10: 0.16 };
 const WHITE_GRADIENT = "linear-gradient(180deg,#FBF7EC 0%,#F1EBDC 82%,#E4DCC8 100%)";
 const BLACK_GRADIENT = "linear-gradient(180deg,#3A362E 0%,#211E19 12%,#16130F 100%)";
 
-export default function Keyboard({ roleFor, onKey, flash, ariaLabel = "piano keyboard" }) {
+export default function Keyboard({ roleFor, onKey, flash, height = 190, ariaLabel = "piano keyboard" }) {
   const whites = KEYS.whiteKeys;
   const whiteW = 100 / whites.length;
   const isFlash = (m) => flash && flash.has(m);
@@ -45,7 +45,7 @@ export default function Keyboard({ roleFor, onKey, flash, ariaLabel = "piano key
 
   return (
     <div role="group" aria-label={ariaLabel}
-      style={{ position: "relative", height: "100%", minHeight: 56, userSelect: "none" }}>
+      style={{ position: "relative", height, minHeight: 56, userSelect: "none" }}>
       <div style={{ display: "flex", gap: 1, height: "100%" }}>
         {whites.map((k, i) => {
           const info = whiteInfo[i];

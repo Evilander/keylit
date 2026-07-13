@@ -4,6 +4,12 @@
 
 ---
 
+## v0.7.1 — the dock comes back inside *(shipped 2026-07-12 · 613 tests green)*
+
+Tyler's call after living with v0.7 for an evening: the persistent bottom dock was worse than the old way. The keyboard returned to **embedded decks inside the rooms that play it** — Piano (210px, under the readout), Learn (150px, under the headline), Chordbook (170px, lit by the selected grip via its own `roleFor` again — `dockOverride` removed). The engine readout moved to the top bar. Everything else from v0.7 stands. Standing rule: no persistent footer instrument.
+
+---
+
 ## v0.7 — "Color-Shift": the redesign lands *(shipped 2026-07-12 · 613 tests green)*
 
 Implemented from the Claude-design handoff (`Music Education Platform.zip` → `design_handoff_color_shift_ui/`), recreated inside the real codebase per its README — tokens swapped, mechanisms kept.
