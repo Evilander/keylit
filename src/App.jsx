@@ -48,6 +48,7 @@ import TutorPanel from "./components/TutorPanel.jsx";
 import TensionStrip from "./components/TensionStrip.jsx";
 import TheoryGuide from "./components/TheoryGuide.jsx";
 import VoiceRoom from "./components/VoiceRoom.jsx";
+import MirrorPanel from "./components/MirrorPanel.jsx";
 import { metronome } from "./audio/metronome.js";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, userSongbook } from "./storage.js";
@@ -1118,6 +1119,7 @@ export default function App() {
                 <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
                 <button role="tab" aria-selected={practiceTab === "time"} onClick={() => setPracticeTab("time")}>Metronome</button>
                 <button role="tab" aria-selected={practiceTab === "bench"} onClick={() => setPracticeTab("bench")}>Bench Book</button>
+                <button role="tab" aria-selected={practiceTab === "mirror"} onClick={() => setPracticeTab("mirror")}>The Mirror</button>
               </div>
               {practiceTab === "drills" && (
                 <Practice onPlay={(midis) => { arm(); midis.forEach((m, i) => setTimeout(() => ensureAndPlay([m], 0.9), i * 460)); }} />
@@ -1144,6 +1146,10 @@ export default function App() {
                 </div>
               )}
               {practiceTab === "bench" && <BenchBook onOpen={openSong} />}
+              {practiceTab === "mirror" && (
+                <MirrorPanel onAudition={auditionChords}
+                  onTakeToDesk={(chords) => { loadProgression(chords); setSection("write"); }} />
+              )}
             </div>
           )}
 
