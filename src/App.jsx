@@ -50,6 +50,7 @@ import TheoryGuide from "./components/TheoryGuide.jsx";
 import VoiceRoom from "./components/VoiceRoom.jsx";
 import MirrorPanel from "./components/MirrorPanel.jsx";
 import RetabPanel from "./components/RetabPanel.jsx";
+import EarTrainer from "./components/EarTrainer.jsx";
 import { metronome } from "./audio/metronome.js";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, userSongbook } from "./storage.js";
@@ -1093,6 +1094,7 @@ export default function App() {
               <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 18 }}>
                 <ScaleBuilder tutor={tutor} onIntent={onChipIntent} />
                 <DegreeFinder tutor={tutor} onIntent={onChipIntent} />
+                <EarTrainer prog={view.prog} activeKey={activeKey} songTitle={loaded?.title} onPlaySeq={auditionChords} />
                 <MeterFeel tutor={tutor} />
                 <PedalLab tutor={tutor} onIntent={onChipIntent} />
               </div>
