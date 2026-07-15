@@ -15,6 +15,7 @@ import { spellPc } from "../lib/spelling.js";
 import { library } from "../storage.js";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 import PocketRecorder from "./PocketRecorder.jsx";
+import HumHarmony from "./HumHarmony.jsx";
 
 const PAD_KEY = "keylit.write.pad.v1";
 const loadPad = () => { try { return localStorage.getItem(PAD_KEY) || ""; } catch { return ""; } };
@@ -57,7 +58,7 @@ const FINISHING = [
 
 export default function WriteDesk({
   activeKey, sheet, voicings, tempoMs = 1500,
-  onImport, onLoadProgression, onLoadSheet, onPlay, nowStamp,
+  onImport, onLoadProgression, onLoadSheet, onPlay, onAudition, nowStamp,
   midiSupported, midiOutputs = [], midiOutId = "", onPickMidiOut, onRefreshMidi,
 }) {
   /* ---- the one song timer ---- */
@@ -301,6 +302,9 @@ export default function WriteDesk({
         ))}
         {note && <span style={{ fontSize: 12, color: C.toneText, fontFamily: MONO }}>{note}</span>}
       </div>
+
+      {/* ---- melody-first: hum a line, choose its floor ---- */}
+      <HumHarmony activeKey={activeKey} onAudition={onAudition} onLoadProgression={onLoadProgression} />
 
       {/* ---- the exercises, from the book ---- */}
       <section style={{ marginTop: 20, borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
