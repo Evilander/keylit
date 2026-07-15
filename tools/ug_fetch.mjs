@@ -139,7 +139,10 @@ for (const t of picks) {
     const view = d?.tab_view;
     let body = view?.wiki_tab?.content || "";
     if (!body.trim()) throw new Error("empty chart body");
-    body = body.replace(/\[\/?(ch|tab)\]/g, "").replace(/\r\n/g, "\n");
+    // page JSON double-escapes: after &amp;→& the body still carries literal
+    // &gt;/&lt; where transcribers drew arrows (kinsella-web agent's find, 2026-07-15)
+    body = body.replace(/\[\/?(ch|tab)\]/g, "").replace(/\r\n/g, "\n")
+      .replace(/&gt;/g, ">").replace(/&lt;/g, "<");
     const meta = view?.meta || {};
     const rec = {
       id, artist: ARTIST, title: t.song_name + ver,
