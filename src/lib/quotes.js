@@ -20,3 +20,15 @@ export const QUOTES = [
 export function pickQuote(rand = Math.random) {
   return QUOTES[Math.floor(rand() * QUOTES.length)];
 }
+
+/** The whole shelf, dealt in a fresh order — Fisher-Yates over a copy, so
+ * each room can take its own line without two rooms repeating each other.
+ * Pass a [0,1) rand for determinism in tests. Pure: never mutates QUOTES. */
+export function shuffledQuotes(rand = Math.random) {
+  const deck = [...QUOTES];
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  return deck;
+}

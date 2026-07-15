@@ -9,7 +9,6 @@ import { loadManifest, loadSong, groupByArtist, isCoreArtist, SOURCE_LABEL } fro
 import { userSongbook, benchBook } from "../storage.js";
 import { slugSongKey } from "../lib/bench.js";
 import { makeZip } from "../lib/zip.js";
-import { pickQuote } from "../lib/quotes.js";
 import AddSong from "./AddSong.jsx";
 import Ear from "./Ear.jsx";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
@@ -18,11 +17,7 @@ import { C, MONO, DISPLAY } from "../ui/theme.js";
 // search, tuning filter, and expanded artists — not a collapsed index).
 const remembered = { q: "", tuning: null, open: [] };
 
-// One line per LOGIN, not per visit — module scope pins it for the session,
-// so walking rooms doesn't reshuffle the hero.
-const quote = pickQuote();
-
-export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, potd, onPotd }) {
+export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, potd, onPotd, quote }) {
   const [fetched, setFetched] = useState(null);
   const [userRows, setUserRows] = useState(() => userSongbook.rows());
   const [adding, setAdding] = useState(false);
@@ -194,8 +189,12 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
     <div className="kl-section">
       {/* The hero speaks in borrowed lines — a new one each time the app opens. */}
       <div className="kl-eyebrow faint">The songbook</div>
-      <h1 className="kl-title hero" style={{ margin: "14px 0 0", maxWidth: 640 }}>{quote.q}</h1>
-      <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: C.muted, marginTop: 14 }}>— {quote.by}</div>
+      {quote && (
+        <>
+          <h1 className="kl-title hero" style={{ margin: "14px 0 0", maxWidth: 640 }}>{quote.q}</h1>
+          <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: C.muted, marginTop: 14 }}>— {quote.by}</div>
+        </>
+      )}
 
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginTop: 30 }}>
         <span className="kl-meta">{rows.length} songs · {new Set(rows.map((r) => r.artist || "Various")).size} artists</span>
