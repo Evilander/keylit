@@ -163,6 +163,7 @@ for (const src of fs.readdirSync(ROOT)) {
       source: s.source || src, sourceUrl: s.sourceUrl || null,
       tuning: s.tuning || "standard", tuningId: t.id, tuningName: t.name,
       capo: s.capo || null, key: s.key || null, format: s.format || "chords",
+      bodyLen: (s.body || "").length, // transient — dedupe evidence, stripped below
     });
   }
 }
@@ -175,6 +176,37 @@ const indexed = out.filter((r) => !(r.source === "hyperrust" && r.artist === "Ne
 if (indexed.length !== out.length) console.log("hyperrust Neil rows superseded by UG:", out.length - indexed.length);
 out.length = 0;
 out.push(...indexed);
+
+// General cross-source dedupe (owner ask, 2026-07-15): the same song from two
+// sites indexes ONCE — chords beat tabs (the app's purpose is playing them),
+// then the fuller body wins, then source name for determinism. Deliberate
+// alternates ("… (ver 2)") survive untouched, and every file stays on disk —
+// only the browse index chooses, so this is reversible by deleting the rule.
+{
+  const keyOf = (r) => `${(r.artist || "").toLowerCase()}|${normTitle(r.title)}`;
+  const groups = new Map();
+  for (const r of out) {
+    if (/\(ver /i.test(r.title)) continue;
+    const k = keyOf(r);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  const drop = new Set();
+  for (const rows of groups.values()) {
+    if (rows.length < 2) continue;
+    const best = rows.slice().sort((a, b) =>
+      (a.format === "chords" ? 0 : 1) - (b.format === "chords" ? 0 : 1) ||
+      (b.bodyLen || 0) - (a.bodyLen || 0) ||
+      (a.source < b.source ? -1 : 1)
+    )[0];
+    for (const r of rows) if (r !== best) drop.add(r);
+  }
+  if (drop.size) console.log("cross-source duplicates superseded:", drop.size);
+  const deduped = out.filter((r) => !drop.has(r));
+  out.length = 0;
+  out.push(...deduped);
+}
+for (const r of out) delete r.bodyLen;
 
 fs.writeFileSync(path.join(ROOT, "manifest.json"), JSON.stringify(out), "utf8");
 const tunings = {};
