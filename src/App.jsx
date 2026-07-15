@@ -45,6 +45,8 @@ import Metronome from "./components/Metronome.jsx";
 import Perform from "./components/Perform.jsx";
 import Coverize from "./components/Coverize.jsx";
 import TutorPanel from "./components/TutorPanel.jsx";
+import TensionStrip from "./components/TensionStrip.jsx";
+import TheoryGuide from "./components/TheoryGuide.jsx";
 import { metronome } from "./audio/metronome.js";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, userSongbook } from "./storage.js";
@@ -1010,6 +1012,7 @@ export default function App() {
                 </div>
                 <div className="kl-seg" role="tablist" aria-label="Theory view">
                   <button role="tab" aria-selected={theoryTab === "circle"} onClick={() => setTheoryTab("circle")}>Circle of Fifths</button>
+                  <button role="tab" aria-selected={theoryTab === "tension"} onClick={() => setTheoryTab("tension")}>Tension</button>
                   <button role="tab" aria-selected={theoryTab === "capo"} onClick={() => setTheoryTab("capo")}>Capo &amp; Tunings</button>
                 </div>
               </div>
@@ -1022,6 +1025,7 @@ export default function App() {
                     <p style={{ color: C.faint, fontSize: 12, textAlign: "center", marginTop: 10 }}>
                       Your key rides at the top; the wedge holds the chords that always fit. Click any key to <b style={{ color: C.muted }}>hear it</b> and make it home — the wheel turns, your song's chords stay lit.
                     </p>
+                    <TheoryGuide activeKey={activeKey} onAudition={auditionChords} onGoWrite={() => setSection("write")} />
                   </div>
                   <div>
                     <div className="kl-eyebrow">Key of {keyName} · {keyFacts.acc}</div>
@@ -1045,6 +1049,10 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+                </div>
+              ) : theoryTab === "tension" ? (
+                <div style={{ marginTop: 18 }}>
+                  <TensionStrip prog={view.prog} activeKey={activeKey} currentIdx={currentIdx} onSelectIdx={selectIdx} />
                 </div>
               ) : (
                 <div style={{ marginTop: 18 }}>
