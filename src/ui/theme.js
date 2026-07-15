@@ -16,8 +16,9 @@ const LIGHT = {
   // cream paper surfaces
   bg: "#F7F3E9", panel: "#FFFDF6", panel2: "#F0EAD9",
   line: "#E3DCC9", lineStrong: "#CFC6AE",
-  // warm inks
-  ink: "#221F1A", muted: "#6E6553", faint: "#A29578",
+  // warm inks — muted/faint carry real information (hints, meta, sources), so
+  // they sit at readable contrast (~7:1 / ~4.5:1 on the paper), not garnish level.
+  ink: "#221F1A", muted: "#5C5342", faint: "#8A7C60",
   // the instrument dock (the ONE dark element, both themes)
   deck: "#0D0C09", deckEdge: "#050403", felt: "#14110C",
   // piano keys (rendered on the dark deck)
@@ -35,8 +36,8 @@ const DARK = {
   // warm brown-black, not slate
   bg: "#171511", panel: "#1F1C16", panel2: "#26221A",
   line: "#332F26", lineStrong: "#453F31",
-  // lamplit inks
-  ink: "#F0EADB", muted: "#A79C86", faint: "#79705C",
+  // lamplit inks — same rule as daylight: secondary text stays legible
+  ink: "#F0EADB", muted: "#B5AA93", faint: "#92876F",
   // the dock doesn't move between themes
   deck: "#0D0C09", deckEdge: "#050403", felt: "#14110C",
   // keys read the same under the lamp
