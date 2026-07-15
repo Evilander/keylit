@@ -295,9 +295,9 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
               <button onClick={() => toggle("__misc__")} aria-expanded={open.has("__misc__")}
                 style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 4px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
                 <ChevronRight size={15} style={{ color: C.faint, transform: open.has("__misc__") ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
-                <span style={{ fontFamily: DISPLAY, fontSize: 21, color: C.muted, flex: 1 }}>Miscellaneous</span>
-                <span className="kl-meta">{misc.length} artists · {miscCount} songs</span>
-                <span className="kl-meta kl-hide-sm" style={{ color: C.faint, minWidth: 110, textAlign: "right" }}>anthologies &amp; strays</span>
+                <span style={{ fontFamily: DISPLAY, fontSize: 21, color: C.muted, flex: 1, minWidth: 0, whiteSpace: "nowrap" }}>Miscellaneous</span>
+                <span className="kl-meta" style={{ flex: "0 0 auto", whiteSpace: "nowrap" }}>{misc.length} artists · {miscCount} songs</span>
+                <span className="kl-meta kl-hide-sm" style={{ color: C.faint, flex: "0 0 auto", whiteSpace: "nowrap" }}>anthologies &amp; strays</span>
               </button>
               {open.has("__misc__") && (
                 <div style={{ paddingBottom: 10, paddingLeft: 18, borderLeft: `2px solid ${C.line}`, marginLeft: 10 }}>
@@ -367,10 +367,12 @@ function ArtistGroup({ g, isOpen, onToggle, onOpen, onTuning, onRemove, selectin
     <div style={{ borderBottom: `1px solid ${C.line}` }}>
       <button onClick={() => onToggle(g.artist)} aria-expanded={isOpen}
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: compact ? "9px 4px" : "13px 4px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
-        <ChevronRight size={15} style={{ color: C.faint, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
-        <span style={{ fontFamily: DISPLAY, fontSize: compact ? 16.5 : 21, color: C.ink, flex: 1 }}>{g.artist}</span>
-        <span className="kl-meta">{g.count} {g.count === 1 ? "song" : "songs"}</span>
-        {!compact && <span className="kl-meta kl-hide-sm" style={{ color: C.faint, minWidth: 110, textAlign: "right" }}>{sources.join(" · ")}</span>}
+        <ChevronRight size={15} style={{ color: C.faint, flex: "0 0 auto", transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
+        {/* The name never loses the width fight — provenance truncates instead
+            (Alex G once wrapped to "Alex / G" under a four-hostname source list). */}
+        <span title={g.artist} style={{ fontFamily: DISPLAY, fontSize: compact ? 16.5 : 21, color: C.ink, flex: "1 1 auto", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.artist}</span>
+        <span className="kl-meta" style={{ flex: "0 0 auto", whiteSpace: "nowrap" }}>{g.count} {g.count === 1 ? "song" : "songs"}</span>
+        {!compact && <span className="kl-meta kl-hide-sm" title={sources.join(" · ")} style={{ color: C.faint, flex: "0 1 auto", minWidth: 0, maxWidth: 230, textAlign: "right", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sources.join(" · ")}</span>}
       </button>
       {isOpen && (
         <div style={{ paddingBottom: 10 }}>
@@ -409,7 +411,7 @@ function SongRow({ s, onOpen, onTuning, onRemove, selecting, selected, onToggle 
       style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "7px 4px 7px 31px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}
       onMouseEnter={(e) => (e.currentTarget.style.background = C.panel2)} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
       {selecting && <SelMark on={selected} />}
-      <span style={{ fontFamily: "var(--kl-sans)", fontSize: 14.5, color: C.ink, flex: 1 }}>{s.title}</span>
+      <span style={{ fontFamily: "var(--kl-sans)", fontSize: 14.5, color: C.ink, flex: 1, minWidth: 0 }}>{s.title}</span>
       {mine && <Tag color={C.toneText}>yours</Tag>}
       {s.format === "tab" && <Tag>tab</Tag>}
       {alt && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onTuning?.(s.tuningId); }}
