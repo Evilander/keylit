@@ -16,7 +16,8 @@ import { progressionOfTheDay } from "./lib/potd.js";
 import { isMidiSupported, requestMidi, listOutputs, sendChordToOutput, allNotesOff } from "./webmidi.js";
 import { useAudioEngine } from "./audio/useAudioEngine.js";
 import { C, MONO, DISPLAY, applyTheme, currentTheme } from "./ui/theme.js";
-import { EngLabel, Readout, BenchButton } from "./ui/Bench.jsx";
+import { EngLabel, Readout, BenchButton, QuoteLine } from "./ui/Bench.jsx";
+import { shuffledQuotes } from "./lib/quotes.js";
 import { loadSong, SOURCE_LABEL } from "./corpus.js";
 import Keyboard from "./components/Keyboard.jsx";
 import NumbersRail from "./components/NumbersRail.jsx";
@@ -78,6 +79,12 @@ const NAV = [
   { id: "chords", label: "Chordbook" },
   { id: "shed", label: "The Shed" },
 ];
+
+// One shuffle per login: every room draws a different borrowed line, and
+// tomorrow's login deals a different hand. Index by room, never re-pick.
+const QUOTE_DECK = shuffledQuotes();
+const ROOM_QUOTE = { library: 0, learn: 1, theory: 2, write: 3, practice: 4, chords: 5 };
+const roomQuote = (id) => QUOTE_DECK[ROOM_QUOTE[id] % QUOTE_DECK.length];
 
 const GUITAR_TUNING_KEY = "keylit.guitar-tuning.v1";
 const CHART_SPELLING_KEY = "keylit.chart-spelling.v2";
@@ -782,6 +789,7 @@ export default function App() {
         <div className={`kl-content${section === "library" || section === "song" ? "" : " wide"}`}>
           {section === "library" && (
             <Library onOpen={openSong}
+              quote={roomQuote("library")}
               potd={potd}
               onPotd={(action) => {
                 arm();
@@ -951,7 +959,11 @@ export default function App() {
           {section === "theory" && (
             <div className="kl-section">
               <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 12 }}>
-                <div><div className="kl-eyebrow">The map</div><h1 className="kl-title" style={{ marginTop: 4 }}>Theory</h1></div>
+                <div>
+                  <div className="kl-eyebrow">The map</div>
+                  <h1 className="kl-title" style={{ marginTop: 4 }}>Theory</h1>
+                  <QuoteLine quote={roomQuote("theory")} style={{ marginTop: 10 }} />
+                </div>
                 <div className="kl-seg" role="tablist" aria-label="Theory view">
                   <button role="tab" aria-selected={theoryTab === "circle"} onClick={() => setTheoryTab("circle")}>Circle of Fifths</button>
                   <button role="tab" aria-selected={theoryTab === "capo"} onClick={() => setTheoryTab("capo")}>Capo &amp; Tunings</button>
@@ -1001,9 +1013,8 @@ export default function App() {
           {section === "learn" && (
             <div className="kl-section">
               <div className="kl-eyebrow faint">The theory tutor</div>
-              <h1 className="kl-title" style={{ marginTop: 12, marginBottom: 8 }}>
-                Scales are just a recipe: <span style={{ color: C.root }}>whole, whole, half.</span>
-              </h1>
+              <h1 className="kl-title" style={{ marginTop: 12, marginBottom: 0, maxWidth: 760 }}>{roomQuote("learn").q}</h1>
+              <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: C.muted, marginTop: 12 }}>— {roomQuote("learn").by}</div>
               <div className="deck" style={{ padding: "14px 16px", margin: "24px 0 18px" }}>
                 <Keyboard height={150} roleFor={roleForKeyboard} onKey={playSingleKey} flash={flash}
                   ariaLabel="piano keyboard — the lesson is lit" />
@@ -1020,7 +1031,8 @@ export default function App() {
           {section === "write" && (
             <div className="kl-section">
               <div className="kl-eyebrow">The desk</div>
-              <h1 className="kl-title" style={{ marginTop: 4, marginBottom: 14 }}>Write</h1>
+              <h1 className="kl-title" style={{ marginTop: 4 }}>Write</h1>
+              <QuoteLine quote={roomQuote("write")} style={{ margin: "10px 0 16px" }} />
               <SongTools
                 activeKey={activeKey} sheet={sheet} voicings={audioVoicings} tempoMs={tempo}
                 onImport={() => setImportOpen(true)} onLoadProgression={loadProgression} onLoadSheet={(s) => { setLoaded(null); loadSheet(s); }}
@@ -1042,6 +1054,7 @@ export default function App() {
 
           {section === "practice" && (
             <div className="kl-section">
+              <QuoteLine quote={roomQuote("practice")} size={18} style={{ marginBottom: 16 }} />
               <div className="kl-seg" role="tablist" aria-label="Practice area" style={{ marginBottom: 6 }}>
                 <button role="tab" aria-selected={practiceTab === "drills"} onClick={() => setPracticeTab("drills")}>Drills</button>
                 <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
@@ -1072,7 +1085,7 @@ export default function App() {
 
           {section === "chords" && (
             <ChordBook tuningId={guitarTuning} spelling={chartSpelling}
-              onStrum={strumNotes}
+              quote={roomQuote("chords")} onStrum={strumNotes}
               onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }} />
           )}
 

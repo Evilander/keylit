@@ -14,12 +14,12 @@ import { spellChord, spellPc } from "../lib/spelling.js";
 import { rootPositionFull } from "../lib/voicing.js";
 import ChordDiagram from "./ChordDiagram.jsx";
 import Keyboard from "./Keyboard.jsx";
-import { Faceplate, EngLabel, RoomTitle } from "../ui/Bench.jsx";
+import { Faceplate, EngLabel, RoomTitle, QuoteLine } from "../ui/Bench.jsx";
 import { C, MONO } from "../ui/theme.js";
 
 const pcOf = (m) => ((m % 12) + 12) % 12;
 
-export default function ChordBook({ tuningId = "standard", spelling = "sharps", onStrum, onPlay }) {
+export default function ChordBook({ tuningId = "standard", spelling = "sharps", onStrum, onPlay, quote }) {
   const [rootPc, setRootPc] = useState(4); // E — the first chord anyone learns
   const [familyId, setFamilyId] = useState("major");
   const [qKey, setQKey] = useState("");
@@ -95,6 +95,7 @@ export default function ChordBook({ tuningId = "standard", spelling = "sharps", 
         sub={<>Every grip on these pages is <em>derived</em>, not printed — searched fresh on the fretboard of
           the guitar in your hands ({tuning.name} · {tuning.spelling}), then ranked the way a campfire ranks
           them. Pick a grip and the piano lights the exact same notes.</>} />
+      <QuoteLine quote={quote} size={18} style={{ margin: "-4px 0 16px" }} />
 
       <Faceplate label="Find a chord" style={{ marginBottom: 16 }}
         right={

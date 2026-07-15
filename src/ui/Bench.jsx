@@ -77,6 +77,18 @@ export function SuggestionChips({ chips, onIntent }) {
   );
 }
 
+// A borrowed songwriter line with its attribution — the only kind of
+// tagline this app prints (house rule: never an invented one).
+export function QuoteLine({ quote, size = 20, style }) {
+  if (!quote) return null;
+  return (
+    <div style={style}>
+      <div style={{ fontFamily: DISPLAY, fontSize: size, lineHeight: 1.25, color: C.ink, maxWidth: 680 }}>{quote.q}</div>
+      <div style={{ fontFamily: "var(--kl-mono)", fontSize: 10.5, letterSpacing: "0.06em", color: C.muted, marginTop: 6 }}>— {quote.by}</div>
+    </div>
+  );
+}
+
 // A big Gloock section title with a mono kicker — the "room" heading.
 export function RoomTitle({ kicker, title, sub }) {
   return (
