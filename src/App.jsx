@@ -1111,6 +1111,7 @@ export default function App() {
                 activeKey={activeKey} sheet={sheet} voicings={audioVoicings} tempoMs={tempo}
                 onImport={() => setImportOpen(true)} onLoadProgression={loadProgression} onLoadSheet={(s) => { setLoaded(null); loadSheet(s); }}
                 onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }}
+                onAudition={auditionChords}
                 nowStamp={() => Date.now()} midiSupported={isMidiSupported()} midiOutputs={midiOutputs} midiOutId={midiOutId}
                 onPickMidiOut={pickMidiOut} onRefreshMidi={refreshMidiOutputs} />
               {numbersRailPanel}
