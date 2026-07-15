@@ -191,8 +191,12 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
       <div className="kl-eyebrow faint">The songbook</div>
       {quote && (
         <>
-          <h1 className="kl-title hero" style={{ margin: "14px 0 0", maxWidth: 640 }}>{quote.q}</h1>
-          <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: C.muted, marginTop: 14 }}>— {quote.by}</div>
+          {/* aphorisms get the full 52px; interview paragraphs step down to stay a hero, not a wall */}
+          <h1 className="kl-title hero" style={{ margin: "14px 0 0", maxWidth: 680,
+            fontSize: quote.q.length > 150 ? 30 : quote.q.length > 100 ? 38 : quote.q.length > 70 ? 44 : undefined }}>
+            {quote.q}
+          </h1>
+          <div style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.05em", color: C.muted, marginTop: 14 }}>— {quote.by}</div>
         </>
       )}
 

@@ -2,8 +2,11 @@
  * bench.css — "Color-Shift" material layer (design handoff 2026-07-12).
  * Cream paper, hairline rules (not cards), pill controls with 1.5px
  * borders that darken to ink on hover. The ONE dark element is the
- * persistent instrument dock (.deck), where the saturated role hues
- * glow as lit keys. Content color stays in theme.js `C`.
+ * recessed instrument deck inside the rooms that play it, where the
+ * saturated role hues glow as lit keys. Content color stays in theme.js.
+ *
+ * Readability pass 2026-07-15: secondary inks raised to real contrast,
+ * mono floors lifted off 10px, the top bar wraps before it hides rooms.
  * ================================================================== */
 
 :root {
@@ -13,8 +16,8 @@
   --kl-hair: #E3DCC9;
   --kl-line: #CFC6AE;
   --kl-ink: #221F1A;
-  --kl-muted: #6E6553;
-  --kl-faint: #A29578;
+  --kl-muted: #5C5342;
+  --kl-faint: #8A7C60;
   --kl-shadow: rgba(34, 31, 26, 0.08);
   --kl-shadow-soft: rgba(34, 31, 26, 0.05);
   --kl-glass: rgba(247, 243, 233, 0.88);
@@ -39,8 +42,8 @@
   --kl-hair: #332F26;
   --kl-line: #453F31;
   --kl-ink: #F0EADB;
-  --kl-muted: #A79C86;
-  --kl-faint: #79705C;
+  --kl-muted: #B5AA93;
+  --kl-faint: #92876F;
   --kl-shadow: rgba(0, 0, 0, 0.5);
   --kl-shadow-soft: rgba(0, 0, 0, 0.32);
   --kl-glass: rgba(23, 21, 17, 0.88);
@@ -51,7 +54,7 @@
   color-scheme: dark;
 }
 
-/* ---- app shell: top bar · scrolling room · persistent instrument dock ---- */
+/* ---- app shell: top bar · scrolling room ---- */
 .kl-app {
   height: 100vh;
   display: flex; flex-direction: column;
@@ -62,8 +65,8 @@
 }
 .kl-topnav {
   flex: none; z-index: 30;
-  display: flex; align-items: center; gap: 34px;
-  height: 78px; padding: 0 44px;
+  display: flex; align-items: center; gap: 22px;
+  height: 78px; padding: 0 32px;
   border-bottom: 1px solid var(--kl-hair);
   background: var(--kl-glass); backdrop-filter: saturate(1.2) blur(8px);
 }
@@ -75,10 +78,10 @@
 .kl-roomtabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
 .kl-roomtabs::-webkit-scrollbar { display: none; }
 .kl-roomtab {
-  font-family: var(--kl-sans); font-size: 12.5px; font-weight: 600;
-  letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
+  font-family: var(--kl-sans); font-size: 12px; font-weight: 600;
+  letter-spacing: 0.07em; text-transform: uppercase; white-space: nowrap;
   color: var(--kl-muted); background: transparent; border: 0;
-  padding: 10px 13px; cursor: pointer; transition: color 200ms ease, box-shadow 200ms ease;
+  padding: 10px 10px; cursor: pointer; transition: color 200ms ease, box-shadow 200ms ease;
 }
 .kl-roomtab:hover { color: var(--kl-ink); }
 .kl-roomtab[aria-current="true"] {
@@ -87,21 +90,21 @@
 }
 
 .kl-main { flex: 1; overflow-y: auto; min-height: 0; }
-.kl-content { padding: 48px 44px 40px; max-width: 1080px; width: 100%; margin-inline: auto; }
+.kl-content { padding: 44px 44px 40px; max-width: 1080px; width: 100%; margin-inline: auto; }
 .kl-content.wide { max-width: 1280px; }
 
 /* ---- editorial type helpers ---- */
 .kl-eyebrow {
   font-family: var(--kl-mono); text-transform: uppercase;
-  letter-spacing: 0.16em; font-size: 10px; font-weight: 500; color: var(--kl-muted);
+  letter-spacing: 0.14em; font-size: 10.5px; font-weight: 500; color: var(--kl-muted);
 }
-.kl-eyebrow.faint { color: var(--kl-faint); letter-spacing: 0.18em; }
-.kl-title { font-family: var(--kl-display); font-weight: 400; font-size: 46px; line-height: 1.05; letter-spacing: 0; color: var(--kl-ink); margin: 0; }
-.kl-title.hero { font-size: 58px; line-height: 1.02; }
+.kl-eyebrow.faint { color: var(--kl-faint); letter-spacing: 0.16em; }
+.kl-title { font-family: var(--kl-display); font-weight: 400; font-size: 42px; line-height: 1.08; letter-spacing: 0; color: var(--kl-ink); margin: 0; }
+.kl-title.hero { font-size: 52px; line-height: 1.04; }
 .kl-h2 { font-family: var(--kl-display); font-weight: 400; font-size: 25px; line-height: 1.2; color: var(--kl-ink); margin: 0; }
-.kl-prose { font-family: var(--kl-sans); font-size: 14.5px; line-height: 1.55; color: var(--kl-ink); }
+.kl-prose { font-family: var(--kl-sans); font-size: 15px; line-height: 1.6; color: var(--kl-ink); }
 .kl-rule { height: 1px; background: var(--kl-hair); border: 0; margin: 18px 0; }
-.kl-meta { font-family: var(--kl-mono); font-size: 11px; color: var(--kl-muted); letter-spacing: 0.06em; }
+.kl-meta { font-family: var(--kl-mono); font-size: 11.5px; color: var(--kl-muted); letter-spacing: 0.04em; }
 
 /* ---- hairline rows (the editorial list — never a card stack) ---- */
 .kl-rows { display: flex; flex-direction: column; }
@@ -123,7 +126,7 @@
 .faceplate.hero { border: 1.5px solid var(--kl-ink); padding: 22px 24px; }
 .plate-screws::before, .plate-screws::after { content: none; }
 
-/* ---- the recessed DARK instrument well (shared with the dock) ---- */
+/* ---- the recessed DARK instrument well ---- */
 .deck {
   background: var(--kl-deck);
   border: 0; border-radius: 18px;
@@ -135,7 +138,7 @@
 /* ---- engraved label → mono eyebrow ---- */
 .engraved {
   font-family: var(--kl-mono); text-transform: uppercase;
-  letter-spacing: 0.16em; font-size: 10px; font-weight: 500; color: var(--kl-muted);
+  letter-spacing: 0.14em; font-size: 10.5px; font-weight: 500; color: var(--kl-muted);
 }
 
 /* ---- inset well (readouts, inputs) ---- */
@@ -186,7 +189,7 @@
 .vu i.on { background: currentColor; }
 
 /* ---- now chip / pill ---- */
-.eng-pill { display: inline-flex; align-items: center; gap: 7px; font-family: var(--kl-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kl-muted); background: transparent; border: 1.5px solid var(--kl-line); border-radius: 999px; padding: 6px 12px; }
+.eng-pill { display: inline-flex; align-items: center; gap: 7px; font-family: var(--kl-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kl-muted); background: transparent; border: 1.5px solid var(--kl-line); border-radius: 999px; padding: 6px 12px; }
 
 /* ---- suggestion chip ---- */
 .chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--kl-sans); font-size: 13px; font-weight: 600; color: var(--kl-ink); background: transparent; border: 1.5px solid var(--kl-line); border-radius: 999px; padding: 7px 14px; cursor: pointer; transition: transform 120ms ease, border-color 200ms ease, background 200ms ease; }
@@ -228,24 +231,29 @@
 .kl-stagger > *:nth-child(5){animation-delay:160ms}.kl-stagger > *:nth-child(6){animation-delay:200ms}
 .kl-stagger > *:nth-child(7){animation-delay:240ms}.kl-stagger > *:nth-child(8){animation-delay:280ms}
 
+/* ---- responsive: the bar wraps LONG before it would hide a room ---- */
+@media (max-width: 1280px) {
+  .kl-topnav { height: auto; min-height: 58px; padding: 10px 20px; gap: 14px; flex-wrap: wrap; }
+  .kl-roomtabs { flex-wrap: wrap; overflow: visible; }
+}
+
 /* ---- responsive: phones ---- */
 @media (max-width: 560px) {
   .kl-title { font-size: 30px; }
-  .kl-title.hero { font-size: 34px; }
+  .kl-title.hero { font-size: 32px; }
   .kl-content { padding: 24px 14px 32px; }
   .kl-hide-sm { display: none !important; }
   .deck { border-radius: 12px; }
 }
 /* fingers need bigger targets than mice */
 @media (pointer: coarse) {
-  .kl-roomtab { padding: 12px 13px; }
+  .kl-roomtab { padding: 12px 12px; }
   .kl-seg button { padding: 9px 15px; }
   .bench-btn { padding: 11px 18px; }
 }
 
-/* ---- responsive: the top bar compresses, tabs scroll ---- */
+/* ---- responsive: mid widths ---- */
 @media (max-width: 920px) {
-  .kl-topnav { height: auto; min-height: 56px; padding: 8px 14px; gap: 14px; flex-wrap: wrap; }
   .kl-topnav .kl-wordmark { font-size: 21px; }
   .kl-content { padding: 26px 16px 36px; }
   .bench-cols { grid-template-columns: 1fr !important; }

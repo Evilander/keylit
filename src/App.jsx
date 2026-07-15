@@ -766,7 +766,8 @@ export default function App() {
           ))}
         </nav>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16, flex: "0 0 auto", minWidth: 0 }}>
-          <EnginePill engine={engineState.engine} loading={engineState.loading} />
+          {/* the pill only speaks when something's worth saying — silence means the grand is ready */}
+          {engineState.engine !== "piano" && <EnginePill engine={engineState.engine} loading={engineState.loading} />}
           <span className="kl-hide-sm" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase",
             color: transpose || keyOverride ? C.rootText : C.faint,
             maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1013,8 +1014,11 @@ export default function App() {
           {section === "learn" && (
             <div className="kl-section">
               <div className="kl-eyebrow faint">The theory tutor</div>
-              <h1 className="kl-title" style={{ marginTop: 12, marginBottom: 0, maxWidth: 760 }}>{roomQuote("learn").q}</h1>
-              <div style={{ fontFamily: MONO, fontSize: 11, letterSpacing: "0.06em", color: C.muted, marginTop: 12 }}>— {roomQuote("learn").by}</div>
+              <h1 className="kl-title" style={{ marginTop: 12, marginBottom: 0, maxWidth: 760,
+                fontSize: roomQuote("learn").q.length > 150 ? 26 : roomQuote("learn").q.length > 100 ? 32 : undefined }}>
+                {roomQuote("learn").q}
+              </h1>
+              <div style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.05em", color: C.muted, marginTop: 12 }}>— {roomQuote("learn").by}</div>
               <div className="deck" style={{ padding: "14px 16px", margin: "24px 0 18px" }}>
                 <Keyboard height={150} roleFor={roleForKeyboard} onKey={playSingleKey} flash={flash}
                   ariaLabel="piano keyboard — the lesson is lit" />
