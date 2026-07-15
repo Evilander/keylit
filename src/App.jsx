@@ -28,7 +28,7 @@ import PedalLab from "./components/PedalLab.jsx";
 import ChordLab from "./components/ChordLab.jsx";
 import KeyWheel from "./components/KeyWheel.jsx";
 import CapoTuning from "./components/CapoTuning.jsx";
-import SongTools from "./components/SongTools.jsx";
+import WriteDesk from "./components/WriteDesk.jsx";
 import ImportModal from "./components/ImportModal.jsx";
 import AddToSetlist from "./components/AddToSetlist.jsx";
 import ChartView from "./components/ChartView.jsx";
@@ -1070,9 +1070,10 @@ export default function App() {
               <div className="kl-eyebrow">The desk</div>
               <h1 className="kl-title" style={{ marginTop: 4 }}>Write</h1>
               <QuoteLine quote={roomQuote("write")} style={{ margin: "10px 0 16px" }} />
-              <SongTools
+              <WriteDesk
                 activeKey={activeKey} sheet={sheet} voicings={audioVoicings} tempoMs={tempo}
                 onImport={() => setImportOpen(true)} onLoadProgression={loadProgression} onLoadSheet={(s) => { setLoaded(null); loadSheet(s); }}
+                onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }}
                 nowStamp={() => Date.now()} midiSupported={isMidiSupported()} midiOutputs={midiOutputs} midiOutId={midiOutId}
                 onPickMidiOut={pickMidiOut} onRefreshMidi={refreshMidiOutputs} />
               {numbersRailPanel}

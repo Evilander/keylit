@@ -55,6 +55,27 @@ export const QUOTES = [
   { q: "I was basically trying to rip off the Pixies. I have to admit it.", by: "Kurt Cobain · Rolling Stone, 1994" },
   { q: "I guess I start with the verse and then go into the chorus. But I'm getting so tired of that formula. And it is formula.", by: "Kurt Cobain · Rolling Stone, 1994" },
   { q: "Writing a song is very different from recording a song. Recording is the part that can be hard.", by: "Chan Marshall · The Creative Independent, 2018" },
+
+  // ---- from the desk drawer (Tweedy, How to Write One Song — verbatim) ----
+  { q: "Most of the time, inspiration has to be invited.", by: "Jeff Tweedy · How to Write One Song" },
+  { q: "Songs are pleas.", by: "Jeff Tweedy · How to Write One Song" },
+  { q: "A song will always love you back, but sometimes it just needs a little space.", by: "Jeff Tweedy · How to Write One Song" },
+  { q: "I don't like every song I write, but I like that I wrote it.", by: "Jeff Tweedy · How to Write One Song" },
+
+  // ---- from the poems (Actual Air, exact text) ----
+  { q: "When it's snowing, the outdoors seem like a room.", by: "David Berman · Actual Air, “Snow”" },
+  { q: "all water is classic water", by: "David Berman · Actual Air, “Classic Water”" },
+  { q: "Souvenirs only reminded you of buying them.", by: "David Berman · Actual Air, “Governors on Sominex”" },
+  { q: "It was the light in things that made them last.", by: "David Berman · Actual Air, “Governors on Sominex”" },
+  { q: "Hello to feelings that arrive unintroduced.", by: "David Berman · Actual Air, “Cassette County”" },
+  { q: "It's too nice a day to read a novel set in England.", by: "David Berman · Actual Air, “The Charm of 5:30”" },
+  { q: "Their mouths look like coin slots.", by: "David Berman · Actual Air, “The Moon”" },
+  { q: "every night I set the alarm clock for the time I was born, so that waking up becomes a historical reenactment", by: "David Berman · Actual Air, “Self-Portrait at 28”" },
+  { q: "I hired a detective to investigate myself. It was an act of religious passion.", by: "David Berman · Actual Air, “Coral Gables”" },
+  { q: "No one drinks rye anymore, someone said. No one feels that way anymore.", by: "David Berman · Actual Air, “Coral Gables”" },
+  { q: "like nostalgia for a discontinued model of robot", by: "David Berman · Actual Air, “Piano and Scene”" },
+  { q: "Just because everyone has died so far, doesn't mean that we're going to die.", by: "David Berman · Actual Air, “The Homeowner's Prayer”" },
+  { q: "The clock was learning to be 6:34.", by: "David Berman · Actual Air, “The Homeowner's Prayer”" },
 ];
 
 /** One line off the shelf. Pass a [0,1) rand for determinism in tests. */
