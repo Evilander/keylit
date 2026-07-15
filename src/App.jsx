@@ -43,6 +43,7 @@ import Shed from "./components/Shed.jsx";
 import Arranger from "./components/Arranger.jsx";
 import Metronome from "./components/Metronome.jsx";
 import Perform from "./components/Perform.jsx";
+import Coverize from "./components/Coverize.jsx";
 import { metronome } from "./audio/metronome.js";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, userSongbook } from "./storage.js";
@@ -884,6 +885,20 @@ export default function App() {
                   onChordClick={hearReadingChord}
                   guitar={guitarLens} />
               </section>
+              <Coverize prog={view.prog} activeKey={activeKey} loaded={loaded}
+                onAudition={auditionChords}
+                onApply={loadProgression}
+                onKeep={(body, meta) => {
+                  const built = buildUserSong({
+                    artist: meta.artist || "", title: meta.title || "Untitled",
+                    album: "", key: meta.key || "", capo: meta.capo ? String(meta.capo) : "",
+                    tuning: "", body,
+                  }, Date.now());
+                  if (built.error) return;
+                  userSongbook.save(built.song, built.row);
+                  setLoaded({ id: built.song.id, title: built.song.title, artist: built.song.artist || null, source: "user", key: built.row.key, capo: built.row.capo });
+                  loadSheet(body);
+                }} />
               {chartInput}
             </div>
           )}
