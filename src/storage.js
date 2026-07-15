@@ -20,10 +20,11 @@ export function createLibrary(backend) {
   return {
     list() { return read().sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0)); },
     get(id) { return read().find((s) => s.id === id) || null; },
-    save({ name, sheet, savedAt }) {
+    save({ name, sheet, lyrics, savedAt }) {
       const songs = read();
       const id = `${(name || "song").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 32)}-${(savedAt || 0).toString(36)}`;
-      const song = { id, name: name || "Untitled", sheet: sheet || "", savedAt: savedAt || 0 };
+      // a sketch is chords AND words — lyrics ride along when present
+      const song = { id, name: name || "Untitled", sheet: sheet || "", ...(lyrics ? { lyrics } : {}), savedAt: savedAt || 0 };
       // replace a same-name entry rather than piling up duplicates
       const next = songs.filter((s) => s.name !== song.name).concat(song);
       write(next);
