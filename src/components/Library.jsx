@@ -9,6 +9,7 @@ import { loadManifest, loadSong, groupByArtist, isCoreArtist, SOURCE_LABEL } fro
 import { userSongbook, benchBook } from "../storage.js";
 import { slugSongKey } from "../lib/bench.js";
 import { makeZip } from "../lib/zip.js";
+import { buildBackup, parseBackup, mergeBackup, reportLine, PREF_KEYS } from "../lib/backup.js";
 import AddSong from "./AddSong.jsx";
 import Ear from "./Ear.jsx";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
@@ -103,12 +104,43 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
     setExporting(null);
   };
 
-  // Your own songs + setlists as one JSON file — a real backup.
+  // Your whole musical self as one JSON file: songs, setlists, practice log,
+  // and the prefs that make a fresh machine feel like yours. Take it to the
+  // other computer, the practice space, the gig.
   const exportBackup = () => {
-    const songs = userSongbook.rows().map((r) => userSongbook.get(r.id)).filter(Boolean);
-    const data = { keylit: 1, exportedAt: new Date().toISOString(), songs, setlists: benchBook.setlists() };
+    const prefs = {};
+    for (const k of PREF_KEYS) {
+      try { const v = localStorage.getItem(k); if (v != null) prefs[k] = v; } catch { /* storage optional */ }
+    }
+    const data = buildBackup({
+      songs: userSongbook.all(),
+      setlists: benchBook.raw().setlists,
+      log: benchBook.raw().log,
+      prefs,
+      exportedAt: new Date().toISOString(),
+    });
     const stamp = new Date().toISOString().slice(0, 10);
     download(`keylit-songbook-${stamp}.json`, new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
+  };
+
+  const [importNote, setImportNote] = useState(null);
+  // Import MERGES — same song from another machine dedupes by (artist, title),
+  // nothing here is ever overwritten or lost. lib/backup.js owns the rules.
+  const importBackup = async (file) => {
+    if (!file) return;
+    const text = await file.text().catch(() => null);
+    const parsed = parseBackup(text);
+    if (!parsed.ok) { setImportNote(parsed.error); return; }
+    const cur = { songs: userSongbook.all(), ...benchBook.raw() };
+    const { songs, setlists, log, report } = mergeBackup(cur, parsed.data);
+    userSongbook.replaceAll(songs);
+    benchBook.replace({ setlists, log });
+    let prefsApplied = 0;
+    for (const [k, v] of Object.entries(parsed.data.prefs || {})) {
+      try { localStorage.setItem(k, v); prefsApplied++; } catch { /* noop */ }
+    }
+    setUserRows(userSongbook.rows());
+    setImportNote(reportLine(report, prefsApplied) + (prefsApplied ? " (settings land on next launch)" : ""));
   };
   // Your songs join the same catalog, grouped and styled like everyone else.
   const rows = useMemo(() => (fetched === null ? null : [...userRows, ...fetched]), [fetched, userRows]);
@@ -225,12 +257,18 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
         </div>
       </div>
       {!exporting && (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={exportBackup}
-            style={{ background: "transparent", border: 0, cursor: "pointer", color: C.faint, fontSize: 11.5, padding: "2px 4px" }}
-            title="your added songs + setlists as one JSON file">
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          {importNote && <span style={{ fontSize: 11.5, color: C.toneText, fontFamily: MONO }}>{importNote}</span>}
+          <button onClick={exportBackup} style={quietLink}
+            title="songs + setlists + practice log + settings — one JSON file for the other machine">
             backup your songbook (.json)
           </button>
+          <label style={{ ...quietLink, cursor: "pointer" }}
+            title="merge a backup from another machine — nothing here gets overwritten">
+            import a backup
+            <input type="file" accept=".json,application/json" style={{ display: "none" }}
+              onChange={(e) => { importBackup(e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
         </div>
       )}
 
@@ -436,6 +474,8 @@ function SongRow({ s, onOpen, onTuning, onRemove, selecting, selected, onToggle 
     </button>
   );
 }
+
+const quietLink = { background: "transparent", border: 0, color: "var(--kl-faint)", fontSize: 11.5, padding: "2px 4px", cursor: "pointer" };
 
 function Tag({ children, color }) {
   return (
