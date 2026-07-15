@@ -163,12 +163,14 @@ export function createEngine({ onState } = {}) {
   // [{ t, dur, midis, v, ... }] plus totalBeats for looping. A 40ms tick
   // schedules everything inside a 180ms horizon into Tone's clock, so timing
   // is sample-accurate while start/stop stay instant.
-  const playEvents = ({ events, totalBeats }, { bpm = 90, loop = false, onStep, onDone } = {}) => {
+  const playEvents = ({ events, totalBeats }, { bpm = 90, loop = false, onStep, onDone, startAt } = {}) => {
     if (!events || !events.length || disposed) return { stop() {} };
     const spb = 60 / bpm;
     const AHEAD = 0.18;
     let idx = 0, stopped = false;
-    let base = Tone.now() + 0.1;
+    // startAt lets a caller chain windows seamlessly (The Session schedules
+    // two bars at a time and butts each window against the last, drift-free).
+    let base = startAt && startAt > Tone.now() ? startAt : Tone.now() + 0.1;
     const timers = new Set();
     const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); fn(); }, Math.max(0, ms)); timers.add(id); };
 
