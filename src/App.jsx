@@ -41,6 +41,8 @@ import BenchBook from "./components/BenchBook.jsx";
 import ChordBook from "./components/ChordBook.jsx";
 import Shed from "./components/Shed.jsx";
 import Arranger from "./components/Arranger.jsx";
+import Metronome from "./components/Metronome.jsx";
+import { metronome } from "./audio/metronome.js";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, userSongbook } from "./storage.js";
 import { slugSongKey } from "./lib/bench.js";
@@ -768,6 +770,8 @@ export default function App() {
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16, flex: "0 0 auto", minWidth: 0 }}>
           {/* the pill only speaks when something's worth saying — silence means the grand is ready */}
           {engineState.engine !== "piano" && <EnginePill engine={engineState.engine} loading={engineState.loading} />}
+          <MetronomeGlance onGo={() => { setPracticeTab("time"); setSection("practice"); }} />
+
           <span className="kl-hide-sm" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase",
             color: transpose || keyOverride ? C.rootText : C.faint,
             maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1062,6 +1066,7 @@ export default function App() {
               <div className="kl-seg" role="tablist" aria-label="Practice area" style={{ marginBottom: 6 }}>
                 <button role="tab" aria-selected={practiceTab === "drills"} onClick={() => setPracticeTab("drills")}>Drills</button>
                 <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
+                <button role="tab" aria-selected={practiceTab === "time"} onClick={() => setPracticeTab("time")}>Metronome</button>
                 <button role="tab" aria-selected={practiceTab === "bench"} onClick={() => setPracticeTab("bench")}>Bench Book</button>
               </div>
               {practiceTab === "drills" && (
@@ -1082,6 +1087,11 @@ export default function App() {
                   onScore={logPractice}
                   onPickSong={() => setSection("library")}
                 />
+              )}
+              {practiceTab === "time" && (
+                <div style={{ marginTop: 12 }}>
+                  <Metronome />
+                </div>
               )}
               {practiceTab === "bench" && <BenchBook onOpen={openSong} />}
             </div>
@@ -1145,6 +1155,24 @@ const selStyle = {
   background: C.panel, color: C.ink, border: `1px solid ${C.line}`,
   borderRadius: 7, padding: "4px 6px", fontSize: 13, fontFamily: MONO, cursor: "pointer",
 };
+
+// Lives in the top bar only while the click runs: the metronome kept ticking
+// when you left the room, and this is the string tied around your finger.
+function MetronomeGlance({ onGo }) {
+  const [st, setSt] = useState(() => metronome.getState());
+  useEffect(() => metronome.subscribe(setSt), []);
+  if (!st.running) return null;
+  return (
+    <button onClick={onGo} title="the click is running — go to it"
+      aria-label={`metronome running at ${st.bpm} beats per minute — go to it`}
+      style={{ display: "inline-flex", alignItems: "center", gap: 7, fontFamily: MONO, fontSize: 10.5,
+        letterSpacing: "0.08em", color: C.rootText, background: "transparent",
+        border: `1.5px solid ${C.rootText}66`, borderRadius: 999, padding: "6px 12px", cursor: "pointer", whiteSpace: "nowrap" }}>
+      <span className="kl-pulse" style={{ width: 7, height: 7, borderRadius: "50%", background: C.root }} />
+      {st.bpm}
+    </button>
+  );
+}
 
 // Lives in the top bar: a quiet mono readout of what instrument will speak.
 function EnginePill({ engine, loading }) {
