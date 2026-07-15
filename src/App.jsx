@@ -47,6 +47,7 @@ import Coverize from "./components/Coverize.jsx";
 import TutorPanel from "./components/TutorPanel.jsx";
 import TensionStrip from "./components/TensionStrip.jsx";
 import TheoryGuide from "./components/TheoryGuide.jsx";
+import VoiceRoom from "./components/VoiceRoom.jsx";
 import { metronome } from "./audio/metronome.js";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, userSongbook } from "./storage.js";
@@ -84,6 +85,7 @@ const NAV = [
   { id: "learn", label: "Learn" },
   { id: "write", label: "Write" },
   { id: "practice", label: "Practice" },
+  { id: "voice", label: "Voice" },
   { id: "chords", label: "Chordbook" },
   { id: "shed", label: "The Shed" },
 ];
@@ -1143,6 +1145,12 @@ export default function App() {
               )}
               {practiceTab === "bench" && <BenchBook onOpen={openSong} />}
             </div>
+          )}
+
+          {section === "voice" && (
+            <VoiceRoom loadedTitle={loaded?.title || (sheet.trim() ? "your chart" : null)}
+              onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }}
+              onTranspose={(d) => { arm(); setTranspose((t) => Math.max(-11, Math.min(11, t + d))); }} />
           )}
 
           {section === "chords" && (
