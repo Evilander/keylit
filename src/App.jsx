@@ -49,6 +49,7 @@ import TensionStrip from "./components/TensionStrip.jsx";
 import TheoryGuide from "./components/TheoryGuide.jsx";
 import VoiceRoom from "./components/VoiceRoom.jsx";
 import MirrorPanel from "./components/MirrorPanel.jsx";
+import RetabPanel from "./components/RetabPanel.jsx";
 import { metronome } from "./audio/metronome.js";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, userSongbook } from "./storage.js";
@@ -890,6 +891,18 @@ export default function App() {
               {songNumbersRailPanel}
               {aiPanel}
               {tabKeysPanel}
+              <RetabPanel sheet={sheet} loaded={loaded}
+                sourceTuning={loaded?.tuningRaw || loaded?.tuning} sourceCapo={capoShift}
+                targetTuningId={guitarTuning} targetCapo={effectiveCapo}
+                onKeep={(body, meta) => {
+                  const built = buildUserSong({
+                    artist: meta.artist || "", title: meta.title || "Untitled",
+                    album: "", key: "", capo: meta.capo ? String(meta.capo) : "",
+                    tuning: meta.tuning || "", body,
+                  }, Date.now());
+                  if (built.error) return;
+                  userSongbook.save(built.song, built.row);
+                }} />
               <SongGrips chords={readingView.unique} activeKey={readingKey}
                 shapeTuning={guitarLens.shapeTuning}
                 strumTuning={guitarLens.strumTuning} strumCapo={guitarLens.strumCapo}
