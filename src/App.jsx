@@ -44,6 +44,7 @@ import Arranger from "./components/Arranger.jsx";
 import Metronome from "./components/Metronome.jsx";
 import Perform from "./components/Perform.jsx";
 import Coverize from "./components/Coverize.jsx";
+import TutorPanel from "./components/TutorPanel.jsx";
 import { metronome } from "./audio/metronome.js";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, userSongbook } from "./storage.js";
@@ -143,6 +144,7 @@ export default function App() {
   // live C palette + flips the CSS layer; this state change repaints the tree.
   const [theme, setTheme] = useState(() => applyTheme(currentTheme()));
   const toggleTheme = () => setTheme((t) => applyTheme(t === "dark" ? "light" : "dark"));
+  const [tutorOpen, setTutorOpen] = useState(false);
   // "Cover it capo'd": null = read the chart as written; a number = re-render
   // the chart as the shapes you'd finger with a capo there (sound unchanged).
   const [playCapo, setPlayCapo] = useState(null);
@@ -774,6 +776,14 @@ export default function App() {
           {/* the pill only speaks when something's worth saying — silence means the grand is ready */}
           {engineState.engine !== "piano" && <EnginePill engine={engineState.engine} loading={engineState.loading} />}
           <MetronomeGlance onGo={() => { setPracticeTab("time"); setSection("practice"); }} />
+          <button onClick={() => setTutorOpen((v) => !v)} aria-pressed={tutorOpen} aria-label="open the tutor"
+            title="ask the tutor — it can see your stand"
+            style={{ display: "inline-flex", alignItems: "center", gap: 7, fontFamily: MONO, fontSize: 10.5,
+              letterSpacing: "0.1em", textTransform: "uppercase", color: tutorOpen ? "var(--kl-on-ink)" : C.muted,
+              background: tutorOpen ? C.ink : "transparent",
+              border: `1.5px solid ${tutorOpen ? C.ink : C.line}`, borderRadius: 999, padding: "7px 14px", cursor: "pointer", whiteSpace: "nowrap" }}>
+            Tutor
+          </button>
 
           <span className="kl-hide-sm" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase",
             color: transpose || keyOverride ? C.rootText : C.faint,
@@ -1137,6 +1147,16 @@ export default function App() {
         </div>
       </main>
 
+      <TutorPanel open={tutorOpen} onClose={() => setTutorOpen(false)}
+        stand={{
+          title: loaded?.title, artist: loaded?.artist,
+          keyName, soundingKeyName: capoShift ? soundingKeyName : undefined,
+          capo: capoShift || undefined,
+          tuning: guitarTuning, spelling: chartSpelling,
+          progression: view.prog.slice(0, 32).map((c) => chordSymbol(c)),
+          currentSymbol: current ? chordSymbol(current) : undefined,
+          room: NAV.find((n) => n.id === section)?.label,
+        }} />
       <ImportModal open={importOpen} onLoad={(s) => { setLoaded(null); loadSheet(s); }} onClose={() => setImportOpen(false)} />
       <style>{`.spin{animation:kl-spin 1s linear infinite}`}</style>
     </div>
