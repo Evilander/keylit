@@ -50,10 +50,14 @@ export function createUserSongbook(backend) {
     /** Light manifest rows (no bodies) for the Library listing. */
     rows() { return read().map(({ body, ...row }) => row); },
     get(id) { return read().find((s) => s.id === id) || null; },
+    /** Full records, bodies included — what a backup carries. */
+    all() { return read(); },
     /** Save { song, row } from buildUserSong — same id replaces (edit). */
     save(song, row) {
       write(read().filter((s) => s.id !== song.id).concat({ ...song, ...row }));
     },
+    /** Replace the whole book (import path — caller merged already). */
+    replaceAll(songs) { write(Array.isArray(songs) ? songs : []); },
     remove(id) { write(read().filter((s) => s.id !== id)); },
   };
 }
@@ -82,6 +86,15 @@ export function createBenchBook(backend) {
   };
 
   return {
+    /** The whole book at once — what a backup carries. */
+    raw() { return read(); },
+    /** Replace wholesale (import path — caller merged already). */
+    replace(state) {
+      write({
+        setlists: Array.isArray(state?.setlists) ? state.setlists : [],
+        log: Array.isArray(state?.log) ? state.log : [],
+      });
+    },
     setlists() { return read().setlists; },
     createSetlist(name, now) {
       const st = read();
