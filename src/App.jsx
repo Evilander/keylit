@@ -42,6 +42,7 @@ import ChordBook from "./components/ChordBook.jsx";
 import Shed from "./components/Shed.jsx";
 import Arranger from "./components/Arranger.jsx";
 import Metronome from "./components/Metronome.jsx";
+import Perform from "./components/Perform.jsx";
 import { metronome } from "./audio/metronome.js";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, userSongbook } from "./storage.js";
@@ -73,6 +74,7 @@ Well, how could you, baby?`;
 const NAV = [
   { id: "library", label: "Library" },
   { id: "song", label: "Song" },
+  { id: "perform", label: "Perform" },
   { id: "piano", label: "Piano" },
   { id: "theory", label: "Theory" },
   { id: "learn", label: "Learn" },
@@ -884,6 +886,18 @@ export default function App() {
               </section>
               {chartInput}
             </div>
+          )}
+
+          {section === "perform" && (
+            <Perform
+              sheet={sheet} loaded={loaded} keyName={keyNameFull}
+              activeKey={readingKey} transpose={readingShift}
+              prog={readingView.prog} currentIdx={currentIdx} onSelectIdx={selectIdx}
+              isPlaying={isPlaying} onTogglePlay={togglePlay} tempo={tempo} onTempo={setTempo}
+              roleFor={roleForKeyboard} flash={flash} onKeyPress={playSingleKey}
+              setlistCtx={setlistCtx} onOpenSetlistSong={openSong}
+              onPickSong={() => setSection("library")}
+            />
           )}
 
           {section === "piano" && (

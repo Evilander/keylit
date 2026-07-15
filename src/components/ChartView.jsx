@@ -8,25 +8,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { parseChord, transposeChord, harmonicFunction, sameChordSound } from "../lib/theory.js";
 import { spellChord } from "../lib/spelling.js";
 import { findTabBlocks, unwrapTab, tokenizeTabLine } from "../lib/tab.js";
+// Line classification is shared with the Perform stage (lib/chartlines.js) so
+// a line can never read as a lyric in one room and a chord line in another.
+import { isSectionHeader, chordLineInfo } from "../lib/chartlines.js";
 import { C, FUNCTION_COLOR, MONO } from "../ui/theme.js";
 import ChordHoverCard from "./ChordHoverCard.jsx";
-
-const isSectionHeader = (line) => {
-  const t = line.trim();
-  if (/^\[.+\]$/.test(t)) return true;                          // [Verse 1]
-  if (/^[A-Z][A-Za-z0-9 ()'/&-]{0,28}:$/.test(t)) return true;  // Chorus:
-  return false;
-};
-
-// A line is a chord line if at least half its tokens parse as chords (≥1).
-function chordLineInfo(line) {
-  const tokens = line.split(/(\s+)/);
-  const words = tokens.filter((t) => t.trim());
-  if (!words.length) return null;
-  let hits = 0;
-  for (const w of words) if (parseChord(w)) hits++;
-  return hits >= 1 && hits / words.length >= 0.5 ? { tokens } : null;
-}
 
 export default function ChartView({ text, activeKey, transpose = 0, onChordClick, activeChord, guitar }) {
   // The grip card. One card serves every token: enter arms it after a beat,
