@@ -4,6 +4,76 @@
 
 ---
 
+## v0.8 — "The Apprenticeship" *(shipped 2026-07-15 · 758 tests green)*
+
+The big pass: Tyler's full brief (readability, Perform, metronome, export/import, the
+Write desk rebuilt on Tweedy's actual book, a Theory room that explains itself, Coverize,
+the BYO-key tutor, the Kinsella corpus, tab retuning) plus five research-backed features
+chosen and Socratically vetted by Fable 5. The unifying line, defensible anywhere:
+**Keylit teaches from inside your taste, your voice, your hands** — never one curriculum
+for everyone.
+
+- **Fixes/readability**: Alex G row-wrap fixed (names win the width fight); muted/faint inks
+  raised to real contrast in both registers; mono floors off 10px; the top bar wraps before it
+  hides rooms; engine pill only speaks while loading; 47→64 verified quotes (every interview
+  line primary-sourced; both over-quoted Lennon lines evicted; *Actual Air* + Tweedy book lines in).
+- **Perform** (`components/Perform.jsx`, `PerformChart.jsx`, `lib/chartlines.js`): the stage —
+  Roll (rAF scroll, section jumps, compact click) and Walk (anchor-mapped playhead lights the
+  EXACT token for prog[i] — `progressionAnchors` mirrors parseSheet's repeat-collapse with a
+  validated sound-match fallback — plus the keyboard slab).
+- **Metronome** (`lib/click.js`, `audio/metronome.js`): meters incl. 6/8-in-two, 5/4 (3+2),
+  7/8 (2+2+3); median tap tempo; singleton that survives room changes; top-bar glance pill.
+- **The songbook travels** (`lib/backup.js`): v2 backup (songs/setlists/log/prefs), merge
+  import that never destroys (id then artist-title slug dedupe).
+- **The Write desk** (`components/WriteDesk.jsx` + `PocketRecorder` + `audio/memos.js`):
+  Tweedy's method as the room — One Song Timer, word-ladder dealer, autosaving pad, the six
+  exercises verbatim-where-quoted, sketches carry lyrics+chords, IndexedDB voice memos.
+- **Theory teaches** (`lib/tension.js`, `components/TensionStrip.jsx`, `TheoryGuide.jsx`):
+  five-step wheel walkthrough; tension curve after Lerdahl & Krumhansl 2007 (simplified,
+  labeled) with Huron surprise/release markers and DIAGNOSIS sentences.
+- **Coverize** (`lib/coverize.js`): any song re-spoken as Callahan / Elliott Smith / Berman /
+  Kozelek / slowcore / campfire — every move explained, iron rules test-enforced (all output
+  re-parses; roots never move outside campfire).
+- **The tutor** (`lib/tutor.js`, `components/TutorPanel.jsx`): BYO-key (Anthropic/OpenAI/
+  Google/xAI/Ollama-keyless), streaming, shape-first system prompt with capo arithmetic and
+  a live CONTEXT packet of the stand. Keys stay in the browser.
+- **Voice** (`lib/pitch.js`, `components/VoiceRoom.jsx`): YIN with boundary + subharmonic
+  guards; tessitura (20–80% band), never a min/max test; match-the-note drill; **Your Key** —
+  sing the loaded song, get the measured transpose verdict.
+- **The Session** (`lib/session.js`, `components/SessionRoom.jsx`): the unfound circle — the
+  band loops in seamless two-bar windows (engine `startAt`), MIDI-in feeds a lock meter,
+  density ladder with hysteresis: heartbeat ⊂ shells ⊂ groove ⊂ full band. Never stops,
+  never grades.
+- **The Dialect Mirror** (`lib/mirror.js`, Practice → The Mirror): fingerprint of the
+  player's own kept work + NEGATIVE SPACE (six ranked never-made moves offered one at a
+  time, playable in the home key). Speaks in sentences, refuses to guess under 20 chords.
+- **The ear** (`lib/eartrain.js`): four leveled drills generated from the loaded song.
+- **Retab** (`lib/retab.js`, `components/RetabPanel.jsx`): tabs follow the tuning dropdown —
+  beam-search re-fretting, octave-rescue/drop flags, the round-trip law (render→reparse→
+  identical pitches) test-enforced; whole-document swap keeps lyrics in place.
+- **Hum-to-Harmony** (`lib/harmonize.js`, Write desk): sing a line → ranked candidates that
+  explain which of your notes they hold (MySong lineage credited).
+- **Kinsella Bands** (`tools/kinsella_ingest.mjs`, corpus `COLLECTIONS`): 90 songs across 8
+  family bands (recovered stash wins dupes), one Library shelf with bands as section
+  headers; corpus-wide cross-source dedupe (1,013 rows superseded, index-only, reversible).
+- **Accuracy audit** (`lib/piano-audit.test.js`): 45 adversarial invariants over a 31-chord
+  vocabulary — all green on first strike.
+
+**Named next steps (deferred on purpose):**
+- Mirror influence map — placing the player among shelf writers needs REAL per-artist corpus
+  signatures (`tools/mirror_signatures.mjs` scanning corpus → `signatures.json`); no vibes.
+- Session mic-onset fallback (play along on acoustic guitar, onset density feeds the meter).
+- Retab technique carrying (hammer-ons across string reassignments) + a side-by-side diff view.
+- Tension curve × Coverize (style-signature curves as targets).
+- Going public: PWA first (installable, offline samples) → Tauri for desktop installers
+  (Win/macOS/Linux; one codebase, ~10MB, file associations for .txt charts) → the same PWA
+  serves mobile until native earns its keep. Gamification stays musician-shaped: practice
+  streaks, ear-trainer levels, Session passes — never points-for-clicking confetti.
+- Corpus stays deploy-excluded forever; the public build ships the public-domain songbook +
+  demo material only.
+
+---
+
 ## v0.7.1 — the dock comes back inside *(shipped 2026-07-12 · 613 tests green)*
 
 Tyler's call after living with v0.7 for an evening: the persistent bottom dock was worse than the old way. The keyboard returned to **embedded decks inside the rooms that play it** — Piano (210px, under the readout), Learn (150px, under the headline), Chordbook (170px, lit by the selected grip via its own `roleFor` again — `dockOverride` removed). The engine readout moved to the top bar. Everything else from v0.7 stands. Standing rule: no persistent footer instrument.
