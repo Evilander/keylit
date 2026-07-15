@@ -51,6 +51,7 @@ import VoiceRoom from "./components/VoiceRoom.jsx";
 import MirrorPanel from "./components/MirrorPanel.jsx";
 import RetabPanel from "./components/RetabPanel.jsx";
 import EarTrainer from "./components/EarTrainer.jsx";
+import SessionRoom from "./components/SessionRoom.jsx";
 import { metronome } from "./audio/metronome.js";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, userSongbook } from "./storage.js";
@@ -1132,6 +1133,7 @@ export default function App() {
               <div className="kl-seg" role="tablist" aria-label="Practice area" style={{ marginBottom: 6 }}>
                 <button role="tab" aria-selected={practiceTab === "drills"} onClick={() => setPracticeTab("drills")}>Drills</button>
                 <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
+                <button role="tab" aria-selected={practiceTab === "session"} onClick={() => setPracticeTab("session")}>The Session</button>
                 <button role="tab" aria-selected={practiceTab === "time"} onClick={() => setPracticeTab("time")}>Metronome</button>
                 <button role="tab" aria-selected={practiceTab === "bench"} onClick={() => setPracticeTab("bench")}>Bench Book</button>
                 <button role="tab" aria-selected={practiceTab === "mirror"} onClick={() => setPracticeTab("mirror")}>The Mirror</button>
@@ -1154,6 +1156,10 @@ export default function App() {
                   onScore={logPractice}
                   onPickSong={() => setSection("library")}
                 />
+              )}
+              {practiceTab === "session" && (
+                <SessionRoom prog={soundingView.prog} labelFor={labelForSounding}
+                  audio={audio} onClaimStage={stopArrangement} />
               )}
               {practiceTab === "time" && (
                 <div style={{ marginTop: 12 }}>
