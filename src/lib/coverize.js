@@ -267,25 +267,35 @@ export function coverize(progression, key, styleId) {
   };
 }
 
-/** A saveable chord sheet for the cover — sections preserved, advice up top. */
-export function coverSheet(result, { title = "Untitled", artist = "", styleName = "" } = {}) {
+/** A saveable chord sheet for the cover — sections preserved, advice up top.
+ * Adjacent same-symbol chords within a section are written ONCE: parseSheet
+ * collapses them on every reload anyway, so writing both would silently
+ * diverge from what the kept song actually plays back. Pass hadTab when the
+ * source chart carried tablature — the omission must be said out loud. */
+export function coverSheet(result, { title = "Untitled", artist = "", styleName = "", hadTab = false } = {}) {
   const head = [
     `${title}${artist ? ` — ${artist}` : ""} (${styleName} version)`,
     `Key: ${result.targetKeyName}${result.capo ? ` · Capo ${result.capo}` : ""}`,
     `Tempo: ${result.tempo.bpm[0]}–${result.tempo.bpm[1]} bpm · ${result.tempo.feel}`,
     result.tuningHint ? `Tuning: ${result.tuningHint}` : "",
+    hadTab ? "(chord chart only — the original's tab doesn't carry into a new feel)" : "",
   ].filter(Boolean);
   const lines = [];
   let section = null;
   let row = [];
+  let prevSym = null;
   const flush = () => { if (row.length) { lines.push(row.join("  ")); row = []; } };
   for (const ch of result.chords) {
     if (ch.section !== section) {
       flush();
       section = ch.section;
+      prevSym = null;
       if (section) lines.push("", `[${section}]`);
     }
-    row.push(chordSymbol(ch));
+    const sym = chordSymbol(ch);
+    if (sym === prevSym) continue; // the reload would collapse it — write the truth
+    prevSym = sym;
+    row.push(sym);
     if (row.length >= 8) flush();
   }
   flush();

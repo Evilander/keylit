@@ -42,6 +42,31 @@ describe("buildBackup / parseBackup", () => {
     expect(parsed.data.setlists).toHaveLength(0);
     expect(parsed.data.log).toHaveLength(1);
   });
+
+  it("sanitizes hostile field types instead of persisting them", () => {
+    const parsed = parseBackup({
+      keylit: 2,
+      songs: [{ id: "x", body: "C G", title: { evil: true }, artist: 42, capo: "not-a-number", format: "weird", extraJunk: () => {} }],
+      setlists: [{ id: "sl", songs: [null, 7, "nope", { songKey: "k", title: 9 }, { noKey: true }] }],
+      log: [{ songKey: "k", at: "NaN-ish" }],
+    });
+    const s = parsed.data.songs[0];
+    expect(s.title).toBe("Untitled");       // object title never reaches storage
+    expect(s.artist).toBe("Unknown");
+    expect(s.capo).toBeNull();
+    expect(s.format).toBe("chords");
+    expect("extraJunk" in s).toBe(false);   // whitelist: unknown keys shed
+    const sl = parsed.data.setlists[0];
+    expect(sl.songs).toHaveLength(1);       // null/primitive/keyless entries gone
+    expect(sl.songs[0].title).toBe("Untitled");
+    expect(parsed.data.log).toHaveLength(0); // unparseable timestamp = no entry
+  });
+
+  it("caps a ballooned file instead of loading it whole", () => {
+    const many = Array.from({ length: 6000 }, (_, i) => song(`id-${i}`, "A", `T${i}`));
+    const parsed = parseBackup({ keylit: 2, songs: many });
+    expect(parsed.data.songs.length).toBeLessThanOrEqual(5000);
+  });
 });
 
 describe("mergeBackup — never destroys, never duplicates", () => {

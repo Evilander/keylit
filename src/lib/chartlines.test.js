@@ -125,6 +125,18 @@ describe("progressionAnchors — the playhead's map", () => {
     });
   });
 
+  it("colon-style headers (Chorus:) break the collapse identically in both walks", () => {
+    // theory.isSectionLine and chartlines.isSectionHeader are now ONE rule;
+    // two rules made the anchor count drift on colon-headed charts and Walk
+    // mode silently fell back to sound-matching.
+    const text = "Verse:\nE A\nChorus:\nA B\n";
+    const { progression } = parseSheet(text);
+    const anchors = progressionAnchors(chartOutline(text));
+    expect(progression.map((c) => c.raw)).toEqual(["E", "A", "A", "B"]); // A|A survives the boundary
+    expect(progression[2].section).toBe("Chorus");
+    expect(anchors).toHaveLength(progression.length);
+  });
+
   it("ChordPro charts diverge and the caller can tell", () => {
     // normalizeChart extracts [C]/[G] to their own line; the rendered outline
     // sees a lyric line — anchor count ≠ progression count → fallback signal

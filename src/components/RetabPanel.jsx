@@ -7,13 +7,17 @@
 // (octave-rescued and dropped pitches are counted, never hidden), and it lets
 // you flip back to the original transcription — the re-fret is never
 // destructive. Renders nothing when your guitar already matches the source.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Guitar, Copy, Save, Check } from "lucide-react";
 import { C } from "../ui/theme.js";
 
 export default function RetabPanel({ retab, asWritten, onToggle, onKeep, loaded }) {
   const [copied, setCopied] = useState(false);
   const [kept, setKept] = useState(false);
+  // The panel never unmounts across song loads inside the Song room (setlist
+  // arrows, pasting a chart) — reset per re-fret or Song B inherits Song A's
+  // "in your songbook" disabled Keep button.
+  useEffect(() => { setKept(false); setCopied(false); }, [retab]);
   if (!retab) return null; // guitar matches the tab's tuning — nothing to re-fret
 
   const { text, summary, src, dst, srcCapo, dstCapo } = retab;
@@ -29,7 +33,8 @@ export default function RetabPanel({ retab, asWritten, onToggle, onKeep, loaded 
       title: `${loaded?.title || "Untitled"} (${dst.name})`,
       artist: loaded?.artist || "",
       tuning: dst.spelling,
-      capo: dstCapo || "",
+      // explicit, even at zero — "" would invite detectCapo to re-read stale prose
+      capo: String(dstCapo || 0),
     });
     setKept(true);
   };
@@ -66,20 +71,27 @@ export default function RetabPanel({ retab, asWritten, onToggle, onKeep, loaded 
       </div>
 
       <div className="flex items-center" style={{ gap: 12, flexWrap: "wrap", marginTop: 8 }}>
-        <span className="kl-meta">
+        {/* ink text + colored dot: the hue is semantic decoration, the words
+            stay AA-legible on panel2 in both themes */}
+        <span className="kl-meta" style={{ color: C.ink }}>
           {summary.blocks} block{summary.blocks === 1 ? "" : "s"}
         </span>
         {summary.shifted > 0 && (
-          <span className="kl-meta" style={{ color: C.bassText }}>
+          <span className="kl-meta" style={{ color: C.ink }}>
+            <span aria-hidden="true" style={{ color: C.bassText }}>● </span>
             {summary.shifted} note{summary.shifted === 1 ? "" : "s"} octave-rescued
           </span>
         )}
         {summary.dropped > 0 ? (
-          <span className="kl-meta" style={{ color: C.rootText }}>
+          <span className="kl-meta" style={{ color: C.ink }}>
+            <span aria-hidden="true" style={{ color: C.rootText }}>● </span>
             {summary.dropped} unplayable in {dst.name} — dropped, not faked
           </span>
         ) : (
-          <span className="kl-meta" style={{ color: C.toneText }}>every pitch survived</span>
+          <span className="kl-meta" style={{ color: C.ink }}>
+            <span aria-hidden="true" style={{ color: C.toneText }}>● </span>
+            every pitch survived
+          </span>
         )}
         <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8 }}>
           <button className="bench-btn" style={{ padding: "5px 11px", fontSize: 12 }} onClick={copy}>

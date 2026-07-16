@@ -11,6 +11,7 @@
 // — never silently wrong (a wrong note is worse than a missing feature).
 import { getTuning, tuningSpelling } from "./tuning.js";
 import { parseTab, parseTabBlock, findTabBlocks, unwrapTab } from "./tab.js";
+import { detectCapo } from "./theory.js";
 
 const SPAN = 4;      // frets a normal hand covers (excluding opens)
 const BEAM = 8;
@@ -234,6 +235,32 @@ export function retabText(text, { from = {}, to } = {}) {
 }
 
 /**
+ * Rewrite prose capo declarations to tell the truth about the TARGET capo.
+ * Re-fretted frets are written FOR the new capo; a stale "Capo 2" header is
+ * a lie the whole app then believes (detectCapo reads it back on save and
+ * reload). Mirrors detectCapo's window (first 40 lines) and patterns, so a
+ * lyric mentioning a capo deeper in the song is never touched.
+ */
+export function restampCapo(text, capo) {
+  const lines = String(text || "").split("\n");
+  const n = Math.min(lines.length, 40);
+  for (let i = 0; i < n; i++) {
+    const line = lines[i];
+    if (!/\bcapo\b/i.test(line)) continue;
+    if (/\bno\s+capo\b/i.test(line)) {
+      if (capo > 0) lines[i] = line.replace(/\bno\s+capo\b/i, `Capo ${capo}`);
+      continue;
+    }
+    const decl = /(\bcapo\b[^0-9\n]{0,12})\d{1,2}(?:st|nd|rd|th)?/i;
+    if (!decl.test(line)) continue;
+    lines[i] = capo > 0
+      ? line.replace(decl, (_, pre) => `${pre}${capo}`)
+      : line.replace(decl, "No capo");
+  }
+  return lines.join("\n");
+}
+
+/**
  * Re-fret a whole DOCUMENT in place: every tab block is replaced with its
  * target-tuning rendering while lyrics, chords, and section headers around
  * them stay exactly where they were. Returns { text, summary } or null.
@@ -268,5 +295,5 @@ export function swapTabBlocks(text, { from = {}, to } = {}) {
     out.splice(b.startLine, b.lines.length, ...rendered);
   }
   if (!summary.blocks) return null; // only pitch-less blocks: an honest "nothing to re-fret"
-  return { text: out.join("\n"), summary };
+  return { text: restampCapo(out.join("\n"), to.capo || 0), summary };
 }

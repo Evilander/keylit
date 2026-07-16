@@ -62,13 +62,24 @@ export default function WriteDesk({
   midiSupported, midiOutputs = [], midiOutId = "", onPickMidiOut, onRefreshMidi,
 }) {
   /* ---- the one song timer ---- */
+  // endsAt is wall-clock and PERSISTED: leaving the Write room mid-song must
+  // not kill a running timer — you come back and it's still counting.
+  const TIMER_KEY = "keylit.write.timer.v1";
+  const loadEndsAt = () => {
+    try { const v = Number(localStorage.getItem(TIMER_KEY) || 0); return v > Date.now() ? v : null; }
+    catch { return null; }
+  };
   const [mins, setMins] = useState(10);
-  const [endsAt, setEndsAt] = useState(null);
-  const [left, setLeft] = useState(0);
+  const [endsAt, setEndsAtState] = useState(loadEndsAt);
+  const setEndsAt = (v) => {
+    setEndsAtState(v);
+    try { v ? localStorage.setItem(TIMER_KEY, String(v)) : localStorage.removeItem(TIMER_KEY); } catch { /* noop */ }
+  };
+  const [left, setLeft] = useState(() => (endsAt ? Math.max(0, Math.round((endsAt - Date.now()) / 1000)) : 0));
   const [rang, setRang] = useState(false);
   useEffect(() => {
     if (!endsAt) return;
-    const id = setInterval(() => {
+    const tick = () => {
       const s = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
       setLeft(s);
       if (s === 0) {
@@ -78,8 +89,11 @@ export default function WriteDesk({
         // three rising piano pings — the bell on the desk
         [76, 83, 88].forEach((m, i) => setTimeout(() => onPlay?.([m], 0.5), i * 260));
       }
-    }, 250);
+    };
+    const id = setInterval(tick, 250);
+    tick(); // resume immediately on re-entry, not a 250ms beat later
     return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endsAt, onPlay]);
 
   /* ---- words: the pad + the ladder dealer ---- */
@@ -128,16 +142,37 @@ export default function WriteDesk({
   const [songs, setSongs] = useState(() => library.list());
   const saveSketch = () => {
     const stamp = nowStamp ? nowStamp() : songs.length + 1;
-    const song = library.save({ name: name.trim() || "Untitled", sheet, lyrics: pad, savedAt: stamp });
+    // Explicit same name = update (the library's contract). But a BLANK name
+    // must never silently replace an earlier blank-name sketch — two
+    // different "Untitled"s destroying each other is data loss.
+    let sketchName = name.trim();
+    if (!sketchName) {
+      const taken = new Set(songs.map((s) => s.name));
+      sketchName = "Untitled";
+      for (let n = 2; taken.has(sketchName); n++) sketchName = `Untitled (${n})`;
+    }
+    const song = library.save({ name: sketchName, sheet, lyrics: pad, savedAt: stamp });
+    setName(song.name); // so an immediate re-save updates instead of forking
     setSongs(library.list());
     setNote(`kept "${song.name}" — chords and words together`);
   };
   const loadSketch = (id) => {
     const s = library.get(id);
     if (!s) return;
+    // Words never silently vanish: a pad that isn't saved in any sketch gets
+    // stashed as its own sketch before the swap.
+    const padNow = pad.trim();
+    const padIsSaved = !padNow || songs.some((x) => (x.lyrics || "").trim() === padNow);
+    if (!padIsSaved) {
+      const at = nowStamp ? nowStamp() : 0;
+      library.save({ name: `Stashed words — ${new Date(at).toLocaleString()}`, sheet: "", lyrics: pad, savedAt: at });
+    }
     onLoadSheet(s.sheet);
-    if (s.lyrics) savePad(s.lyrics);
-    setNote(`opened "${s.name}"`);
+    // ALWAYS both halves — a lyric-less sketch must not inherit stale words
+    savePad(s.lyrics || "");
+    setName(s.name);
+    setSongs(library.list());
+    setNote(padIsSaved ? `opened "${s.name}"` : `opened "${s.name}" — your unsaved words were stashed as their own sketch`);
   };
   const delSketch = (id) => { library.remove(id); setSongs(library.list()); };
 
@@ -196,7 +231,13 @@ export default function WriteDesk({
                 <button key={m} role="radio" aria-checked={mins === m} onClick={() => setMins(m)}>{m}m</button>
               ))}
             </div>
-            <button className="bench-btn primary" onClick={() => { setRang(false); setEndsAt(Date.now() + mins * 60000); setLeft(mins * 60); }}>
+            <button className="bench-btn primary" onClick={() => {
+              // arm audio inside THIS gesture (empty play = init only) — else
+              // the session's first sound would be the bell itself, which
+              // autoplay policy silently swallows
+              onPlay?.([], 0);
+              setRang(false); setEndsAt(Date.now() + mins * 60000); setLeft(mins * 60);
+            }}>
               Write one song
             </button>
           </>

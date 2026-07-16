@@ -42,12 +42,19 @@ export default function SessionRoom({ prog, labelFor, audio, onClaimStage }) {
     runRef.current = null;
     setRunning(false);
   };
-  useEffect(() => () => { stop(); midiRef.current.unsub?.(); }, []);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; stop(); midiRef.current.unsub?.(); };
+  }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 
   const connectMidi = async () => {
     try {
       const access = await requestMidi();
+      // the MIDI permission can resolve after the room is gone — subscribing
+      // then would leak a watcher no cleanup will ever release
+      if (!mountedRef.current) return;
       const inputs = listInputs(access);
       if (!inputs.length) { setMidiIn(null); return; }
       midiRef.current.unsub?.();

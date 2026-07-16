@@ -180,7 +180,13 @@ export function parseChord(rawToken) {
   };
 }
 
-const isSectionLine = (l) => /^\s*\[.*\]\s*$/.test(l);
+/** [Verse 1] · Chorus: — both section-header shapes real charts arrive in.
+ * ONE rule, exported: chartlines.js (the render/anchor path) must classify
+ * exactly like parseSheet or Walk-mode anchors drift off the progression. */
+export function isSectionLine(l) {
+  const t = String(l || "").trim();
+  return /^\[.+\]$/.test(t) || /^[A-Z][A-Za-z0-9 ()'/&-]{0,28}:$/.test(t);
+}
 
 // Normalise the chart formats people actually paste into the plain
 // "chords over lyrics" layout Keylit reads:
@@ -225,7 +231,7 @@ export function parseSheet(text) {
   let section = "";
   for (const line of lines) {
     if (isSectionLine(line)) {
-      section = line.trim().replace(/^\[|\]$/g, "");
+      section = line.trim().replace(/^\[|\]$/g, "").replace(/:$/, "");
       continue;
     }
     const tokens = line.trim().split(/\s+/).filter(Boolean);

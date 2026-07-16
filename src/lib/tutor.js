@@ -175,6 +175,29 @@ export const PROVIDERS = {
   },
 };
 
+/**
+ * Recognize a mid-stream error frame. Providers ship stream errors as
+ * ordinary JSON lines that every parseLine silently discards — the chat then
+ * "succeeds" with a truncated or empty reply and nobody is told. Returns the
+ * provider's message, or null when the line is ordinary content/keepalive.
+ */
+export function parseErrorLine(line) {
+  const raw = line.startsWith("data:") ? line.slice(5).trim() : line.trim();
+  if (!raw || raw === "[DONE]") return null;
+  try {
+    const j = JSON.parse(raw);
+    if (j.type === "error") return j.error?.message || "the provider sent an error"; // Anthropic
+    if (j.error) return typeof j.error === "string" ? j.error : j.error.message || "the provider sent an error"; // OpenAI/xAI/Google/Ollama
+    // Google can end a candidate with a block reason and no text at all
+    const cand = j.candidates?.[0];
+    const fr = cand?.finishReason;
+    if (fr && fr !== "STOP" && fr !== "MAX_TOKENS" && !cand?.content?.parts?.length) {
+      return `the reply was blocked (${fr})`;
+    }
+  } catch { /* not JSON — an SSE comment/keepalive */ }
+  return null;
+}
+
 function friendlyError(provider, status, detail = "") {
   const p = PROVIDERS[provider]?.name || provider;
   if (status === 401 || status === 403) return `${p} rejected that key. Double-check it in settings.`;
@@ -219,12 +242,17 @@ export async function sendChat({ provider, apiKey, model, baseUrl, system, messa
     const lines = buffer.split("\n");
     buffer = lines.pop() || "";
     for (const line of lines) {
+      const streamErr = parseErrorLine(line);
+      if (streamErr) throw new Error(`${p.name}: ${streamErr}`);
       const token = p.parseLine(line);
       if (token) { full += token; onToken?.(token); }
     }
   }
+  const tailErr = parseErrorLine(buffer);
+  if (tailErr) throw new Error(`${p.name}: ${tailErr}`);
   const tail = p.parseLine(buffer);
   if (tail) { full += tail; onToken?.(tail); }
+  if (!full.trim()) throw new Error(`${p.name} returned an empty reply — try again, or check the model name in settings.`);
   return full;
 }
 

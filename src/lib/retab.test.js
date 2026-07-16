@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { parseTab, parseTabBlock, findTabBlocks } from "./tab.js";
 import { getTuning } from "./tuning.js";
+import { detectCapo } from "./theory.js";
 import { assignColumns, renderAscii, retabText, swapTabBlocks } from "./retab.js";
 
 // a simple standard-tuning riff + an open C chord column
@@ -260,6 +261,28 @@ describe("swapTabBlocks — the document keeps its words", () => {
     const midis = midisOf(after.blocks[0].events).flat();
     expect(midis).toContain(50); // D2 → D3 rescue
     expect(r.summary.shifted).toBeGreaterThanOrEqual(1);
+  });
+
+  it("re-stamps stale prose capo declarations to the TARGET capo", () => {
+    // The re-fretted frets are written for the target capo; leaving the
+    // original "Capo 2" prose in the body is a lie the whole app then
+    // believes (detectCapo reads it back on save and reload).
+    const doc = `Capo 2\n[Intro]\n${RIFF}`;
+    const toZero = swapTabBlocks(doc, { from: { capo: 2 }, to: { tuning: "standard", capo: 0 } });
+    expect(detectCapo(toZero.text)).toBe(0);
+    const toThree = swapTabBlocks(doc, { from: { capo: 2 }, to: { tuning: "standard", capo: 3 } });
+    expect(detectCapo(toThree.text)).toBe(3);
+    // and the reverse: "No capo" prose must not survive a capo'd re-fret
+    const noCapo = `No capo\n[Intro]\n${RIFF}`;
+    const capoed = swapTabBlocks(noCapo, { from: {}, to: { tuning: "standard", capo: 4 } });
+    expect(detectCapo(capoed.text)).toBe(4);
+  });
+
+  it("a lyric mentioning a capo outside the header window stays untouched", () => {
+    const filler = Array.from({ length: 40 }, (_, i) => `line ${i}`).join("\n");
+    const doc = `${RIFF}\n${filler}\nshe put the capo on the 3rd fret and sang`;
+    const r = swapTabBlocks(doc, { from: {}, to: { tuning: "dStandard", capo: 0 } });
+    expect(r.text).toContain("she put the capo on the 3rd fret and sang");
   });
 
   it("replaces the tab in place, lyrics and chords untouched", () => {

@@ -140,7 +140,15 @@ export function createEngine({ onState } = {}) {
   };
 
   const init = async () => {
-    if (inited && !disposed) return;
+    if (inited && !disposed) {
+      // the first gesture's Tone.start() can fail under autoplay policy;
+      // `inited` used to latch that failure forever — honor the comment
+      // below and retry the unlock on every later gesture until it takes
+      if (Tone.getContext().state !== "running") {
+        try { await Tone.start(); } catch { /* still locked; next gesture */ }
+      }
+      return;
+    }
     inited = true; disposed = false;
     try { await Tone.start(); } catch { /* autoplay policy; retried next gesture */ }
     build();

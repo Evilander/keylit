@@ -37,6 +37,30 @@ describe("mkQuestion — drills built from the actual song", () => {
     expect(q).not.toBeNull();
     expect(q.play).toHaveLength(2);
   });
+
+  it("bright-or-dark never asks about a chord with no third", () => {
+    // sus/power chords have nothing bright or dark about the third — the old
+    // question forced them into "major" and claimed "the third sits high"
+    const susOnly = parseSheet("Csus4 Gsus4 C5 Dsus2").progression;
+    expect(mkQuestion(seeded([0.1, 0.6]), { progression: susOnly, key, level: 1 })).toBeNull();
+    // mixed progressions only draw from the chords that HAVE a third
+    const mixed = parseSheet("Csus4 Am Gsus4 F").progression;
+    for (const r of [0.01, 0.3, 0.6, 0.99]) {
+      const q = mkQuestion(seeded([r, 0.5]), { progression: mixed, key, level: 1 });
+      expect(q).not.toBeNull();
+      expect(["Am", "F"]).toContain(q.play[0].raw);
+    }
+  });
+
+  it("a ii → I landing is its OWN side door, never mislabeled 4 → 1", () => {
+    // Dm → C in C major: subdominant function landing home from degree 2
+    const p = parseSheet("C Dm C").progression;
+    const q = mkQuestion(seeded([0.1, 0.5]), { progression: p, key: { tonic: 0, mode: "major" }, level: 4 });
+    expect(q).not.toBeNull();
+    const correct = q.options.find((o) => o.correct);
+    expect(correct.label).toContain("2 → 1");
+    expect(correct.label).not.toContain("4 → 1");
+  });
 });
 
 describe("levels", () => {

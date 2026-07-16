@@ -26,7 +26,31 @@ export default function TutorPanel({ open, onClose, stand }) {
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
   const scrollRef = useRef(null);
+  const rootRef = useRef(null);
+  const returnFocusRef = useRef(null);
   const reduced = useMemo(() => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches, []);
+
+  // The panel stays MOUNTED when closed (render returns null), so the
+  // unmount cleanup below never fires on the X button — abort the stream on
+  // close too, and do the dialog focus dance: focus in on open, hand focus
+  // back to the opener on close.
+  useEffect(() => {
+    if (open) {
+      returnFocusRef.current = document.activeElement;
+      const t = setTimeout(() => rootRef.current?.focus?.(), 0);
+      return () => clearTimeout(t);
+    }
+    abortRef.current?.abort();
+    const el = returnFocusRef.current;
+    if (el && typeof el.focus === "function" && document.contains(el)) el.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose?.(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   const provider = PROVIDERS[settings.provider];
   const ready = provider && (provider.keyless || !!settings.keys[settings.provider]);
@@ -86,7 +110,7 @@ export default function TutorPanel({ open, onClose, stand }) {
   if (!open) return null;
 
   return createPortal(
-    <div role="dialog" aria-label="the tutor" style={{
+    <div role="dialog" aria-label="the tutor" ref={rootRef} tabIndex={-1} style={{
       position: "fixed", top: 0, right: 0, bottom: 0, width: "min(430px, 94vw)", zIndex: 60,
       background: C.panel, borderLeft: `1px solid ${C.lineStrong}`,
       boxShadow: "-12px 0 40px rgba(20,16,10,0.18)",

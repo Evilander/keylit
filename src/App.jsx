@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback, useDeferredValue } from "react";
 import {
   Play, Pause, ChevronLeft, ChevronRight, Volume2, VolumeX,
   RotateCcw, Upload, Minus, Plus, Loader2, Undo2, Lightbulb,
@@ -51,6 +51,7 @@ import VoiceRoom from "./components/VoiceRoom.jsx";
 import MirrorPanel from "./components/MirrorPanel.jsx";
 import RetabPanel from "./components/RetabPanel.jsx";
 import { swapTabBlocks } from "./lib/retab.js";
+import { hasTab } from "./lib/tab.js";
 import EarTrainer from "./components/EarTrainer.jsx";
 import SessionRoom from "./components/SessionRoom.jsx";
 import { metronome } from "./audio/metronome.js";
@@ -314,16 +315,23 @@ export default function App() {
   // to the original transcription, and the badge names every compromise.
   const [tabAsWritten, setTabAsWritten] = useState(false);
   useEffect(() => { setTabAsWritten(false); }, [sheet]);
+  // Deferred: the beam search must not run synchronously per keystroke while
+  // someone edits a pasted tab — React catches the memo up when typing rests.
+  const retabSheet = useDeferredValue(sheet);
   const retab = useMemo(() => {
     const src = canonicalTuning(loaded?.tuningRaw || loaded?.tuning || "standard");
     const dst = canonicalTuning(guitarTuning);
     const srcCapo = capoShift || 0;
     const dstCapo = effectiveCapo || 0;
     if (src.id === dst.id && srcCapo === dstCapo) return null; // your guitar already matches
-    const r = swapTabBlocks(sheet, { from: { tuning: src.id, capo: srcCapo }, to: { tuning: dst.id, capo: dstCapo } });
+    const r = swapTabBlocks(retabSheet, { from: { tuning: src.id, capo: srcCapo }, to: { tuning: dst.id, capo: dstCapo } });
     return r ? { ...r, src, dst, srcCapo, dstCapo } : null; // null when the sheet has no tab
-  }, [sheet, loaded, guitarTuning, capoShift, effectiveCapo]);
-  const displaySheet = retab && !tabAsWritten ? retab.text : sheet;
+  }, [retabSheet, loaded, guitarTuning, capoShift, effectiveCapo]);
+  // While the deferred value lags a fresh edit, show the live sheet — never a
+  // re-fret of TEXT the user has already changed.
+  const displaySheet = retab && !tabAsWritten && retabSheet === sheet ? retab.text : sheet;
+  const retabTag = retab && !tabAsWritten && retabSheet === sheet
+    ? `re-fretted for ${retab.dst.name}${retab.dstCapo ? ` capo ${retab.dstCapo}` : ""}` : null;
 
   const current = view.prog[currentIdx] || null;
   const shapeCurrent = readingView.prog[currentIdx] || null;
@@ -935,6 +943,7 @@ export default function App() {
                   guitar={guitarLens} />
               </section>
               <Coverize prog={view.prog} activeKey={activeKey} loaded={loaded}
+                sourceHasTab={hasTab(sheet)}
                 onAudition={auditionChords}
                 onApply={loadProgression}
                 onKeep={(body, meta) => {
@@ -954,7 +963,7 @@ export default function App() {
 
           {section === "perform" && (
             <Perform
-              sheet={sheet} loaded={loaded} keyName={keyNameFull}
+              sheet={displaySheet} retabTag={retabTag} loaded={loaded} keyName={keyNameFull}
               activeKey={readingKey} transpose={readingShift}
               prog={readingView.prog} currentIdx={currentIdx} onSelectIdx={selectIdx}
               isPlaying={isPlaying} onTogglePlay={togglePlay} tempo={tempo} onTempo={setTempo}
