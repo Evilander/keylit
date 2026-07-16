@@ -76,6 +76,14 @@ describe("parseTuning", () => {
     expect(parseTuning("B F# B F# B D#")[0]).toBe(35); // open B low string = B1
     expect(parseTuning("A E A E A C#")[0]).toBe(33);   // drop-A-ish low string = A1
   });
+
+  it("unison pairs stay unison — never forced up an octave", () => {
+    // Kozelek's EBEEBE doubles strings 3+4 at the SAME E3; Sonic Youth built
+    // whole tunings on unison courses. Strict ascent pushed every string after
+    // the pair an octave sharp — wrong piano keys for the whole catalog.
+    expect(parseTuning("E B E E B E")).toEqual([40, 47, 52, 52, 59, 64]);
+    expect(parseTuning("G G D D D# D#")).toEqual([43, 43, 50, 50, 51, 51]);
+  });
 });
 
 describe("down-tuned standards are first-class tunings", () => {

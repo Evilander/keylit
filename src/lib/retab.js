@@ -10,7 +10,7 @@
 // the target tuning gets octave-rescued and FLAGGED, or dropped and FLAGGED
 // — never silently wrong (a wrong note is worse than a missing feature).
 import { getTuning, tuningSpelling } from "./tuning.js";
-import { parseTab } from "./tab.js";
+import { parseTab, parseTabBlock, findTabBlocks, unwrapTab } from "./tab.js";
 
 const SPAN = 4;      // frets a normal hand covers (excluding opens)
 const BEAM = 8;
@@ -50,8 +50,10 @@ function assignmentsFor(notes, opens, capo, maxFret) {
   return out;
 }
 
+// High positions cost more the higher they go — a flat +0.5 let melody runs
+// wander to fret 18–20 when the same pitch sat at 11 on a higher string.
 const placeCost = (a) => a.pos * 0.8 + a.span * 2.2 - a.opens * 1.2 +
-  a.notes.reduce((n, x) => n + (x.fret > 12 ? 0.5 : 0), 0);
+  a.notes.reduce((n, x) => n + (x.fret > 12 ? 0.5 + (x.fret - 12) * 0.35 : 0), 0);
 const moveCost = (prev, a) => {
   if (!prev) return 0;
   let c = Math.abs(a.pos - prev.pos) * 1.4;
@@ -90,9 +92,16 @@ export function assignColumns(columns, { tuningId, capo = 0, maxFret = 22 } = {}
         summary.dropped++;
       }
     }
-    // same pitch rescued onto an existing pitch → collapse duplicates
+    // Octave rescue MUTATED midis (D2→D3), so `ok` is no longer pitch-sorted.
+    // assignmentsFor places notes onto strictly ascending strings in list
+    // order — feed it out of order and a rescued note keeps its old low slot
+    // and gets stranded up the neck. Re-sort by the NEW pitch first, then
+    // collapse a rescue that landed on an existing pitch.
     const seen = new Set();
-    return { col: c.col, notes: ok.filter((n) => (seen.has(n.midi) ? false : seen.add(n.midi))), dropped };
+    const notes = ok
+      .sort((a, b) => a.midi - b.midi)
+      .filter((n) => (seen.has(n.midi) ? false : seen.add(n.midi)));
+    return { col: c.col, notes, dropped };
   });
 
   // beam search
@@ -103,12 +112,23 @@ export function assignColumns(columns, { tuningId, capo = 0, maxFret = 22 } = {}
     const options = assignmentsFor(col.notes, opens, capo, maxFret);
     if (!options.length) {
       // a chord whose members are individually playable but not TOGETHER —
-      // keep the most notes we can (greedy from the bass), flag the rest
+      // keep the most notes we can (greedy from the bass). Before giving up
+      // on a note, try its octave twin on the remaining strings — the same
+      // honest, FLAGGED compromise the range rescue makes (open-tuning
+      // voicings like an open F#3 often have no home in the target otherwise).
+      // Drop only as a last resort.
       const kept = [];
       let minString = 0;
       for (const n of col.notes) {
-        const spot = spotsFor(n.midi, opens, capo, maxFret).find((s) => s.string >= minString);
-        if (spot) { kept.push({ ...n, ...spot }); minString = spot.string + 1; }
+        let midi = n.midi, shifted = n.octaveShifted;
+        let spot = spotsFor(midi, opens, capo, maxFret).find((s) => s.string >= minString);
+        if (!spot) {
+          for (const alt of [n.midi + 12, n.midi - 12]) {
+            const s2 = spotsFor(alt, opens, capo, maxFret).find((s) => s.string >= minString);
+            if (s2) { spot = s2; midi = alt; shifted = alt > n.midi ? 1 : -1; summary.shifted++; break; }
+          }
+        }
+        if (spot) { kept.push({ ...n, midi, octaveShifted: shifted, string: spot.string, fret: spot.fret }); minString = spot.string + 1; }
         else { col.dropped.push(n.midi); summary.dropped++; }
       }
       col.notes = kept;
@@ -164,13 +184,21 @@ export function renderAscii({ columns, tuning, capo }, { perSystem = 20 } = {}) 
   const systems = [];
   for (let start = 0; start < columns.length; start += perSystem) {
     const chunk = columns.slice(start, start + perSystem);
+    // Floor of 2 keeps even a one-column block wide enough that its lines
+    // still READ as tab (isTabLine wants ≥3 dashes) — a 1-dash `E|-3-|`
+    // silently stopped being a tab block on re-parse. A single column whose
+    // cell is FULL (`E|-10-|`, `D|-6B-|`) still only carries two dashes, so
+    // one-column chunks pad one extra.
+    // ACTUAL cell length — tech can be two chars ("~~", marks both sides of
+    // the fret); undercounting let cells overflow cellW and misalign columns.
+    const maxCell = Math.max(1, ...chunk.map((cc) => cc.notes.reduce((w, n) => Math.max(w, String(n.fret).length + (n.tech || "").length), 1)));
+    const cellW = Math.max(2, maxCell + (chunk.length < 2 ? 1 : 0));
     const rows = [];
     for (let row = 0; row < nStrings; row++) {
       const stringLowIdx = nStrings - 1 - row; // top row = highest string
       let line = `${labels[stringLowIdx].padEnd(width)}|`;
       for (const c of chunk) {
         const hit = c.notes.find((n) => n.string === stringLowIdx);
-        const cellW = Math.max(...chunk.map((cc) => cc.notes.reduce((w, n) => Math.max(w, String(n.fret).length + (n.tech ? 1 : 0)), 1)), 1);
         const cell = hit ? `${hit.fret}${hit.tech || ""}` : "";
         line += `-${cell.padEnd(cellW, "-")}-`;
       }
@@ -187,16 +215,21 @@ export function renderAscii({ columns, tuning, capo }, { perSystem = 20 } = {}) 
  * target. Returns { text, summary } or null when the input has no tab.
  */
 export function retabText(text, { from = {}, to } = {}) {
-  const parsed = parseTab(text, { tuning: from.tuning, capo: from.capo });
+  // from.tuning is the SONG's declared tuning — a default, not an override:
+  // the tuning-resolution law says in-block string labels beat declared meta.
+  const parsed = parseTab(text, { defaultTuning: from.tuning, capo: from.capo });
   if (!parsed.blocks.length) return null;
   const pieces = [];
-  const summary = { shifted: 0, dropped: 0, blocks: parsed.blocks.length };
+  const summary = { shifted: 0, dropped: 0, blocks: 0 };
   for (const block of parsed.blocks) {
+    if (!block.events.length) continue; // pure-dash block: no pitches to move
     const assigned = assignColumns(block.events, { tuningId: to.tuning, capo: to.capo || 0 });
+    summary.blocks++;
     summary.shifted += assigned.summary.shifted;
     summary.dropped += assigned.summary.dropped;
     pieces.push(renderAscii(assigned));
   }
+  if (!summary.blocks) return null;
   return { text: pieces.join("\n"), summary };
 }
 
@@ -208,27 +241,32 @@ export function retabText(text, { from = {}, to } = {}) {
  * declare that tuning or every player downstream will misread the frets.
  */
 export function swapTabBlocks(text, { from = {}, to } = {}) {
-  const src = String(text || "");
-  const blocks = (() => {
-    // findTabBlocks works on the UNWRAPPED text; to splice safely we need
-    // ranges in the ORIGINAL line array, so re-locate each block there.
-    const parsed = parseTab(src, { tuning: from.tuning, capo: from.capo });
-    return parsed.blocks;
-  })();
-  if (!blocks.length) return null;
+  // Work in UNWRAPPED space throughout. findTabBlocks/parseTab already unwrap
+  // scraper-hard-wrapped lines, so their block lines never matched the RAW
+  // text's lines — the old exact-match splice silently no-opped on wrapped
+  // tabs while the summary claimed the swap happened. unwrapTab is idempotent
+  // and it's what ChartView renders anyway; splicing by findTabBlocks'
+  // startLine in that same space cannot miss.
+  const src = unwrapTab(String(text || ""));
+  const found = findTabBlocks(src);
+  if (!found.length) return null;
 
   const lines = src.split(/\r?\n/);
-  const summary = { shifted: 0, dropped: 0, blocks: blocks.length };
-  // replace each block's exact source lines (block.lines) with the rendering
-  let out = lines.slice();
-  for (const block of blocks) {
+  const summary = { shifted: 0, dropped: 0, blocks: 0 };
+  const out = lines.slice();
+  // splice bottom-up so earlier startLines stay valid as lengths change
+  for (const b of [...found].reverse()) {
+    // from.tuning is the song's DECLARED tuning — in-block labels beat it
+    // (the tuning-resolution law), so pass it as the default, not a lock.
+    const block = parseTabBlock(b.lines, { defaultTuning: from.tuning, capo: from.capo });
+    if (!block.events.length) continue; // pure-dash block: nothing to move, leave it
     const assigned = assignColumns(block.events, { tuningId: to.tuning, capo: to.capo || 0 });
+    summary.blocks++;
     summary.shifted += assigned.summary.shifted;
     summary.dropped += assigned.summary.dropped;
     const rendered = renderAscii(assigned, { perSystem: Math.max(8, block.events.length) }).trimEnd().split("\n");
-    // find this block's lines in the current output by exact match run
-    const first = out.findIndex((l, i) => block.lines.every((bl, j) => out[i + j] === bl));
-    if (first >= 0) out = [...out.slice(0, first), ...rendered, ...out.slice(first + block.lines.length)];
+    out.splice(b.startLine, b.lines.length, ...rendered);
   }
+  if (!summary.blocks) return null; // only pitch-less blocks: an honest "nothing to re-fret"
   return { text: out.join("\n"), summary };
 }

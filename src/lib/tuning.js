@@ -46,7 +46,10 @@ function assignOctaves(pcs) {
   notes.push(first);
   for (let i = 1; i < pcs.length; i++) {
     let m = pcs[i];
-    while (m <= notes[i - 1]) m += 12;
+    // `<` not `<=`: unison courses are real (Kozelek's EBEEBE doubles E3;
+    // Sonic Youth tuned whole pairs in unison). Strict ascent forced every
+    // string after the pair an octave sharp.
+    while (m < notes[i - 1]) m += 12;
     notes.push(m);
   }
   return notes;
