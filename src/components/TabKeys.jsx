@@ -5,9 +5,10 @@
 // fingering suggestions from lib/fingering.js.
 // Self-contained wide keyboard so it never disturbs the tested chord keyboard.
 import { useMemo, useState, useEffect, useRef } from "react";
-import { ChevronLeft, ChevronRight, Play, Pause } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, Pause, Square, Music2, Repeat } from "lucide-react";
 import { parseTab } from "../lib/tab.js";
 import { fingerEvents } from "../lib/fingering.js";
+import { tabBlocks } from "../lib/tabplay.js";
 import { C, MONO } from "../ui/theme.js";
 
 const BLACK = new Set([1, 3, 6, 8, 10]);
@@ -21,7 +22,7 @@ const HAND = {
   R: { fill: C.tone, glow: C.toneGlow, label: "right" },
 };
 
-export default function TabKeys({ sheet, tuning, tuningRaw, capo, shift = 0, onPlay }) {
+export default function TabKeys({ sheet, tuning, tuningRaw, capo, shift = 0, onPlay, onHear }) {
   const parsed = useMemo(
     () => parseTab(sheet, { defaultTuning: tuningRaw || tuning, capo }),
     [sheet, tuning, tuningRaw, capo]
@@ -36,7 +37,47 @@ export default function TabKeys({ sheet, tuning, tuningRaw, capo, shift = 0, onP
   const onPlayRef = useRef(onPlay);
   onPlayRef.current = onPlay;
 
-  useEffect(() => { setI(0); setPlaying(false); }, [sheet, shift]);
+  // ---- HEAR IT: the tab as music, not a slideshow. Column spacing is the
+  // only rhythm ASCII carries (wider gap = longer hold) — lib/tabplay.js
+  // turns it into a beat schedule and the engine plays it sample-accurately,
+  // the walk position following along. Riffs play in order, two beats apart.
+  const [hearing, setHearing] = useState(false);
+  const [bpm, setBpm] = useState(90);
+  const [loop, setLoop] = useState(false);
+  const hearRef = useRef(null);
+  const hearAll = useMemo(() => {
+    const blocks = tabBlocks(parsed, { shift, stepsPerBeat: 2 });
+    const out = [];
+    let t0 = 0, flat = 0;
+    for (const b of blocks) {
+      for (const e of b.events) out.push({ t: t0 + e.t, dur: e.dur, midis: e.midis, flatIdx: flat + e.i });
+      flat += b.count;
+      t0 += b.totalBeats + 2; // a breath between riffs
+    }
+    return { events: out, totalBeats: Math.max(0, t0 - 2) };
+  }, [parsed, shift]);
+  const stopHear = () => {
+    hearRef.current?.stop();
+    hearRef.current = null;
+    setHearing(false);
+  };
+  useEffect(() => stopHear, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const hear = async () => {
+    if (hearing) { stopHear(); return; }
+    if (!onHear || !hearAll.events.length) return;
+    setPlaying(false);
+    setHearing(true);
+    const done = () => { hearRef.current = null; setHearing(false); };
+    const h = await onHear(hearAll, {
+      bpm, loop,
+      onStep: (e) => setI(Math.max(0, Math.min(events.length - 1, e.flatIdx))),
+      onDone: done,
+      onCancel: done, // another surface took the stage
+    });
+    hearRef.current = h;
+  };
+
+  useEffect(() => { setI(0); setPlaying(false); stopHear(); }, [sheet, shift]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const idx = Math.min(i, Math.max(0, events.length - 1));
   const current = events[idx];
@@ -158,9 +199,10 @@ export default function TabKeys({ sheet, tuning, tuningRaw, capo, shift = 0, onP
         </div>
 
         <div className="flex items-center" style={{ gap: 10, marginTop: 12, justifyContent: "center", flexWrap: "wrap" }}>
-          <button className="bench-btn" onClick={() => { setPlaying(false); goTo(idx - 1); }} aria-label="previous position"><ChevronLeft size={16} /></button>
+          <button className="bench-btn" onClick={() => { setPlaying(false); stopHear(); goTo(idx - 1); }} aria-label="previous position"><ChevronLeft size={16} /></button>
           <button className="bench-btn primary" style={{ minWidth: 110 }}
             onClick={() => {
+              stopHear();
               if (!playing && idx >= events.length - 1) goTo(0);
               else if (!playing) onPlayRef.current?.(midis);
               setPlaying((p) => !p);
@@ -177,6 +219,29 @@ export default function TabKeys({ sheet, tuning, tuningRaw, capo, shift = 0, onP
             style={{ width: 80, accentColor: C.toneUi }} aria-label="walk speed" />
           <span style={{ fontSize: 11, color: "#8b8378" }}>fast</span>
         </div>
+
+        {/* ---- hear it: the tab as music ---- */}
+        {onHear && hearAll.events.length > 0 && (
+          <div className="flex items-center" style={{ gap: 10, marginTop: 10, justifyContent: "center", flexWrap: "wrap" }}>
+            <button className="bench-btn" onClick={hear}
+              style={hearing ? { borderColor: C.rootUi, color: C.rootText } : undefined}>
+              {hearing ? <><Square size={13} /> stop</> : <><Music2 size={13} /> Hear it</>}
+            </button>
+            <span style={{ fontFamily: MONO, fontSize: 11, color: "#8b8378" }}>{bpm} bpm</span>
+            <input type="range" min={50} max={170} step={5} value={bpm}
+              onChange={(e) => setBpm(Number(e.target.value))} disabled={hearing}
+              title={hearing ? "takes effect on the next start" : undefined}
+              style={{ width: 110, accentColor: C.rootUi }} aria-label="hear-it tempo" />
+            <button className="bench-btn" onClick={() => setLoop((v) => !v)} aria-pressed={loop}
+              style={{ padding: "6px 11px", fontSize: 12, ...(loop ? { borderColor: C.toneUi, color: C.toneText } : {}) }}>
+              <Repeat size={12} /> loop
+            </button>
+            <span style={{ fontSize: 11, color: "#8b8378" }}
+              title="ASCII tab carries no note lengths — a transcriber's column spacing (wider gap = longer hold) is the only rhythm it has, so that's what plays.">
+              timing follows the tab's spacing
+            </span>
+          </div>
+        )}
       </div>
       <p style={{ color: C.faint, fontSize: 12, marginTop: 10 }}
         title="Fingering follows five-finger hand positions; “hand moves ↷” flags a position shift.">
