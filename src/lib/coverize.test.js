@@ -178,4 +178,30 @@ describe("coverSheet — the keepable artifact", () => {
     const reparsed = parseSheet(sheet).progression;
     expect(reparsed.length).toBeGreaterThan(0);
   });
+
+  it("what it writes IS what a reload plays — adjacent duplicates collapse at write time", () => {
+    // A style translation can map two different source chords onto the same
+    // target back-to-back; parseSheet collapses those on reload, so writing
+    // both silently loses a chord between keep and reopen.
+    const prog = progOf(POP);
+    const key = keyOf(prog);
+    const r = coverize(prog, key, "callahan");
+    const sheet = coverSheet(r, { title: "T", styleName: "S" });
+    const reparsed = parseSheet(sheet).progression;
+    // collapse the result the same way parseSheet collapses text
+    const expected = [];
+    for (const ch of r.chords) {
+      const prev = expected[expected.length - 1];
+      if (!prev || chordSymbol(prev) !== chordSymbol(ch) || prev.section !== ch.section) expected.push(ch);
+    }
+    expect(reparsed.length).toBe(expected.length);
+  });
+
+  it("says out loud when the original's tab was left behind", () => {
+    const prog = progOf(POP);
+    const key = keyOf(prog);
+    const r = coverize(prog, key, "campfire");
+    expect(coverSheet(r, { title: "T", styleName: "S", hadTab: true })).toContain("chord chart only");
+    expect(coverSheet(r, { title: "T", styleName: "S" })).not.toContain("chord chart only");
+  });
 });

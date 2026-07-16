@@ -49,9 +49,13 @@ export function buildUserSong(fields, now = 0) {
     tuningSource = lab && lab.id !== "standard" ? "labels" : dec ? "declared" : "meta";
   }
 
-  const capoField = Number(fields.capo);
-  const capo = Number.isFinite(capoField) && capoField > 0
-    ? Math.min(11, Math.round(capoField))
+  // An explicit capo wins EVEN AT ZERO — "0" means "no capo, I checked",
+  // not "go re-read the body's prose" (which may declare a stale capo the
+  // re-fretted frets no longer assume). Only an empty field falls through.
+  const capoRaw = String(fields.capo ?? "").trim();
+  const capoField = Number(capoRaw);
+  const capo = capoRaw !== "" && Number.isFinite(capoField) && capoField >= 0
+    ? Math.min(11, Math.round(capoField)) || null
     : detectCapo(body) || null;
 
   const song = {

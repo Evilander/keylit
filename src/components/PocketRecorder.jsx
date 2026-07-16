@@ -15,9 +15,11 @@ export default function PocketRecorder() {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [denied, setDenied] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [playingId, setPlayingId] = useState(null);
   const recRef = useRef(null);
-  const chunksRef = useRef([]);
+  const startingRef = useRef(false);
+  const failedBlobRef = useRef(null);
   const timerRef = useRef(null);
   const audioRef = useRef(null);
   const urlRef = useRef(null);
@@ -33,28 +35,49 @@ export default function PocketRecorder() {
   if (!memos.supported()) return null;
 
   const start = async () => {
+    // double-click guard: a second click during the permission wait would
+    // spawn a second recorder and orphan the first one's mic stream
+    if (startingRef.current || recRef.current?.state === "recording") return;
+    startingRef.current = true;
     setDenied(false);
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-    catch { setDenied(true); return; }
+    catch { setDenied(true); startingRef.current = false; return; }
     const rec = new MediaRecorder(stream);
-    chunksRef.current = [];
-    rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+    // chunks are PER-SESSION: a shared ref let a quick stop→re-record wipe
+    // the previous take's buffer before its onstop had built the blob
+    const chunks = [];
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
     rec.onstop = async () => {
       stream.getTracks().forEach((t) => t.stop());
-      const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+      const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
       if (blob.size > 0) {
         const at = Date.now();
-        await memos.save({ name: `Hum — ${stamp(at)}`, blob, at });
-        refresh();
+        const id = await memos.save({ name: `Hum — ${stamp(at)}`, blob, at });
+        if (id) refresh();
+        else { failedBlobRef.current = blob; setSaveFailed(true); } // say so — never silently drop a take
       }
     };
     rec.start();
     recRef.current = rec;
+    startingRef.current = false;
+    setSaveFailed(false);
     setRecording(true);
     setElapsed(0);
     const t0 = Date.now();
     timerRef.current = setInterval(() => setElapsed((Date.now() - t0) / 1000), 250);
+  };
+
+  const rescueDownload = () => {
+    const blob = failedBlobRef.current;
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "hum.webm";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    setSaveFailed(false);
   };
 
   const stop = () => {
@@ -101,6 +124,14 @@ export default function PocketRecorder() {
           </button>
         )}
         {denied && <span style={{ fontSize: 12, color: C.bassText }}>mic said no — check the browser's permission</span>}
+        {saveFailed && (
+          <span style={{ fontSize: 12, color: C.rootText }}>
+            storage refused that take — it is NOT saved.{" "}
+            <button onClick={rescueDownload} style={{ background: "transparent", border: 0, padding: 0, color: C.rootText, textDecoration: "underline", cursor: "pointer", fontSize: 12 }}>
+              download it instead
+            </button>
+          </span>
+        )}
         {recording && <span className="kl-pulse" style={{ fontFamily: MONO, fontSize: 11, color: C.rootText }}>recording — stays on this machine</span>}
       </div>
 

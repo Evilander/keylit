@@ -10,7 +10,7 @@ import { coverize, coverSheet, COVER_STYLES } from "../lib/coverize.js";
 import { displaySymbol } from "../lib/theory.js";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 
-export default function Coverize({ prog, activeKey, loaded, onAudition, onApply, onKeep }) {
+export default function Coverize({ prog, activeKey, loaded, sourceHasTab = false, onAudition, onApply, onKeep }) {
   const [open, setOpen] = useState(false);
   const [styleId, setStyleId] = useState(null);
   const [allMoves, setAllMoves] = useState(false);
@@ -29,7 +29,7 @@ export default function Coverize({ prog, activeKey, loaded, onAudition, onApply,
 
   const keep = () => {
     if (!result || !style) return;
-    const body = coverSheet(result, { title: loaded?.title || "Untitled", artist: loaded?.artist || "", styleName: style.name });
+    const body = coverSheet(result, { title: loaded?.title || "Untitled", artist: loaded?.artist || "", styleName: style.name, hadTab: sourceHasTab });
     onKeep?.(body, {
       title: `${loaded?.title || "Untitled"} (${style.name} version)`,
       artist: loaded?.artist || "",

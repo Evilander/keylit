@@ -18,6 +18,8 @@ export default function HumHarmony({ activeKey, onAudition, onLoadProgression })
   const [phrases, setPhrases] = useState(null); // [{ midis, cands, picked }]
   const audioRef = useRef(null);
   const samplesRef = useRef([]);
+  const mountedRef = useRef(true);
+  const startingRef = useRef(false);
 
   const stopMic = () => {
     const a = audioRef.current;
@@ -36,16 +38,35 @@ export default function HumHarmony({ activeKey, onAudition, onLoadProgression })
       picked: null,
     })));
   };
-  useEffect(() => () => { if (audioRef.current) stopMic(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; if (audioRef.current) stopMic(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const start = async () => {
+    if (startingRef.current || audioRef.current) return; // double-click guard
+    startingRef.current = true;
     setDenied(false);
     setPhrases(null);
     samplesRef.current = [];
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false } }); }
-    catch { setDenied(true); return; }
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    catch { setDenied(true); startingRef.current = false; return; }
+    // the Write room may have been left while the permission prompt sat
+    // open — release the just-granted stream instead of leaking a hot mic
+    if (!mountedRef.current || audioRef.current) {
+      try { stream.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
+      startingRef.current = false;
+      return;
+    }
+    let ctx;
+    try { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch {
+      try { stream.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
+      setDenied(true);
+      startingRef.current = false;
+      return;
+    }
     const src = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
@@ -53,6 +74,7 @@ export default function HumHarmony({ activeKey, onAudition, onLoadProgression })
     const buf = new Float32Array(analyser.fftSize);
     const a = { ctx, stream, analyser, raf: 0 };
     audioRef.current = a;
+    startingRef.current = false;
     setListening(true);
     const loop = () => {
       if (!audioRef.current) return;

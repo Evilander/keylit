@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSystemPrompt, buildContext, PROVIDERS } from "./tutor.js";
+import { buildSystemPrompt, buildContext, PROVIDERS, parseErrorLine } from "./tutor.js";
 
 describe("the tutor's system prompt", () => {
   const sys = buildSystemPrompt();
@@ -101,5 +101,22 @@ describe("stream line parsing", () => {
     expect(PROVIDERS.ollama.parseLine('{"message":{"content":"hey"},"done":false}')).toBe("hey");
     expect(PROVIDERS.ollama.parseLine('{"done":true}')).toBeNull();
     expect(PROVIDERS.ollama.parseLine("garbage")).toBeNull();
+  });
+});
+
+describe("parseErrorLine — mid-stream errors must surface, not vanish", () => {
+  it("recognizes each provider's error frame", () => {
+    expect(parseErrorLine('data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}')).toBe("Overloaded"); // anthropic
+    expect(parseErrorLine('data: {"error":{"message":"insufficient_quota"}}')).toBe("insufficient_quota"); // openai/xai
+    expect(parseErrorLine('{"error":"model not found"}')).toBe("model not found"); // ollama
+    expect(parseErrorLine('data: {"candidates":[{"finishReason":"SAFETY"}]}')).toMatch(/SAFETY/); // google block
+  });
+  it("never flags ordinary content, keepalives, or clean finishes", () => {
+    expect(parseErrorLine('data: {"type":"content_block_delta","delta":{"text":"he"}}')).toBeNull();
+    expect(parseErrorLine('data: {"choices":[{"delta":{"content":"yo"}}]}')).toBeNull();
+    expect(parseErrorLine("event: ping")).toBeNull();
+    expect(parseErrorLine("data: [DONE]")).toBeNull();
+    expect(parseErrorLine('data: {"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"end"}]}}]}')).toBeNull();
+    expect(parseErrorLine('data: {"candidates":[{"finishReason":"MAX_TOKENS"}]}')).toBeNull();
   });
 });

@@ -37,6 +37,13 @@ export default function VoiceRoom({ loadedTitle, onPlay, onTranspose }) {
   const canvasRef = useRef(null);
   const targetRef = useRef(null);
   targetRef.current = target;
+  // The rAF loop is created ONCE at mic-open; anything it calls that depends
+  // on state (the band shading, the drill's next target) must go through a
+  // ref or the loop keeps stale closures forever.
+  const drawRef = useRef(() => {});
+  const nextTargetRef = useRef(() => {});
+  const mountedRef = useRef(true);
+  const startingRef = useRef(false);
 
   const stopMic = useCallback(() => {
     const a = audioRef.current;
@@ -48,15 +55,37 @@ export default function VoiceRoom({ loadedTitle, onPlay, onTranspose }) {
     setMicOn(false);
     setLive(null);
   }, []);
-  useEffect(() => stopMic, [stopMic]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; stopMic(); };
+  }, [stopMic]);
 
   const startMic = async () => {
+    // re-entrancy guard: a double-click during the permission wait would
+    // open two mic sessions and orphan the first one's stream
+    if (startingRef.current || audioRef.current) return;
+    startingRef.current = true;
     setDenied(false);
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-    } catch { setDenied(true); return; }
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch { setDenied(true); startingRef.current = false; return; }
+    // the room may have been left while the permission prompt sat open —
+    // release the just-granted stream instead of leaking a hot mic
+    if (!mountedRef.current || audioRef.current) {
+      try { stream.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
+      startingRef.current = false;
+      return;
+    }
+    let ctx;
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch {
+      try { stream.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
+      setDenied(true);
+      startingRef.current = false;
+      return;
+    }
     const src = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
@@ -64,6 +93,7 @@ export default function VoiceRoom({ loadedTitle, onPlay, onTranspose }) {
     const buf = new Float32Array(analyser.fftSize);
     const a = { ctx, stream, analyser, buf, raf: 0 };
     audioRef.current = a;
+    startingRef.current = false;
     setMicOn(true);
 
     const loop = () => {
@@ -87,7 +117,7 @@ export default function VoiceRoom({ loadedTitle, onPlay, onTranspose }) {
               heldRef.current.since = 0;
               setHeld(0);
               setStreak((s) => s + 1);
-              nextTarget();
+              nextTargetRef.current(); // via ref — the loop's own closure is frozen at mic-open
             }
           } else if (heldRef.current.since) {
             heldRef.current.since = 0;
@@ -101,7 +131,7 @@ export default function VoiceRoom({ loadedTitle, onPlay, onTranspose }) {
       // trim to the last 9 seconds
       const cutoff = now - 9000;
       while (traceRef.current.length && traceRef.current[0].at < cutoff) traceRef.current.shift();
-      draw();
+      drawRef.current(); // via ref — a freshly mapped band must shade LIVE
       a.raf = requestAnimationFrame(loop);
     };
     a.raf = requestAnimationFrame(loop);
@@ -157,6 +187,7 @@ export default function VoiceRoom({ loadedTitle, onPlay, onTranspose }) {
     }
     g.lineWidth = 1;
   }, [band]);
+  drawRef.current = draw;
 
   /* ---- band capture ---- */
   const startBandCapture = () => {
@@ -196,6 +227,7 @@ export default function VoiceRoom({ loadedTitle, onPlay, onTranspose }) {
     setTarget(t);
     onPlay?.([t], 1.4);
   }, [band, onPlay]);
+  nextTargetRef.current = nextTarget;
 
   const liveNote = live ? noteOf(live.midi) : null;
 
@@ -251,7 +283,8 @@ export default function VoiceRoom({ loadedTitle, onPlay, onTranspose }) {
               <Square size={13} /> done ({captureCount} samples{captureCount < 20 ? " — keep going" : ""})
             </button>
           ) : (
-            <button className="bench-btn" onClick={startBandCapture} disabled={!micOn}>
+            <button className="bench-btn" onClick={startBandCapture} disabled={!micOn || capture === "fit"}
+              title={capture === "fit" ? "finish singing the song first" : undefined}>
               <Play size={13} /> {band ? "re-map it" : "map my voice"}
             </button>
           )}
@@ -310,7 +343,8 @@ export default function VoiceRoom({ loadedTitle, onPlay, onTranspose }) {
                   <Square size={13} /> judge it ({captureCount})
                 </button>
               ) : (
-                <button className="bench-btn" onClick={startFitCapture} disabled={!micOn || !loadedTitle}>
+                <button className="bench-btn" onClick={startFitCapture} disabled={!micOn || !loadedTitle || capture === "band"}
+                  title={capture === "band" ? "finish mapping your voice first" : undefined}>
                   <Play size={13} /> sing the song
                 </button>
               )}

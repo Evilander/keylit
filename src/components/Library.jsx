@@ -133,14 +133,24 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
     if (!parsed.ok) { setImportNote(parsed.error); return; }
     const cur = { songs: userSongbook.all(), ...benchBook.raw() };
     const { songs, setlists, log, report } = mergeBackup(cur, parsed.data);
-    userSongbook.replaceAll(songs);
-    benchBook.replace({ setlists, log });
+    // Each write is atomic per key; a quota failure leaves the ORIGINAL data
+    // for that key untouched — but we must say exactly what landed.
+    let wroteSongs = false, wroteBench = false;
+    try { userSongbook.replaceAll(songs); wroteSongs = true; } catch { /* quota */ }
+    if (wroteSongs) { try { benchBook.replace({ setlists, log }); wroteBench = true; } catch { /* quota */ } }
+    if (!wroteSongs) {
+      setImportNote("Storage refused the import — nothing was changed. Free some space and try again.");
+      return;
+    }
     let prefsApplied = 0;
     for (const [k, v] of Object.entries(parsed.data.prefs || {})) {
       try { localStorage.setItem(k, v); prefsApplied++; } catch { /* noop */ }
     }
     setUserRows(userSongbook.rows());
-    setImportNote(reportLine(report, prefsApplied) + (prefsApplied ? " (settings land on next launch)" : ""));
+    setImportNote(
+      (wroteBench ? reportLine(report, prefsApplied) : `${report.songsAdded} songs in — but setlists/log would not fit (storage full); your originals are untouched`) +
+      (prefsApplied ? " (settings land on next launch)" : "")
+    );
   };
   // Your songs join the same catalog, grouped and styled like everyone else.
   const rows = useMemo(() => (fetched === null ? null : [...userRows, ...fetched]), [fetched, userRows]);

@@ -26,6 +26,7 @@ export default function Perform({
   currentIdx, onSelectIdx, isPlaying, onTogglePlay, tempo, onTempo,
   roleFor, flash, onKeyPress,
   setlistCtx, onOpenSetlistSong, onPickSong,
+  retabTag, // e.g. "re-fretted for Drop D" — the stage must say so out loud
 }) {
   const [prefs, setPrefs] = useState(loadPrefs);
   const setPref = (patch) => setPrefs((p) => {
@@ -74,6 +75,19 @@ export default function Perform({
     if (!rolling || mode !== "roll") return;
     const el = scrollRef.current;
     if (!el) return;
+    if (reduced) {
+      // prefers-reduced-motion: rolling is the FEATURE (a teleprompter), so
+      // it can't just vanish — but the continuous crawl can. Step a whole
+      // line at a time at the same reading speed: a page-turner, no motion.
+      const lineH = Math.max(18, Math.round(size * 1.6));
+      const stepMs = Math.max(250, (lineH / Math.max(4, speedRef.current)) * 1000);
+      const t = setInterval(() => {
+        el.scrollTop += lineH;
+        updatePlayhead();
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2) setRolling(false);
+      }, stepMs);
+      return () => clearInterval(t);
+    }
     let raf, last = performance.now(), acc = 0, carry = 0;
     const frame = (now) => {
       const dt = Math.min(100, now - last);
@@ -88,7 +102,7 @@ export default function Perform({
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rolling, mode]);
+  }, [rolling, mode, reduced, size]);
 
   const updatePlayhead = useCallback(() => {
     const el = scrollRef.current;
@@ -193,7 +207,7 @@ export default function Perform({
       {/* ---- the stand's header: what's up + how it runs ---- */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
         <div style={{ minWidth: 0, marginRight: "auto" }}>
-          <div className="kl-eyebrow">{artist ? `${artist} · ` : ""}{keyName}</div>
+          <div className="kl-eyebrow">{artist ? `${artist} · ` : ""}{keyName}{retabTag ? <span style={{ color: C.bassText }}> · {retabTag}</span> : null}</div>
           <div style={{ fontFamily: DISPLAY, fontSize: 24, color: C.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 420 }}>{title}</div>
         </div>
         {setlistCtx?.rows?.length > 0 && (

@@ -72,12 +72,16 @@ export function createMetronome() {
   return {
     async start() {
       if (state.running) return;
+      // Flip BEFORE the await: two overlapping start() calls both passed the
+      // guard and each armed its own setInterval on the one shared `timer`.
+      state = { ...state, running: true };
+      emit();
       try { await Tone.start(); } catch { /* autoplay policy; the next gesture retries */ }
+      if (!state.running) return; // stopped while the context was unlocking
       ensureNodes();
       pattern = clickPattern(state.meterId, state.subdivision);
       stepIdx = 0; bar = 0;
       nextTime = Tone.now() + 0.08;
-      state = { ...state, running: true };
       timer = setInterval(tick, 40);
       tick();
       emit();

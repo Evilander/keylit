@@ -20,6 +20,62 @@ export function buildBackup({ songs = [], setlists = [], log = [], prefs = {}, e
   return { keylit: 2, exportedAt: exportedAt || null, songs, setlists, log, prefs: keep };
 }
 
+// Field-level sanitizers: a backup is a FILE — corrupted or crafted, its
+// contents go straight into localStorage and every room then trusts them.
+// Rebuild each record as a fresh, whitelisted object (also sheds any
+// __proto__-shaped keys) instead of trusting the file's shapes.
+const str = (v) => (typeof v === "string" ? v : null);
+const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+
+function cleanSong(s) {
+  if (!s || typeof s !== "object") return null;
+  const id = str(s.id), body = str(s.body);
+  if (!id || !body) return null;
+  return {
+    id,
+    artist: str(s.artist) || "Unknown",
+    title: str(s.title) || "Untitled",
+    album: str(s.album),
+    albumOrder: num(s.albumOrder) ?? 9999,
+    source: str(s.source) || "user",
+    sourceUrl: str(s.sourceUrl),
+    tuning: str(s.tuning) || "standard",
+    tuningRaw: str(s.tuningRaw),
+    tuningSource: str(s.tuningSource) || "meta",
+    capo: num(s.capo),
+    key: str(s.key),
+    format: s.format === "tab" ? "tab" : "chords",
+    transcriber: str(s.transcriber),
+    fetchedAt: str(s.fetchedAt),
+    body,
+  };
+}
+
+function cleanSetlist(sl) {
+  if (!sl || typeof sl !== "object" || !str(sl.id) || !Array.isArray(sl.songs)) return null;
+  return {
+    id: sl.id,
+    name: str(sl.name) || "Setlist",
+    notes: str(sl.notes) || "",
+    createdAt: num(sl.createdAt) ?? 0,
+    // entries: { songKey, title, artist, …display extras } — a null or
+    // primitive entry crashes every setlist renderer downstream
+    songs: sl.songs
+      .filter((e) => e && typeof e === "object" && !Array.isArray(e) && str(e.songKey))
+      .map((e) => ({ ...e, songKey: e.songKey, title: str(e.title) || "Untitled", artist: str(e.artist) })),
+  };
+}
+
+function cleanLogEntry(e) {
+  if (!e || typeof e !== "object" || !str(e.songKey)) return null;
+  const at = num(e.at);
+  if (at == null) return null;
+  return { ...e, songKey: e.songKey, at, title: str(e.title) || "Untitled" };
+}
+
+// Sanity caps: a crafted "backup" shouldn't be able to balloon memory.
+const MAX_SONGS = 5000, MAX_SETLISTS = 500, MAX_LOG = 10000;
+
 /** Parse + validate a backup file's JSON text (or object). Accepts v1 and v2.
  * Returns { ok: true, data } (data normalized to v2 shape) or { ok: false, error }. */
 export function parseBackup(input) {
@@ -30,16 +86,14 @@ export function parseBackup(input) {
   if (!raw || typeof raw !== "object") return { ok: false, error: "That file isn't a Keylit backup." };
   if (raw.keylit !== 1 && raw.keylit !== 2) return { ok: false, error: "That file isn't a Keylit backup (no version mark)." };
 
-  const songs = Array.isArray(raw.songs) ? raw.songs.filter((s) => s && typeof s === "object" && s.id && typeof s.body === "string") : [];
-  const setlists = Array.isArray(raw.setlists)
-    ? raw.setlists.filter((sl) => sl && typeof sl === "object" && sl.id && Array.isArray(sl.songs))
-    : [];
-  const log = Array.isArray(raw.log) ? raw.log.filter((e) => e && typeof e === "object" && e.songKey && e.at) : [];
+  const songs = (Array.isArray(raw.songs) ? raw.songs : []).slice(0, MAX_SONGS).map(cleanSong).filter(Boolean);
+  const setlists = (Array.isArray(raw.setlists) ? raw.setlists : []).slice(0, MAX_SETLISTS).map(cleanSetlist).filter(Boolean);
+  const log = (Array.isArray(raw.log) ? raw.log : []).slice(0, MAX_LOG).map(cleanLogEntry).filter(Boolean);
   const prefs = {};
   if (raw.prefs && typeof raw.prefs === "object") {
     for (const k of PREF_KEYS) if (typeof raw.prefs[k] === "string") prefs[k] = raw.prefs[k];
   }
-  return { ok: true, data: { keylit: 2, exportedAt: raw.exportedAt || null, songs, setlists, log, prefs } };
+  return { ok: true, data: { keylit: 2, exportedAt: str(raw.exportedAt), songs, setlists, log, prefs } };
 }
 
 const slug = (s) => String(s || "").toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");

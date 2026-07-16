@@ -37,6 +37,8 @@ describe("buildUserSong — the Add-a-song record builder", () => {
     expect(buildUserSong({ artist: "A", title: "B", body: "C", capo: 3 }, NOW).song.capo).toBe(3);
     expect(buildUserSong({ artist: "A", title: "B", body: "Capo 5th fret\nC G" }, NOW).song.capo).toBe(5);
     expect(buildUserSong({ artist: "A", title: "B", body: "C G" }, NOW).song.capo).toBeNull();
+    // explicit ZERO wins over stale body prose — the re-fret keep path
+    expect(buildUserSong({ artist: "A", title: "B", body: "Capo 5th fret\nC G", capo: "0" }, NOW).song.capo).toBeNull();
   });
 
   it("marks tab format when the body carries a real tab", () => {

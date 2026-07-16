@@ -9,6 +9,8 @@ import { harmonicFunction, chordSymbol, parseChord, SHARP_NAMES } from "./theory
 
 const DEGREE_NAME = ["1", "b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7"];
 const isMinorish = (ch) => ch.intervals.includes(3) && !ch.intervals.includes(4);
+// sus2/sus4/power chords have NO third — bright/dark isn't theirs to answer
+const hasThird = (ch) => ch.intervals.includes(3) || ch.intervals.includes(4);
 const degOf = (ch, tonic) => ((ch.rootSemitone - tonic) % 12 + 12) % 12;
 const degLabel = (ch, tonic) => `${DEGREE_NAME[degOf(ch, tonic)]}${isMinorish(ch) ? "m" : ""}`;
 
@@ -51,7 +53,11 @@ export function mkQuestion(rand, { progression, key, level = 1 }) {
   const tonic = key.tonic;
 
   if (level === 1) {
-    const ch = pick(rand, prog);
+    // only chords that HAVE a third get asked — a sus/power chord forced
+    // into "major (bright)" with talk of a third it doesn't have is a lie
+    const pool = prog.filter(hasThird);
+    if (!pool.length) return null; // caller falls back
+    const ch = pick(rand, pool);
     const correct = isMinorish(ch) ? "minor (dark)" : "major (bright)";
     return {
       type: "quality",
@@ -100,12 +106,19 @@ export function mkQuestion(rand, { progression, key, level = 1 }) {
     };
   }
 
-  // level 4 — how a phrase lands
+  // level 4 — how a phrase lands. The door is named by the ACTUAL degree:
+  // IV → 1 is "the side door", but ii → 1 and ♭VII → 1 are side doors of
+  // their own and must not be mislabeled as 4 → 1.
   const landings = [];
   for (let i = 1; i < prog.length; i++) {
     const f1 = harmonicFunction(prog[i - 1], tonic, key.mode);
     const f2 = harmonicFunction(prog[i], tonic, key.mode);
-    if (f2 === "T" && (f1 === "D" || f1 === "S")) landings.push({ pair: [prog[i - 1], prog[i]], kind: f1 === "D" ? "the front door (5 → 1)" : "the side door (4 → 1)" });
+    if (f2 !== "T" || (f1 !== "D" && f1 !== "S")) continue;
+    const d = degOf(prog[i - 1], tonic);
+    const kind = f1 === "D"
+      ? "the front door (5 → 1)"
+      : d === 5 ? "the side door (4 → 1)" : `a side door (${DEGREE_NAME[d]} → 1)`;
+    landings.push({ pair: [prog[i - 1], prog[i]], kind, front: f1 === "D" });
   }
   if (!landings.length) return null;
   const l = pick(rand, landings);
@@ -114,10 +127,10 @@ export function mkQuestion(rand, { progression, key, level = 1 }) {
     prompt: "A landing from the song. Which door did it come home through?",
     play: l.pair,
     options: shuffle(rand, [
-      { label: "the front door (5 → 1)", correct: l.kind.startsWith("the front") },
-      { label: "the side door (4 → 1)", correct: l.kind.startsWith("the side") },
+      { label: "the front door (5 → 1)", correct: l.front },
+      { label: l.front ? "the side door (4 → 1)" : l.kind, correct: !l.front },
     ]),
-    explain: `${l.pair.map(chordSymbol).join(" → ")} — ${l.kind}. ${l.kind.startsWith("the front") ? "The leading tone pulls it shut." : "No leading tone — it settles instead of resolving. The gospel landing."}`,
+    explain: `${l.pair.map(chordSymbol).join(" → ")} — ${l.kind}. ${l.front ? "The leading tone pulls it shut." : "No leading tone — it settles instead of resolving. The gospel landing."}`,
   };
 }
 

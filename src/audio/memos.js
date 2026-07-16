@@ -49,11 +49,16 @@ export const memos = {
     } catch { return []; }
   },
 
+  /** Returns the new id, or null when the write failed (quota, private
+   * mode). Callers must treat null as "the recording was NOT kept" and say
+   * so — a silent discard of someone's take is data loss. */
   async save({ name, blob, at }) {
-    const db = await openDb();
-    const id = `memo-${(at || 0).toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`;
-    await tx(db, "readwrite", (s) => s.put({ id, name: name || "Memo", at: at || 0, mime: blob.type, blob }));
-    return id;
+    try {
+      const db = await openDb();
+      const id = `memo-${(at || 0).toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`;
+      await tx(db, "readwrite", (s) => s.put({ id, name: name || "Memo", at: at || 0, mime: blob.type, blob }));
+      return id;
+    } catch { return null; }
   },
 
   async blobOf(id) {
