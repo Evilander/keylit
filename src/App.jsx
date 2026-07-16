@@ -50,6 +50,7 @@ import TheoryGuide from "./components/TheoryGuide.jsx";
 import VoiceRoom from "./components/VoiceRoom.jsx";
 import MirrorPanel from "./components/MirrorPanel.jsx";
 import RetabPanel from "./components/RetabPanel.jsx";
+import { swapTabBlocks } from "./lib/retab.js";
 import EarTrainer from "./components/EarTrainer.jsx";
 import SessionRoom from "./components/SessionRoom.jsx";
 import { metronome } from "./audio/metronome.js";
@@ -58,7 +59,7 @@ import { benchBook, userSongbook } from "./storage.js";
 import { slugSongKey } from "./lib/bench.js";
 import { decodeShare } from "./lib/sharelink.js";
 import { buildUserSong } from "./lib/usersong.js";
-import { chartShiftForGuitar, STANDARD_TUNING, TUNINGS, uniformTuningOffset } from "./lib/tuning.js";
+import { canonicalTuning, chartShiftForGuitar, STANDARD_TUNING, TUNINGS, uniformTuningOffset } from "./lib/tuning.js";
 import GuitarSetup from "./components/GuitarSetup.jsx";
 
 const DEFAULT_SHEET = `[Intro]
@@ -304,6 +305,25 @@ export default function App() {
     const best = suggestCapo(soundingView.prog)[0];
     return best ? best.fret : null;
   }, [soundingView]);
+
+  // The tab half of the tuning dropdown. Chord sheets already retune live;
+  // a tab's fret numbers were welded to the tuning they were written in. When
+  // the guitar in your hands differs from the tab's source tuning/capo, re-fret
+  // the tab for YOUR setup (lib/retab.js) so the whole chart follows the
+  // dropdown, not just the chords. Non-destructive: `tabAsWritten` flips back
+  // to the original transcription, and the badge names every compromise.
+  const [tabAsWritten, setTabAsWritten] = useState(false);
+  useEffect(() => { setTabAsWritten(false); }, [sheet]);
+  const retab = useMemo(() => {
+    const src = canonicalTuning(loaded?.tuningRaw || loaded?.tuning || "standard");
+    const dst = canonicalTuning(guitarTuning);
+    const srcCapo = capoShift || 0;
+    const dstCapo = effectiveCapo || 0;
+    if (src.id === dst.id && srcCapo === dstCapo) return null; // your guitar already matches
+    const r = swapTabBlocks(sheet, { from: { tuning: src.id, capo: srcCapo }, to: { tuning: dst.id, capo: dstCapo } });
+    return r ? { ...r, src, dst, srcCapo, dstCapo } : null; // null when the sheet has no tab
+  }, [sheet, loaded, guitarTuning, capoShift, effectiveCapo]);
+  const displaySheet = retab && !tabAsWritten ? retab.text : sheet;
 
   const current = view.prog[currentIdx] || null;
   const shapeCurrent = readingView.prog[currentIdx] || null;
@@ -893,24 +913,23 @@ export default function App() {
               {songNumbersRailPanel}
               {aiPanel}
               {tabKeysPanel}
-              <RetabPanel sheet={sheet} loaded={loaded}
-                sourceTuning={loaded?.tuningRaw || loaded?.tuning} sourceCapo={capoShift}
-                targetTuningId={guitarTuning} targetCapo={effectiveCapo}
-                onKeep={(body, meta) => {
-                  const built = buildUserSong({
-                    artist: meta.artist || "", title: meta.title || "Untitled",
-                    album: "", key: "", capo: meta.capo ? String(meta.capo) : "",
-                    tuning: meta.tuning || "", body,
-                  }, Date.now());
-                  if (built.error) return;
-                  userSongbook.save(built.song, built.row);
-                }} />
               <SongGrips chords={readingView.unique} activeKey={readingKey}
                 shapeTuning={guitarLens.shapeTuning}
                 strumTuning={guitarLens.strumTuning} strumCapo={guitarLens.strumCapo}
                 onStrum={strumNotes} />
               <section style={{ marginTop: 18 }}>
-                <ChartView text={sheet} activeKey={readingKey} transpose={readingShift}
+                <RetabPanel retab={retab} asWritten={tabAsWritten}
+                  onToggle={() => setTabAsWritten((v) => !v)} loaded={loaded}
+                  onKeep={(body, meta) => {
+                    const built = buildUserSong({
+                      artist: meta.artist || "", title: meta.title || "Untitled",
+                      album: "", key: "", capo: meta.capo ? String(meta.capo) : "",
+                      tuning: meta.tuning || "", body,
+                    }, Date.now());
+                    if (built.error) return;
+                    userSongbook.save(built.song, built.row);
+                  }} />
+                <ChartView text={displaySheet} activeKey={readingKey} transpose={readingShift}
                   activeChord={readingView.prog[currentIdx] || null}
                   onChordClick={hearReadingChord}
                   guitar={guitarLens} />

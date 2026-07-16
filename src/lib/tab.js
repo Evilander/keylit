@@ -133,6 +133,20 @@ function parseRowDigits(line) {
  * every sounded note up. Strings are indexed 0 = lowest (low→high order).
  */
 export function parseTabBlock(lines, opts = {}) {
+  // Strip string-NUMBER prefixes: when EVERY line leads with a digit and the
+  // digits run 1..n (either direction), they number the strings — "1e|--3--"
+  // plays fret 3, and a Lou-Reed-style tuning legend ("1c# --|-d#-|…") is a
+  // diagram, not a one-column chord of frets 1–6. Blank with a space so
+  // column positions stay aligned. Block-level sequence check keeps a lone
+  // "2b3---" bend safe — its neighbors won't complete the 1..n run.
+  const leads = lines.map((l) => /^\s*(\d)/.exec(l)?.[1]);
+  if (lines.length >= 4 && leads.every(Boolean)) {
+    const seq = leads.join("");
+    const fwd = Array.from({ length: lines.length }, (_, i) => i + 1).join("");
+    if (seq === fwd || seq === [...fwd].reverse().join("")) {
+      lines = lines.map((l) => l.replace(/^(\s*)\d/, "$1 "));
+    }
+  }
   const n = lines.length;
   const labels = extractLabels(lines);
   let tuning;

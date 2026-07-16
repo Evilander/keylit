@@ -87,6 +87,51 @@ describe("parseTabBlock — note resolution", () => {
     const block = parseTabBlock(C_CHORD.split("\n"), { tuning: "openE" });
     expect(block.tuning.id).toBe("openE");
   });
+
+  it("string-NUMBER prefixes are not frets ('1e|--3--' plays fret 3, not 1)", () => {
+    const numbered = [
+      "1e|--3--|",
+      "2B|-----|",
+      "3G|--0--|",
+      "4D|-----|",
+      "5A|-----|",
+      "6E|-----|",
+    ].join("\n");
+    const block = parseTabBlock(numbered.split("\n"));
+    expect(block.tuning.id).toBe("standard"); // labels still resolve
+    const midis = block.events.flatMap((e) => e.notes.map((n) => n.midi)).sort((a, b) => a - b);
+    expect(midis).toEqual([55, 67]); // G3 open + e fret 3 — no phantom 1/2/…/6 frets
+  });
+
+  it("string-legend rows (Lou Reed charts) yield no phantom notes", () => {
+    // A tuning legend, not music: string number + note name + fret-position
+    // note names. The leading digits used to parse as frets at column 0,
+    // fabricating a bogus one-column "chord" (and lighting bogus piano keys).
+    const legend = [
+      "1c# ------||---|-d#-|---|---|---|",
+      "2G# ------||---|-A#-|---|---|---|",
+      "3E  ------||---|-F#-|---|---|---|",
+      "4B  ------||---|-C#-|---|---|---|",
+      "5F# ------||---|-G#-|---|---|---|",
+      "6C# ------||---|-D#-|---|---|---|",
+    ].join("\n");
+    const block = parseTabBlock(legend.split("\n"));
+    expect(block.events).toHaveLength(0);
+  });
+
+  it("a bend like '2b3' keeps its fret 2 — the number-prefix guard must not eat it", () => {
+    const bend = [
+      "e|-----|",
+      "B|-----|",
+      "G|2b3--|",
+      "D|-----|",
+      "A|-----|",
+      "E|-----|",
+    ].join("\n");
+    const block = parseTabBlock(bend.split("\n"));
+    const midis = block.events.flatMap((e) => e.notes.map((n) => n.midi));
+    expect(midis).toContain(57); // G3 + 2
+  });
 });
 
 describe("capo support", () => {
