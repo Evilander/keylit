@@ -50,6 +50,7 @@ import TheoryGuide from "./components/TheoryGuide.jsx";
 import VoiceRoom from "./components/VoiceRoom.jsx";
 import MirrorPanel from "./components/MirrorPanel.jsx";
 import RetabPanel from "./components/RetabPanel.jsx";
+import TabHomes from "./components/TabHomes.jsx";
 import { swapTabBlocks } from "./lib/retab.js";
 import { hasTab } from "./lib/tab.js";
 import EarTrainer from "./components/EarTrainer.jsx";
@@ -708,7 +709,8 @@ export default function App() {
   const tabKeysPanel = (
     <TabKeys sheet={sheet} tuning={loaded?.tuning} tuningRaw={loaded?.tuningRaw}
       capo={capoShift} shift={transpose}
-      onPlay={(midis) => { arm(); ensureAndPlay(midis, 1.2); }} />
+      onPlay={(midis) => { arm(); ensureAndPlay(midis, 1.2); }}
+      onHear={startArrangement} />
   );
 
   // The guitar lens the Song room reads through, shared by the chart's hover
@@ -918,6 +920,10 @@ export default function App() {
                 transpose={transpose}
                 onUseDetunedSetup={useDetunedSetup}
               />
+              <TabHomes sheet={sheet}
+                sourceTuning={loaded?.tuningRaw || loaded?.tuning} sourceCapo={capoShift}
+                currentTuningId={guitarTuning} currentCapo={effectiveCapo}
+                onApply={(tuningId, capo) => { setGuitarTuning(tuningId); setPlayCapo(capo); }} />
               {songNumbersRailPanel}
               {aiPanel}
               {tabKeysPanel}
