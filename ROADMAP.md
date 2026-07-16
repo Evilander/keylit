@@ -4,6 +4,42 @@
 
 ---
 
+## v0.8.1 — the overnight hardening *(shipped 2026-07-16 · 838 tests green)*
+
+Tyler's mandate: "a thorough pass, both hardening and creative — have fun." Three moves:
+
+- **The re-fret went corpus-clean and LIVE.** Tyler's real complaint ("the tabs still stay
+  the same numbers when I change tuning") exposed that retab was a manual panel, not a live
+  behavior. Now `App` computes a `displaySheet` off the tuning dropdown — the chart re-frets
+  itself the way chord sheets always transposed, with an as-written toggle, an honesty badge,
+  and the stage (Perform) showing the same truth with a `re-fretted for …` tag. Stress-tested
+  **10,896 re-frets across all 2,921 corpus tabs to zero defects** — which flushed out and
+  fixed: silent no-ops on scraper-hard-wrapped tabs (splice now works in unwrapped space by
+  `startLine`), narrow/full-cell renders un-recognizable on re-parse (cell width honesty incl.
+  2-char techs), congested open-tuning chords dropping instead of octave-rescuing, string-number
+  legends parsing as phantom one-column chords (Lou Reed charts — also fixed for TabKeys), and
+  **unison-course tunings parsing an octave sharp** (`parseTuning` strict-ascent bug: Kozelek's
+  EBEEBE, Sonic Youth's doubled pairs — wrong piano keys for whole catalogs, now pinned).
+  Plus: stale prose "Capo N" headers are re-stamped to the target (`restampCapo`) and explicit
+  capo-0 survives the keep path (`buildUserSong` honors zero).
+- **A 54-agent adversarial review swept all v0.8 surfaces** (10 dimensions, every finding
+  refuted-or-confirmed): 37 confirmed defects fixed — mic-stream leaks on unmount-during-
+  permission (Voice/HumHarmony), backup import sanitization + quota honesty, tutor mid-stream
+  error surfacing + Escape/focus a11y, metronome/engine start races, One Song Timer surviving
+  room switches, sketch data-loss edges, ear-trainer musical truth (sus chords have no
+  bright/dark; ii→I is not "4 → 1"), ONE section-header rule shared by parseSheet and the
+  Walk-mode anchors, reduced-motion Roll stepping. One finding kept-as-designed (merge import
+  never overwrites the current library).
+- **Two new tab instruments** (pure libs first, TDD): **Hear the Tab** (`lib/tabplay.js`) —
+  column spacing is the only rhythm ASCII carries, so it plays: spacing-derived beat schedules
+  through the engine, loopable at any bpm, the walk position following ("timing follows the
+  tab's spacing", said out loud). **Where This Tab Sits** (`lib/tabfit.js` + `TabHomes`) —
+  the transcription re-fretted into ten real setups, ranked like a hand would feel it, verdicts
+  in sentences; click a home and the dropdowns move there. Sanity-checked on the shelf: Harvey
+  names its own Drop D; Bad House discovers Drop D capo 2 beats the written standard.
+
+---
+
 ## v0.8 — "The Apprenticeship" *(shipped 2026-07-15 · 758 tests green)*
 
 The big pass: Tyler's full brief (readability, Perform, metronome, export/import, the
