@@ -1,5 +1,5 @@
-import React, { memo, useMemo, useRef } from "react";
-import { CIRCLE_OF_FIFTHS, harmonicFunction, qualClass, buildChord } from "../lib/theory.js";
+import { memo, useMemo, useRef } from "react";
+import { CIRCLE_OF_FIFTHS, harmonicFunction, qualClass, buildChord, wheelTrail } from "../lib/theory.js";
 import { C, FUNCTION_FILL, MONO } from "../ui/theme.js";
 
 /**
@@ -63,6 +63,28 @@ function KeyWheelBase({ prog, activeKey, currentIdx, onPickTonic, onAudition }) 
     onPickTonic?.(pc, mode);
   };
 
+  // The song's walk drawn on the dial: one curve per traveled segment, sagging
+  // toward the center the farther the jump (neighbors hug the rim, tritones
+  // dive through the middle), growing thicker where the song walks it again.
+  const trail = useMemo(() => wheelTrail(prog), [prog]);
+  const nodeXY = (a) => {
+    const angle = (a.slot / 12) * 2 * Math.PI - Math.PI / 2;
+    const r = a.ring === "min" ? rMin : rMaj;
+    return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
+  };
+  const segPath = (from, to) => {
+    const [x1, y1] = nodeXY(from), [x2, y2] = nodeXY(to);
+    const steps = Math.min(((to.slot - from.slot) % 12 + 12) % 12, ((from.slot - to.slot) % 12 + 12) % 12);
+    const pull = 0.85 - 0.09 * steps;
+    const qx = cx + ((x1 + x2) / 2 - cx) * pull, qy = cy + ((y1 + y2) / 2 - cy) * pull;
+    return `M ${x1} ${y1} Q ${qx} ${qy} ${x2} ${y2}`;
+  };
+  const curSeg = useMemo(() => {
+    if (!prog?.length || currentIdx < 1) return null;
+    const [seg] = wheelTrail([prog[currentIdx - 1], prog[currentIdx]]);
+    return seg || null; // null when both chords share a node
+  }, [prog, currentIdx]);
+
   return (
     <svg viewBox={`0 0 ${size} ${size}`} width="100%" role="img"
       aria-label="circle of fifths — C at the top like the printed chart; the dotted wedge travels to your key; click any key to hear it and make it home"
@@ -76,6 +98,15 @@ function KeyWheelBase({ prog, activeKey, currentIdx, onPickTonic, onAudition }) 
       </g>
       <circle cx={cx} cy={cy} r={rMaj} fill="none" stroke={C.line} strokeWidth={1} />
       <circle cx={cx} cy={cy} r={rMin} fill="none" stroke={C.line} strokeWidth={1} strokeDasharray="2 3" />
+
+      {trail.map((s, i) => (
+        <path key={i} d={segPath(s.from, s.to)} fill="none" stroke={C.faint}
+          strokeOpacity={0.28} strokeWidth={0.8 + Math.min(s.count, 4) * 0.45} strokeLinecap="round" />
+      ))}
+      {curSeg && (
+        <path d={segPath(curSeg.from, curSeg.to)} fill="none" stroke={C.rootUi}
+          strokeOpacity={0.75} strokeWidth={2} strokeLinecap="round" />
+      )}
 
       {CIRCLE_OF_FIFTHS.map((pc, i) => {
         // Fixed dial: node i lives at slot i forever; only the wedge moves.

@@ -4,7 +4,7 @@ import {
   nashville, romanNumeral, detectKey, harmonicFunction, CIRCLE_OF_FIFTHS,
   shapeForCapo, shapeEase, suggestCapo, normalizeChart,
   spellScale, degreeOf, pedalRelation, buildChord, qualClass, isDominantQuality,
-  sameChordSound, detectCapo,
+  sameChordSound, detectCapo, wheelTrail,
 } from "./theory.js";
 
 describe("parseChord", () => {
@@ -309,6 +309,33 @@ describe("CIRCLE_OF_FIFTHS", () => {
     expect(CIRCLE_OF_FIFTHS[1]).toBe(7);
     expect(CIRCLE_OF_FIFTHS).toHaveLength(12);
     expect(new Set(CIRCLE_OF_FIFTHS).size).toBe(12);
+  });
+});
+
+describe("wheelTrail", () => {
+  const prog = (...syms) => syms.map((s) => parseChord(s));
+  it("addresses majors on the outer ring, minors on the inner ring at their relative major's slot", () => {
+    const segs = wheelTrail(prog("C", "Am", "F", "G7"));
+    expect(segs).toEqual([
+      { from: { ring: "maj", slot: 0 }, to: { ring: "min", slot: 0 }, count: 1 },  // C -> Am (Am hangs under C)
+      { from: { ring: "min", slot: 0 }, to: { ring: "maj", slot: 11 }, count: 1 }, // Am -> F
+      { from: { ring: "maj", slot: 11 }, to: { ring: "maj", slot: 1 }, count: 1 }, // F -> G7 (7ths ride the majors)
+    ]);
+  });
+  it("collapses consecutive chords that share a node (C then C7 is one footprint)", () => {
+    expect(wheelTrail(prog("C", "C7", "Am"))).toHaveLength(1);
+  });
+  it("counts a walked-again path instead of duplicating it, and keeps direction", () => {
+    const segs = wheelTrail(prog("C", "F", "C", "F"));
+    expect(segs).toEqual([
+      { from: { ring: "maj", slot: 0 }, to: { ring: "maj", slot: 11 }, count: 2 },
+      { from: { ring: "maj", slot: 11 }, to: { ring: "maj", slot: 0 }, count: 1 },
+    ]);
+  });
+  it("is empty for empty, single-chord, or missing progressions", () => {
+    expect(wheelTrail([])).toEqual([]);
+    expect(wheelTrail(prog("C"))).toEqual([]);
+    expect(wheelTrail(null)).toEqual([]);
   });
 });
 

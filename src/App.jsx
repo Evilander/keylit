@@ -1088,7 +1088,7 @@ export default function App() {
                     <KeyWheel prog={view.prog} activeKey={activeKey} currentIdx={currentIdx}
                       onPickTonic={pickTonic} onAudition={auditionChords} />
                     <p style={{ color: C.faint, fontSize: 12, textAlign: "center", marginTop: 10 }}>
-                      C sits at noon, same as the printed chart. The dotted wedge wears your key — change key and watch it travel. Click any key to <b style={{ color: C.muted }}>hear it</b> and hand it the wedge; your song's chords stay lit by their job.
+                      C sits at noon, same as the printed chart. The dotted wedge wears your key — change key and watch it travel. Click any key to <b style={{ color: C.muted }}>hear it</b> and hand it the wedge; your song's chords stay lit by their job. The faint threads are the song's walk between them, worn deeper where it walks again.
                     </p>
                     <TheoryGuide activeKey={activeKey} onAudition={auditionChords} onGoWrite={() => setSection("write")} />
                     <WheelLesson activeKey={activeKey} onAudition={auditionChords}
