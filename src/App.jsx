@@ -338,8 +338,16 @@ export default function App() {
   const current = view.prog[currentIdx] || null;
   const shapeCurrent = readingView.prog[currentIdx] || null;
   const soundingCurrent = soundingView.prog[currentIdx] || null;
-  const activeKey = keyOverride || { tonic: view.detected.tonic, mode: view.detected.mode };
-  const soundingKey = { tonic: soundingView.detected.tonic, mode: soundingView.detected.mode };
+  // Stable identities: children memo on these (and useMemos key off them), so
+  // a fresh literal every render would silently defeat all of it.
+  const activeKey = useMemo(
+    () => keyOverride || { tonic: view.detected.tonic, mode: view.detected.mode },
+    [keyOverride, view.detected.tonic, view.detected.mode]
+  );
+  const soundingKey = useMemo(
+    () => ({ tonic: soundingView.detected.tonic, mode: soundingView.detected.mode }),
+    [soundingView.detected.tonic, soundingView.detected.mode]
+  );
   // activeKey + the chord-name dialect: for surfaces that DISPLAY chord symbols
   // (ChordLab). Key names and the tutor keep plain, key-aware spelling.
   const namedKey = useMemo(() => ({ ...activeKey, spelling: chartSpelling }),
@@ -798,6 +806,11 @@ export default function App() {
     const relMode = activeKey.mode === "major" ? "minor" : "major";
     return { acc, rel: `${spellPc(relTonic, { tonic: relTonic, mode: relMode })} ${relMode}` };
   }, [activeKey]);
+  const moves = useMemo(() => wheelMoves(activeKey), [activeKey]);
+  const pickTonic = useCallback(
+    (pc, m) => setKeyOverride({ tonic: pc, mode: m || activeKey.mode }),
+    [activeKey.mode]
+  );
 
   return (
     <div className="kl-app">
@@ -1073,19 +1086,18 @@ export default function App() {
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 24, marginTop: 18, alignItems: "start" }} className="bench-cols">
                   <div>
                     <KeyWheel prog={view.prog} activeKey={activeKey} currentIdx={currentIdx}
-                      onPickTonic={(pc, m) => setKeyOverride({ tonic: pc, mode: m || activeKey.mode })}
-                      onAudition={auditionChords} />
+                      onPickTonic={pickTonic} onAudition={auditionChords} />
                     <p style={{ color: C.faint, fontSize: 12, textAlign: "center", marginTop: 10 }}>
                       C sits at noon, same as the printed chart. The dotted wedge wears your key — change key and watch it travel. Click any key to <b style={{ color: C.muted }}>hear it</b> and hand it the wedge; your song's chords stay lit by their job.
                     </p>
                     <TheoryGuide activeKey={activeKey} onAudition={auditionChords} onGoWrite={() => setSection("write")} />
                     <WheelLesson activeKey={activeKey} onAudition={auditionChords}
-                      onPickTonic={(pc, m) => setKeyOverride({ tonic: pc, mode: m || activeKey.mode })}
+                      onPickTonic={pickTonic}
                       onDrill={() => { setPracticeTab("drills"); setSection("practice"); }} />
                   </div>
                   <div>
                     <div className="kl-eyebrow">Key of {keyName} · {keyFacts.acc}</div>
-                    {Object.entries(wheelMoves(activeKey)).map(([k, mv]) => (
+                    {Object.entries(moves).map(([k, mv]) => (
                       <div key={k} style={{ borderTop: `1px solid ${C.line}`, marginTop: 12, paddingTop: 12 }}>
                         <div className="flex items-center justify-between" style={{ gap: 8 }}>
                           <span style={{ fontFamily: DISPLAY, fontSize: 17, color: C.ink }}>{mv.title}</span>

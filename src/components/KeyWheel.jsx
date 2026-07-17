@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from "react";
+import React, { memo, useMemo, useRef } from "react";
 import { CIRCLE_OF_FIFTHS, harmonicFunction, qualClass, buildChord } from "../lib/theory.js";
 import { C, FUNCTION_FILL, MONO } from "../ui/theme.js";
 
@@ -16,7 +16,7 @@ const MIN = ["Am", "Em", "Bm", "F♯m", "C♯m", "G♯m", "D♯m", "B♭m", "Fm"
 
 const SPRING = "transform 560ms cubic-bezier(.22,1,.36,1)";
 
-export default function KeyWheel({ prog, activeKey, currentIdx, onPickTonic, onAudition }) {
+function KeyWheelBase({ prog, activeKey, currentIdx, onPickTonic, onAudition }) {
   const size = 252, cx = size / 2, cy = size / 2, rMaj = 88, rMin = 57, nMaj = 17, nMin = 13;
 
   const { presentMaj, presentMin } = useMemo(() => {
@@ -117,3 +117,5 @@ export default function KeyWheel({ prog, activeKey, currentIdx, onPickTonic, onA
     </svg>
   );
 }
+
+export default memo(KeyWheelBase);
