@@ -582,6 +582,34 @@ export function harmonicFunction(chord, tonic, mode = "major") {
   return "?";
 }
 
+// The song as a walk on the dial. Each chord lives at a node (majors on the
+// outer ring; minors on the inner ring, under their relative major), and the
+// progression in order is a path between nodes. Consecutive chords sharing a
+// node collapse to one footprint; a segment walked again counts up instead of
+// duplicating, and direction is kept (falling home ≠ leaving home).
+export function wheelTrail(prog) {
+  const addr = (ch) => {
+    const minor = qualClass(ch.quality) === "min";
+    const majPc = minor ? (ch.rootSemitone + 3) % 12 : ch.rootSemitone;
+    return { ring: minor ? "min" : "maj", slot: CIRCLE_OF_FIFTHS.indexOf(majPc) };
+  };
+  const seq = [];
+  for (const ch of prog || []) {
+    const a = addr(ch);
+    const last = seq[seq.length - 1];
+    if (!last || last.ring !== a.ring || last.slot !== a.slot) seq.push(a);
+  }
+  const segs = new Map();
+  for (let i = 1; i < seq.length; i++) {
+    const from = seq[i - 1], to = seq[i];
+    const key = `${from.ring}${from.slot}>${to.ring}${to.slot}`;
+    const seen = segs.get(key);
+    if (seen) seen.count += 1;
+    else segs.set(key, { from, to, count: 1 });
+  }
+  return [...segs.values()];
+}
+
 /* ---- key detection (weighted diatonic fit) ---- */
 // Krumhansl-Kessler key profiles — empirically-derived tonal hierarchies.
 export const KK_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
