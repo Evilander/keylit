@@ -1075,7 +1075,7 @@ export default function App() {
                       onPickTonic={(pc, m) => setKeyOverride({ tonic: pc, mode: m || activeKey.mode })}
                       onAudition={auditionChords} />
                     <p style={{ color: C.faint, fontSize: 12, textAlign: "center", marginTop: 10 }}>
-                      Your key rides at the top; the wedge holds the chords that always fit. Click any key to <b style={{ color: C.muted }}>hear it</b> and make it home — the wheel turns, your song's chords stay lit.
+                      C sits at noon, same as the printed chart. The dotted wedge wears your key — change key and watch it travel. Click any key to <b style={{ color: C.muted }}>hear it</b> and hand it the wedge; your song's chords stay lit by their job.
                     </p>
                     <TheoryGuide activeKey={activeKey} onAudition={auditionChords} onGoWrite={() => setSection("write")} />
                   </div>

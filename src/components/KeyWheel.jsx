@@ -1,18 +1,20 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef } from "react";
 import { CIRCLE_OF_FIFTHS, harmonicFunction, qualClass, buildChord } from "../lib/theory.js";
 import { C, FUNCTION_FILL, MONO } from "../ui/theme.js";
 
 /**
  * KeyWheel — the circle of fifths as an INSTRUMENT, not a diagram.
  *
- * The active key always sits at 12 o'clock: change key and the whole wheel
- * rotates under a fixed "home" wedge that covers the key, its two neighbors,
- * and their relative minors — the six chords (plus vii°) that always fit.
- * Clicking any node AUDITIONS that chord and recenters home onto it, so the
- * wheel is played, not read. Song chords glow by harmonic function.
+ * The dial is the printed chart: C at noon, sharps clockwise, flats counter —
+ * the letters never move. What moves is HOME: a dotted wedge that travels to
+ * the active key, so changing key visibly swings the wedge (and your song's
+ * lit chords) around the dial. Clicking any node AUDITIONS that chord and
+ * hands it the wedge. Song chords glow by harmonic function.
  */
 const MAJ = ["C", "G", "D", "A", "E", "B", "F♯", "D♭", "A♭", "E♭", "B♭", "F"];
 const MIN = ["Am", "Em", "Bm", "F♯m", "C♯m", "G♯m", "D♯m", "B♭m", "Fm", "Cm", "Gm", "Dm"];
+
+const SPRING = "transform 560ms cubic-bezier(.22,1,.36,1)";
 
 export default function KeyWheel({ prog, activeKey, currentIdx, onPickTonic, onAudition }) {
   const size = 252, cx = size / 2, cy = size / 2, rMaj = 88, rMin = 57, nMaj = 17, nMin = 13;
@@ -29,17 +31,32 @@ export default function KeyWheel({ prog, activeKey, currentIdx, onPickTonic, onA
   const currentPc = prog?.[currentIdx]?.rootSemitone;
   const currentIsMinor = prog?.[currentIdx] ? qualClass(prog[currentIdx].quality) === "min" : false;
 
-  // Rotate so the active key's slot is on top (minor keys pivot via relative major).
+  // The wedge travels to the active key's slot (minor keys via relative major).
   const homeMajPc = activeKey.mode === "minor" ? (activeKey.tonic + 3) % 12 : activeKey.tonic;
   const homeIdx = Math.max(0, CIRCLE_OF_FIFTHS.indexOf(homeMajPc));
 
-  // Fixed home wedge: an annulus sector over the top three slots.
+  // Continuous wedge angle: always swing the SHORT way (F→C is one step back,
+  // not eleven forward), so the ref accumulates signed deltas across renders.
+  const spin = useRef(null);
+  if (spin.current === null) spin.current = { idx: homeIdx, deg: homeIdx * 30 };
+  else if (spin.current.idx !== homeIdx) {
+    const cur = ((spin.current.deg % 360) + 360) % 360;
+    const delta = ((homeIdx * 30 - cur) % 360 + 540) % 360 - 180;
+    spin.current = { idx: homeIdx, deg: spin.current.deg + delta };
+  }
+  const wedgeDeg = spin.current.deg;
+
+  // Home wedge drawn at noon, then rotated onto the key: an annulus sector
+  // over the key, its two neighbors, and their relative minors.
+  const rO = rMaj + nMaj + 5, rI = rMin - nMin - 5;
   const wedge = useMemo(() => {
     const a0 = -Math.PI / 2 - Math.PI / 4, a1 = -Math.PI / 2 + Math.PI / 4;
-    const rO = rMaj + nMaj + 5, rI = rMin - nMin - 5;
     const p = (r, a) => `${cx + r * Math.cos(a)} ${cy + r * Math.sin(a)}`;
     return `M ${p(rO, a0)} A ${rO} ${rO} 0 0 1 ${p(rO, a1)} L ${p(rI, a1)} A ${rI} ${rI} 0 0 0 ${p(rI, a0)} Z`;
   }, []);
+  // HOME rides the wedge: the outer group orbits it, the inner counter-rotation
+  // (same spring, same clock) keeps the word upright the whole way around.
+  const homeX = cx, homeY = cy - rO - 15;
 
   const click = (pc, mode) => {
     onAudition?.(buildChord(pc, mode === "minor" ? "m" : "maj"));
@@ -48,18 +65,21 @@ export default function KeyWheel({ prog, activeKey, currentIdx, onPickTonic, onA
 
   return (
     <svg viewBox={`0 0 ${size} ${size}`} width="100%" role="img"
-      aria-label="circle of fifths — your key sits at the top; click any key to hear it and make it home"
-      style={{ display: "block", maxWidth: 440, margin: "0 auto" }}>
-      <path d={wedge} fill={`${C.tone}14`} stroke={`${C.toneUi}55`} strokeWidth={1} strokeDasharray="3 3" />
-      <text x={cx} y={cy - rMaj - nMaj - 10} textAnchor="middle" fontSize="8.5" fontWeight="700"
-        fill={C.toneText} style={{ fontFamily: "var(--kl-sans)", letterSpacing: "0.09em" }}>HOME</text>
+      aria-label="circle of fifths — C at the top like the printed chart; the dotted wedge travels to your key; click any key to hear it and make it home"
+      style={{ display: "block", maxWidth: 440, margin: "0 auto", overflow: "visible" }}>
+      <g style={{ transform: `rotate(${wedgeDeg}deg)`, transformOrigin: `${cx}px ${cy}px`, transition: SPRING }}>
+        <path d={wedge} fill={`${C.tone}14`} stroke={`${C.toneUi}55`} strokeWidth={1} strokeDasharray="3 3" />
+        <text x={homeX} y={homeY} textAnchor="middle" fontSize="8.5" fontWeight="700"
+          fill={C.toneText}
+          style={{ fontFamily: "var(--kl-sans)", letterSpacing: "0.09em",
+            transform: `rotate(${-wedgeDeg}deg)`, transformOrigin: `${homeX}px ${homeY}px`, transition: SPRING }}>HOME</text>
+      </g>
       <circle cx={cx} cy={cy} r={rMaj} fill="none" stroke={C.line} strokeWidth={1} />
       <circle cx={cx} cy={cy} r={rMin} fill="none" stroke={C.line} strokeWidth={1} strokeDasharray="2 3" />
 
       {CIRCLE_OF_FIFTHS.map((pc, i) => {
-        // Slot relative to home — home lands on top, everything else follows.
-        const slot = ((i - homeIdx) % 12 + 12) % 12;
-        const angle = (slot / 12) * 2 * Math.PI - Math.PI / 2;
+        // Fixed dial: node i lives at slot i forever; only the wedge moves.
+        const angle = (i / 12) * 2 * Math.PI - Math.PI / 2;
         const majPc = pc, minPc = (pc + 9) % 12;
         const [mx, my] = [cx + rMaj * Math.cos(angle), cy + rMaj * Math.sin(angle)];
         const [ix, iy] = [cx + rMin * Math.cos(angle), cy + rMin * Math.sin(angle)];
@@ -70,13 +90,10 @@ export default function KeyWheel({ prog, activeKey, currentIdx, onPickTonic, onA
         const minInfo = presentMin.get(minPc);
         const majFill = majTonic ? C.tone : majInfo ? FUNCTION_FILL[majInfo.func] : C.panel;
         const minFill = minTonic ? C.tone : minInfo ? FUNCTION_FILL[minInfo.func] : C.panel2;
-        // Nodes animate to their new slot when the key changes (reduced-motion
-        // kills transitions globally, so the wheel just snaps there).
-        const move = { transition: "transform 560ms cubic-bezier(.22,1,.36,1)" };
 
         return (
           <g key={i}>
-            <g style={{ ...move, transform: `translate(${mx}px, ${my}px)` }}
+            <g style={{ transform: `translate(${mx}px, ${my}px)` }}
               onClick={() => click(majPc, "major")} cursor="pointer"
               role="button" aria-label={`hear ${MAJ[i]} major and make it home`}>
               {majPc === currentPc && !currentIsMinor && <circle r={nMaj + 4} fill="none" stroke={C.toneUi} strokeWidth={2} />}
@@ -85,7 +102,7 @@ export default function KeyWheel({ prog, activeKey, currentIdx, onPickTonic, onA
               <text y={4} textAnchor="middle" fontSize="12" fontWeight={majTonic ? 800 : 600}
                 fill={majTonic || majInfo ? "#1c1305" : C.ink} style={{ fontFamily: MONO, pointerEvents: "none" }}>{MAJ[i]}</text>
             </g>
-            <g style={{ ...move, transform: `translate(${ix}px, ${iy}px)` }}
+            <g style={{ transform: `translate(${ix}px, ${iy}px)` }}
               onClick={() => click(minPc, "minor")} cursor="pointer"
               role="button" aria-label={`hear ${MIN[i]} and make it home`}>
               {minPc === currentPc && currentIsMinor && <circle r={nMin + 3.5} fill="none" stroke={C.toneUi} strokeWidth={2} />}

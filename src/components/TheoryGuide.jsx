@@ -27,8 +27,8 @@ export default function TheoryGuide({ activeKey, onAudition, onGoWrite }) {
       hear: { label: "hear home, then next door", chords: [maj(tonic), maj(tonic + 7)] },
     },
     {
-      title: "Your home sits at the top",
-      body: "The wheel turns so your song's key always rides at 12 o'clock. The dotted wedge covers the six chords that always fit your key — that's why your hands keep finding the same shapes: they live in the wedge.",
+      title: "The wedge wears your key",
+      body: "The dial never moves — C at noon, sharps clockwise, flats counter, same as every printed chart. Your song's key wears the dotted wedge, and when the key changes the wedge travels to it. The six chords under the wedge always fit — that's why your hands keep finding the same shapes: they live in the wedge.",
       hear: { label: "hear the wedge's pillars (1, 4, 5)", chords: [maj(tonic), maj(tonic + 5), maj(tonic + 7)] },
     },
     {
