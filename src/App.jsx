@@ -27,6 +27,7 @@ import MeterFeel from "./components/MeterFeel.jsx";
 import PedalLab from "./components/PedalLab.jsx";
 import ChordLab from "./components/ChordLab.jsx";
 import KeyWheel from "./components/KeyWheel.jsx";
+import WheelLesson from "./components/WheelLesson.jsx";
 import CapoTuning from "./components/CapoTuning.jsx";
 import WriteDesk from "./components/WriteDesk.jsx";
 import ImportModal from "./components/ImportModal.jsx";
@@ -1078,6 +1079,9 @@ export default function App() {
                       C sits at noon, same as the printed chart. The dotted wedge wears your key — change key and watch it travel. Click any key to <b style={{ color: C.muted }}>hear it</b> and hand it the wedge; your song's chords stay lit by their job.
                     </p>
                     <TheoryGuide activeKey={activeKey} onAudition={auditionChords} onGoWrite={() => setSection("write")} />
+                    <WheelLesson activeKey={activeKey} onAudition={auditionChords}
+                      onPickTonic={(pc, m) => setKeyOverride({ tonic: pc, mode: m || activeKey.mode })}
+                      onDrill={() => { setPracticeTab("drills"); setSection("practice"); }} />
                   </div>
                   <div>
                     <div className="kl-eyebrow">Key of {keyName} · {keyFacts.acc}</div>
