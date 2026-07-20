@@ -2,16 +2,15 @@
 // sheets always retuned freely off the dropdown; a TAB's fret numbers were
 // welded to the tuning it was written in. Now, when the guitar in your hands
 // differs from the tab's source tuning/capo, App re-frets the tab for YOUR
-// setup (lib/retab.js) and the chart below shows it automatically. This strip
-// sits over that chart and does two jobs: it names every compromise out loud
-// (octave-rescued and dropped pitches are counted, never hidden), and it lets
-// you flip back to the original transcription — the re-fret is never
-// destructive. Renders nothing when your guitar already matches the source.
+// setup (lib/retab.js) and the chart below shows it automatically. This status
+// strip names every compromise out loud (octave-rescued and dropped pitches
+// are counted, never hidden). Renders nothing when your guitar already matches
+// the source.
 import { useEffect, useState } from "react";
 import { Guitar, Copy, Save, Check } from "lucide-react";
 import { C } from "../ui/theme.js";
 
-export default function RetabPanel({ retab, asWritten, onToggle, onKeep, loaded }) {
+export default function RetabPanel({ retab, onKeep, loaded }) {
   const [copied, setCopied] = useState(false);
   const [kept, setKept] = useState(false);
   // The panel never unmounts across song loads inside the Song room (setlist
@@ -39,13 +38,6 @@ export default function RetabPanel({ retab, asWritten, onToggle, onKeep, loaded 
     setKept(true);
   };
 
-  const seg = (active) => ({
-    padding: "5px 11px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-    border: 0, borderRadius: 8, transition: "background 140ms ease, color 140ms ease",
-    background: active ? C.ink : "transparent",
-    color: active ? "var(--kl-on-ink)" : C.muted,
-  });
-
   return (
     <section style={{
       marginBottom: 14, padding: "11px 13px", borderRadius: 12,
@@ -56,17 +48,6 @@ export default function RetabPanel({ retab, asWritten, onToggle, onKeep, loaded 
         <span className="kl-eyebrow">Tab re-fretted</span>
         <span style={{ fontSize: 12.5, color: C.faint }}>
           written for {srcLabel} — playable on your {dstLabel}
-        </span>
-
-        {/* segmented toggle: what the chart below is showing */}
-        <span style={{
-          marginLeft: "auto", display: "inline-flex", gap: 2, padding: 2,
-          borderRadius: 10, background: C.panel, border: `1px solid ${C.line}`,
-        }}>
-          <button style={seg(!asWritten)} onClick={() => asWritten && onToggle?.()}
-            aria-pressed={!asWritten}>Re-fretted</button>
-          <button style={seg(asWritten)} onClick={() => !asWritten && onToggle?.()}
-            aria-pressed={asWritten}>As written</button>
         </span>
       </div>
 
