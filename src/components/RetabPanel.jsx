@@ -10,6 +10,10 @@ import { useEffect, useState } from "react";
 import { Guitar, Copy, Save, Check } from "lucide-react";
 import { C } from "../ui/theme.js";
 
+export function retabForCurrentSheet(retab, deferredSheet, currentSheet) {
+  return retab && deferredSheet === currentSheet ? retab : null;
+}
+
 export default function RetabPanel({ retab, onKeep, loaded }) {
   const [copied, setCopied] = useState(false);
   const [kept, setKept] = useState(false);
