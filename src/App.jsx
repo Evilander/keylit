@@ -313,10 +313,7 @@ export default function App() {
   // a tab's fret numbers were welded to the tuning they were written in. When
   // the guitar in your hands differs from the tab's source tuning/capo, re-fret
   // the tab for YOUR setup (lib/retab.js) so the whole chart follows the
-  // dropdown, not just the chords. Non-destructive: `tabAsWritten` flips back
-  // to the original transcription, and the badge names every compromise.
-  const [tabAsWritten, setTabAsWritten] = useState(false);
-  useEffect(() => { setTabAsWritten(false); }, [sheet]);
+  // tuning/capo controls automatically, and the badge names every compromise.
   // Deferred: the beam search must not run synchronously per keystroke while
   // someone edits a pasted tab — React catches the memo up when typing rests.
   const retabSheet = useDeferredValue(sheet);
@@ -331,9 +328,10 @@ export default function App() {
   }, [retabSheet, loaded, guitarTuning, capoShift, effectiveCapo]);
   // While the deferred value lags a fresh edit, show the live sheet — never a
   // re-fret of TEXT the user has already changed.
-  const displaySheet = retab && !tabAsWritten && retabSheet === sheet ? retab.text : sheet;
-  const retabTag = retab && !tabAsWritten && retabSheet === sheet
-    ? `re-fretted for ${retab.dst.name}${retab.dstCapo ? ` capo ${retab.dstCapo}` : ""}` : null;
+  const displaySheet = retab && retabSheet === sheet ? retab.text : sheet;
+  const retabTag = retab && retabSheet === sheet
+    ? `re-fretted for ${retab.dst.name}${retab.dstCapo ? ` capo ${retab.dstCapo}` : ""}`
+    : null;
 
   const current = view.prog[currentIdx] || null;
   const shapeCurrent = readingView.prog[currentIdx] || null;
@@ -946,8 +944,7 @@ export default function App() {
                 strumTuning={guitarLens.strumTuning} strumCapo={guitarLens.strumCapo}
                 onStrum={strumNotes} />
               <section style={{ marginTop: 18 }}>
-                <RetabPanel retab={retab} asWritten={tabAsWritten}
-                  onToggle={() => setTabAsWritten((v) => !v)} loaded={loaded}
+                <RetabPanel retab={retab} loaded={loaded}
                   onKeep={(body, meta) => {
                     const built = buildUserSong({
                       artist: meta.artist || "", title: meta.title || "Untitled",
