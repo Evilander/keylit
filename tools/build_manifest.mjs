@@ -37,8 +37,10 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "publ
 // what lands on disk (a stray scraper kept re-adding Duster). "Palace" alone
 // is the London indie band, NOT Will Oldham (Palace Brothers / Palace Music
 // are his and stay) — owner asked it out, 2026-07-05.
-const EXCLUDE_ARTISTS = new Set(["Duster", "Damien Jurado", "Palace", "Richard Buckner", "Bill Fay"]);
-const EXCLUDE_ID = /^(duster|damien-jurado|palace|richard-buckner|bill-fay)--/;
+const EXCLUDE_ARTISTS = new Set([
+  "Duster", "Damien Jurado", "Palace", "Richard Buckner", "Bill Fay", "Avey Tare",
+]);
+const EXCLUDE_ID = /^(duster|damien-jurado|palace|richard-buckner|bill-fay|avey-tare)--/;
 
 const FIX = {
   "R.E.M.": "R.E.M.", // all-caps normalizer would render it "R.e.m."
