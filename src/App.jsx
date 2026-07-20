@@ -50,7 +50,7 @@ import TensionStrip from "./components/TensionStrip.jsx";
 import TheoryGuide from "./components/TheoryGuide.jsx";
 import VoiceRoom from "./components/VoiceRoom.jsx";
 import MirrorPanel from "./components/MirrorPanel.jsx";
-import RetabPanel from "./components/RetabPanel.jsx";
+import RetabPanel, { retabForCurrentSheet } from "./components/RetabPanel.jsx";
 import TabHomes from "./components/TabHomes.jsx";
 import { swapTabBlocks } from "./lib/retab.js";
 import { hasTab } from "./lib/tab.js";
@@ -328,9 +328,10 @@ export default function App() {
   }, [retabSheet, loaded, guitarTuning, capoShift, effectiveCapo]);
   // While the deferred value lags a fresh edit, show the live sheet — never a
   // re-fret of TEXT the user has already changed.
-  const displaySheet = retab && retabSheet === sheet ? retab.text : sheet;
-  const retabTag = retab && retabSheet === sheet
-    ? `re-fretted for ${retab.dst.name}${retab.dstCapo ? ` capo ${retab.dstCapo}` : ""}`
+  const currentRetab = retabForCurrentSheet(retab, retabSheet, sheet);
+  const displaySheet = currentRetab ? currentRetab.text : sheet;
+  const retabTag = currentRetab
+    ? `re-fretted for ${currentRetab.dst.name}${currentRetab.dstCapo ? ` capo ${currentRetab.dstCapo}` : ""}`
     : null;
 
   const current = view.prog[currentIdx] || null;
@@ -944,7 +945,7 @@ export default function App() {
                 strumTuning={guitarLens.strumTuning} strumCapo={guitarLens.strumCapo}
                 onStrum={strumNotes} />
               <section style={{ marginTop: 18 }}>
-                <RetabPanel retab={retab} loaded={loaded}
+                <RetabPanel retab={currentRetab} loaded={loaded}
                   onKeep={(body, meta) => {
                     const built = buildUserSong({
                       artist: meta.artist || "", title: meta.title || "Untitled",
