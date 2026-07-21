@@ -1,8 +1,9 @@
 // api/analyze.js — Keylit AI proxy (Vercel-style Node serverless function).
 //
-// Holds the Anthropic API key server-side and exposes two tasks:
+// Holds the Anthropic API key server-side and exposes three tasks:
 //   task: "analyze" — harmony read of a chord sheet (back-compat with v0.2 UI)
 //   task: "reharm"  — context-aware "interesting chord moves" for a progression
+//   task: "compose" — whole-progression ideas, verified by offline client theory
 //
 // Deploy on Vercel (drop this file under /api), Cloudflare (adapt the handler),
 // or run locally with `node server.mjs` (see that file). Set ANTHROPIC_API_KEY.
@@ -37,6 +38,14 @@ Hard rules:
 - Tie each suggestion to the actual chords by index. "replace" swaps one chord; "insertBefore"/"insertAfter" add chord(s) around the indexed chord.
 - Keep it to 4-7 suggestions, ranked best-first. Explain WHY each works in one plain sentence a beginner understands.
 - "boldness" is 0 (very safe) to 1 (adventurous). "function" is one of T, S, D, or "color".`;
+
+const COMPOSE_SYSTEM = `You are a songwriting idea generator. Propose concise chord-sequence ideas for the requested intent while preserving the supplied song context.
+
+Hard rules:
+- Return proposals only. Never claim, label, or assign music-theory evidence; Keylit verifies every idea independently with its offline theory engine.
+- Every chord symbol MUST use this exact vocabulary for the quality part: ${QUALITY_VOCAB.map((q) => `"${q || "(major triad)"}"`).join(", ")}. Root names use sharps (C, C#, D, ... B). Slash chords use "ROOT/BASS".
+- Use the requested intent on every idea. Use insertAfter for next and turnaround, insertBefore for lead-in and between, and newSection for contrast.
+- Suggest at most 8 ideas, with at most 8 chord symbols per idea. The rationale is optional creative context, not verified analysis.`;
 
 const REHARM_SCHEMA = {
   type: "object",
@@ -84,6 +93,66 @@ const ANALYZE_SCHEMA = {
   },
 };
 
+const COMPOSE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["ideas"],
+  properties: {
+    ideas: {
+      type: "array",
+      maxItems: 8,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["intent", "kind", "symbols", "rationale"],
+        properties: {
+          intent: {
+            type: "string",
+            enum: ["next", "lead-in", "between", "turnaround", "contrast"],
+          },
+          kind: {
+            type: "string",
+            enum: ["insertBefore", "insertAfter", "replace", "newSection"],
+          },
+          symbols: {
+            type: "array",
+            minItems: 1,
+            maxItems: 8,
+            items: { type: "string", maxLength: 64 },
+          },
+          rationale: { type: "string", maxLength: 500 },
+        },
+      },
+    },
+  },
+};
+
+const COMPOSE_INTENTS = new Set(["next", "lead-in", "between", "turnaround", "contrast"]);
+
+function cappedStrings(value, maxItems) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, maxItems)
+    .filter((item) => typeof item === "string")
+    .map((item) => item.trim().slice(0, 64))
+    .filter(Boolean);
+}
+
+function composeContext(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out = {};
+  for (const key of ["selected", "previous", "next", "target", "opening", "closing"]) {
+    if (typeof value[key] === "string" && value[key].trim()) {
+      out[key] = value[key].trim().slice(0, 64);
+    }
+  }
+  for (const key of ["before", "after", "section", "chords"]) {
+    const symbols = cappedStrings(value[key], 8);
+    if (symbols.length) out[key] = symbols;
+  }
+  return out;
+}
+
 function readBody(req) {
   if (req.body) return Promise.resolve(typeof req.body === "string" ? JSON.parse(req.body) : req.body);
   return new Promise((resolve, reject) => {
@@ -114,6 +183,28 @@ export default async function handler(req, res) {
   const task = body.task || "analyze";
 
   try {
+    if (task === "compose") {
+      const intent = typeof body.intent === "string" ? body.intent : "";
+      if (!COMPOSE_INTENTS.has(intent)) {
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ error: "invalid compose intent" }));
+      }
+      const progression = cappedStrings(body.progression, 256);
+      const key = String(body.key || "C major").trim().slice(0, 80) || "C major";
+      const context = composeContext(body.context);
+      const numbered = progression.map((symbol, index) => `${index}: ${symbol}`).join("\n");
+      const userText = [
+        `Requested intent: ${intent}`,
+        `Key/mode: ${key}`,
+        `Selected chord context: ${JSON.stringify(context)}`,
+        `Complete current progression (index: chord):\n${numbered || "(empty)"}`,
+        "Propose whole-progression ideas using only the proposal fields in the schema.",
+      ].join("\n\n");
+      const data = await callJSON(client, COMPOSE_SYSTEM, userText, COMPOSE_SCHEMA);
+      res.statusCode = 200;
+      return res.end(JSON.stringify(data));
+    }
+
     if (task === "reharm") {
       const { progression = [], key = "C major", style = "any" } = body;
       const numbered = progression.map((c, i) => `${i}: ${c}`).join("\n");
@@ -147,4 +238,10 @@ async function callJSON(client, system, userText, schema) {
 }
 
 // Exported for the local dev server and tests.
-export { REHARM_SCHEMA, ANALYZE_SCHEMA, QUALITY_VOCAB, MODEL };
+export {
+  REHARM_SCHEMA,
+  ANALYZE_SCHEMA,
+  COMPOSE_SCHEMA,
+  QUALITY_VOCAB,
+  MODEL,
+};
