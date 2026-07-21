@@ -12,6 +12,8 @@ function fakeBackend(seed = {}) {
 }
 
 describe("Write draft book", () => {
+  const draft = (id, input = {}) => createDraft({ id, name: id, ...input });
+
   it("upserts v2 drafts by stable id and permits repeated names", () => {
     const be = fakeBackend();
     const book = createDraftBook(be);
@@ -50,6 +52,90 @@ describe("Write draft book", () => {
       ] }),
     });
     expect(createDraftBook(be).list()).toEqual([]);
+  });
+
+  it("falls back from partial browser storage without aliasing v2 and v1 keys", () => {
+    const partialStorage = { getItem: () => { throw new Error("must not be used"); } };
+    const book = createDraftBook(null, partialStorage);
+    book.save(draft("fallback"));
+    expect(book.list().map((item) => item.id)).toEqual(["fallback"]);
+    expect(book.legacy()).toEqual([]);
+  });
+
+  it("rejects a v2 envelope with duplicate valid draft IDs", () => {
+    const first = draft("same", { savedAt: 1 });
+    const second = draft("same", { savedAt: 2 });
+    const be = fakeBackend({
+      "keylit.write.drafts.v2": JSON.stringify({ version: 2, drafts: [first, second] }),
+    });
+    expect(createDraftBook(be).list()).toEqual([]);
+  });
+
+  it("writes the exact v2 envelope", () => {
+    const be = fakeBackend();
+    const saved = draft("exact", { savedAt: 4 });
+    createDraftBook(be).save(saved);
+    expect(JSON.parse(be.snapshot()["keylit.write.drafts.v2"])).toEqual({ version: 2, drafts: [saved] });
+  });
+
+  it("rejects valid JSON with the wrong envelope version", () => {
+    const be = fakeBackend({
+      "keylit.write.drafts.v2": JSON.stringify({ version: 1, drafts: [draft("old")] }),
+    });
+    expect(createDraftBook(be).list()).toEqual([]);
+  });
+
+  it("filters persisted drafts with malformed keys or sections", () => {
+    const valid = draft("good");
+    const be = fakeBackend({
+      "keylit.write.drafts.v2": JSON.stringify({ version: 2, drafts: [
+        { ...draft("bad-key"), key: { tonic: 12, mode: "major" } },
+        { ...draft("bad-sections"), sections: "not an array" },
+        valid,
+      ] }),
+    });
+    expect(createDraftBook(be).list()).toEqual([valid]);
+  });
+
+  it("rejects invalid saves without writing", () => {
+    const be = fakeBackend();
+    const invalid = { ...draft("invalid"), key: { tonic: 12, mode: "major" } };
+    const book = createDraftBook(be);
+    expect(() => book.save(invalid)).toThrow("Invalid Write draft");
+    expect(be.snapshot()).toEqual({});
+  });
+
+  it("lists drafts newest-first by savedAt", () => {
+    const be = fakeBackend();
+    const book = createDraftBook(be);
+    book.save(draft("old", { savedAt: 1 }));
+    book.save(draft("new", { savedAt: 2 }));
+    expect(book.list().map((item) => item.id)).toEqual(["new", "old"]);
+  });
+
+  it("returns null for a missing draft ID", () => {
+    const book = createDraftBook(fakeBackend());
+    expect(book.get("missing")).toBeNull();
+  });
+
+  it("removes drafts by ID", () => {
+    const book = createDraftBook(fakeBackend());
+    book.save(draft("old", { savedAt: 1 }));
+    book.save(draft("new", { savedAt: 2 }));
+    book.remove("new");
+    expect(book.list().map((item) => item.id)).toEqual(["old"]);
+  });
+
+  it("rejects envelopes with unexpected own top-level keys but accepts the exact keys in either order", () => {
+    const stored = draft("stored");
+    const extra = fakeBackend({
+      "keylit.write.drafts.v2": JSON.stringify({ drafts: [stored], version: 2, extra: true }),
+    });
+    const reordered = fakeBackend({
+      "keylit.write.drafts.v2": JSON.stringify({ drafts: [stored], version: 2 }),
+    });
+    expect(createDraftBook(extra).list()).toEqual([]);
+    expect(createDraftBook(reordered).list()).toEqual([stored]);
   });
 });
 

@@ -7,12 +7,22 @@ import { createDraft, validateDraft } from "./lib/composition.js";
 const KEY = "keylit.songs.v1";
 
 function memoryBackend() {
-  let store = "";
-  return { getItem: () => store, setItem: (_k, v) => { store = v; } };
+  const store = new Map();
+  return {
+    getItem: (key) => store.get(key) ?? "",
+    setItem: (key, value) => store.set(key, value),
+  };
+}
+
+function selectBackend(backend, storage = typeof localStorage !== "undefined" ? localStorage : null) {
+  if (backend) return backend;
+  return storage && typeof storage.getItem === "function" && typeof storage.setItem === "function"
+    ? storage
+    : memoryBackend();
 }
 
 export function createLibrary(backend) {
-  const be = backend || (typeof localStorage !== "undefined" ? localStorage : memoryBackend());
+  const be = selectBackend(backend);
 
   const read = () => {
     try { return JSON.parse(be.getItem(KEY) || "[]"); } catch { return []; }
@@ -41,14 +51,23 @@ export const library = createLibrary();
 
 const DRAFT_KEY = "keylit.write.drafts.v2";
 
-export function createDraftBook(backend) {
-  const be = backend || (typeof localStorage !== "undefined" ? localStorage : memoryBackend());
+function isDraftEnvelope(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length === 2 && keys.includes("version") && keys.includes("drafts")
+    && value.version === 2 && Array.isArray(value.drafts);
+}
+
+export function createDraftBook(backend, storage) {
+  const be = selectBackend(backend, storage);
   const read = () => {
     try {
       const raw = JSON.parse(be.getItem(DRAFT_KEY) || "{}");
-      return raw?.version === 2 && Array.isArray(raw.drafts)
-        ? raw.drafts.filter((draft) => validateDraft(draft).ok).map((draft) => createDraft(draft))
-        : [];
+      if (!isDraftEnvelope(raw)) return [];
+      const drafts = raw.drafts.filter((draft) => validateDraft(draft).ok);
+      // Duplicate draft identities make the persisted collection ambiguous.
+      if (new Set(drafts.map((draft) => draft.id)).size !== drafts.length) return [];
+      return drafts.map((draft) => createDraft(draft));
     } catch { return []; }
   };
   const write = (drafts) => be.setItem(DRAFT_KEY, JSON.stringify({ version: 2, drafts }));
@@ -76,7 +95,7 @@ export const draftBook = createDraftBook();
 const USER_KEY = "keylit.usersongs.v1";
 
 export function createUserSongbook(backend) {
-  const be = backend || (typeof localStorage !== "undefined" ? localStorage : memoryBackend());
+  const be = selectBackend(backend);
   const read = () => {
     try { return JSON.parse(be.getItem(USER_KEY) || "[]"); } catch { return []; }
   };
@@ -107,7 +126,7 @@ const BENCH_KEY = "keylit.bench.v1";
 const LOG_CAP = 500;
 
 export function createBenchBook(backend) {
-  const be = backend || (typeof localStorage !== "undefined" ? localStorage : memoryBackend());
+  const be = selectBackend(backend);
   const read = () => {
     try {
       const v = JSON.parse(be.getItem(BENCH_KEY) || "{}");
