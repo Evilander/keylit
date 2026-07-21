@@ -103,4 +103,101 @@ describe("composition draft", () => {
     expect(reset.history).toEqual([]);
     expect(reset.revision).toBe(5);
   });
+
+  it("fails closed instead of throwing for malformed section containers", () => {
+    const malformed = { ...draft(), sections: {} };
+    const session = { draft: draft(), selection: null, history: [], revision: 2 };
+    expect(() => validateDraft(malformed)).not.toThrow();
+    expect(validateDraft(malformed).ok).toBe(false);
+    expect(applyCompositionOp(malformed, { type: "draft/name", name: "Nope" }, { makeId: ids })).toBe(malformed);
+    expect(replaceDraftInSession(session, malformed, { historyMode: "push" })).toBe(session);
+  });
+
+  it("requires canonical string IDs and detects canonical duplicate values", () => {
+    const numeric = { ...draft(), sections: [{ ...draft().sections[0], id: 3 }] };
+    expect(validateDraft(numeric).ok).toBe(false);
+    const whitespaceDuplicate = {
+      ...draft(),
+      sections: [
+        { ...draft().sections[0], id: "verse" },
+        { id: " verse ", name: "Chorus", chords: [] },
+      ],
+    };
+    const result = validateDraft(whitespaceDuplicate);
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain("duplicate id verse");
+  });
+
+  it("honors explicit duplicate and new-section IDs while collisions fail closed", () => {
+    const makeIds = () => { let n = 0; return () => `made-${++n}`; };
+    const sectionOp = { type: "section/duplicate", sectionId: "verse", id: "chorus" };
+    const once = applyCompositionOp(draft(), sectionOp, { makeId: makeIds() });
+    const replay = applyCompositionOp(draft(), sectionOp, { makeId: makeIds() });
+    expect(once).toEqual(replay);
+    expect(once.sections[1].id).toBe("chorus");
+    expect(new Set(once.sections.flatMap((section) => [section.id, ...section.chords.map((slot) => slot.id)])).size)
+      .toBe(2 + once.sections.reduce((total, section) => total + section.chords.length, 0));
+
+    const chordDuplicate = applyCompositionOp(draft(), {
+      type: "chord/duplicate", sectionId: "verse", chordId: "c3", id: "f-copy",
+    }, { makeId: makeIds() });
+    expect(chordDuplicate.sections[0].chords[3]).toMatchObject({ id: "f-copy", symbol: "F" });
+
+    const newSectionOp = {
+      type: "suggestion/apply", sectionId: "verse", kind: "newSection", id: "bridge", symbols: ["Am", "E7"],
+    };
+    const newSection = applyCompositionOp(draft(), newSectionOp, { makeId: makeIds() });
+    expect(newSection).toEqual(applyCompositionOp(draft(), newSectionOp, { makeId: makeIds() }));
+    expect(newSection.sections.at(-1)).toMatchObject({ id: "bridge", chords: [{ symbol: "Am" }, { symbol: "E7" }] });
+    expect(newSection.sections.at(-1).chords.map((slot) => slot.id)).toEqual(["made-1", "made-2"]);
+
+    const before = draft();
+    expect(applyCompositionOp(before, { ...sectionOp, id: "verse" }, { makeId: makeIds() })).toBe(before);
+    expect(applyCompositionOp(before, { type: "chord/duplicate", sectionId: "verse", chordId: "c1", id: "c1" }, { makeId: makeIds() })).toBe(before);
+    expect(applyCompositionOp(before, { type: "suggestion/apply", sectionId: "verse", kind: "newSection", id: "verse", symbols: ["Am"] }, { makeId: makeIds() })).toBe(before);
+  });
+
+  it("rejects malformed suggestion operations before minting or editing", () => {
+    const before = draft();
+    const minted = [];
+    const makeId = (prefix) => { minted.push(prefix); return `new-${minted.length}`; };
+    expect(applyCompositionOp(before, {
+      type: "suggestion/apply", sectionId: "verse", kind: "unknown", gapIndex: 1, symbols: ["Dm"],
+    }, { makeId })).toBe(before);
+    expect(applyCompositionOp(before, {
+      type: "suggestion/apply", sectionId: "verse", targetId: "c2", kind: "replace", symbols: [],
+    }, { makeId })).toBe(before);
+    expect(minted).toEqual([]);
+  });
+
+  it("keeps invalid source slots so validation can reject the source draft", () => {
+    const invalid = createDraft({
+      id: "invalid", name: "Invalid", sections: [{ id: "verse", name: "Verse", chords: [
+        { id: "bad", symbol: " H13 " }, { id: "good", symbol: "C" },
+      ] }],
+    });
+    expect(invalid.sections[0].chords).toEqual([{ id: "bad", symbol: "H13" }, { id: "good", symbol: "C" }]);
+    expect(validateDraft(invalid).ok).toBe(false);
+  });
+
+  it("keeps slash basses, suggestion pitch inversion, invalid identity, and base/lab choices aligned", () => {
+    const slash = createDraft({
+      id: "slash", name: "Slash", key: { tonic: 0, mode: "major" },
+      sections: [{ id: "verse", name: "Verse", chords: [{ id: "c", symbol: "C/E" }] }],
+    });
+    const moved = applyCompositionOp(slash, { type: "draft/key", key: { tonic: 2, mode: "major" } }, { makeId: ids });
+    expect(moved.sections[0].chords[0].symbol).toBe("D/F#");
+    expect(suggestionToCompositionOp({
+      suggestion: { kind: "replace", chords: [parseChord("D"), parseChord("A7")] },
+      sectionId: "verse", targetSlotId: "c2", transpose: 2,
+    })).toEqual({
+      type: "suggestion/apply", sectionId: "verse", targetId: "c2", kind: "replace", symbols: ["C", "G7"],
+    });
+    const before = draft();
+    expect(applyCompositionOp(before, { type: "chord/move", sectionId: "verse", chordId: "missing", toIndex: 1 }, { makeId: ids })).toBe(before);
+    const baseProg = [parseChord("C")];
+    const labProg = [parseChord("F#")];
+    expect(deriveActiveDocument({ baseSheet: "C", baseProg })).toMatchObject({ source: "base", sheet: "C", progression: baseProg });
+    expect(deriveActiveDocument({ baseSheet: "C", baseProg, labProg })).toMatchObject({ source: "lab", sheet: "C", progression: labProg });
+  });
 });
