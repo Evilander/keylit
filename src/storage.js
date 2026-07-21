@@ -176,6 +176,10 @@ export function createBenchBook(backend, { makeId = defaultId, now = Date.now } 
     replace(state) {
       write(state);
     },
+    /** Alias for import callers; both paths normalize before the v2 write. */
+    restore(state) {
+      write(state);
+    },
     setlists() { return read().setlists; },
     createSetlist(name) {
       const st = read();
