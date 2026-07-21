@@ -2,6 +2,8 @@
 // purpose: lib/ is pure, this touches a browser API. A song is { id, name,
 // sheet, savedAt }. Inject a backend (Map-like) for tests.
 
+import { createDraft, validateDraft } from "./lib/composition.js";
+
 const KEY = "keylit.songs.v1";
 
 function memoryBackend() {
@@ -36,6 +38,39 @@ export function createLibrary(backend) {
 
 // Default app-wide library (localStorage in the browser).
 export const library = createLibrary();
+
+const DRAFT_KEY = "keylit.write.drafts.v2";
+
+export function createDraftBook(backend) {
+  const be = backend || (typeof localStorage !== "undefined" ? localStorage : memoryBackend());
+  const read = () => {
+    try {
+      const raw = JSON.parse(be.getItem(DRAFT_KEY) || "{}");
+      return raw?.version === 2 && Array.isArray(raw.drafts)
+        ? raw.drafts.filter((draft) => validateDraft(draft).ok).map((draft) => createDraft(draft))
+        : [];
+    } catch { return []; }
+  };
+  const write = (drafts) => be.setItem(DRAFT_KEY, JSON.stringify({ version: 2, drafts }));
+
+  return {
+    list: () => read().slice().sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0)),
+    get: (id) => read().find((draft) => draft.id === id) || null,
+    save(draft) {
+      if (!validateDraft(draft).ok) throw new Error("Invalid Write draft");
+      const drafts = read();
+      const next = drafts.some((item) => item.id === draft.id)
+        ? drafts.map((item) => item.id === draft.id ? draft : item)
+        : drafts.concat(draft);
+      write(next);
+      return draft;
+    },
+    remove(id) { write(read().filter((draft) => draft.id !== id)); },
+    legacy() { return createLibrary(be).list(); },
+  };
+}
+
+export const draftBook = createDraftBook();
 
 /* ---- the user songbook: full corpus-shaped records for the Library ------ */
 const USER_KEY = "keylit.usersongs.v1";

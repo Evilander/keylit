@@ -1,10 +1,57 @@
 import { describe, it, expect } from "vitest";
-import { createLibrary, createBenchBook } from "./storage.js";
+import { createDraftBook, createLibrary, createBenchBook } from "./storage.js";
+import { adaptLegacySketch, createDraft } from "./lib/composition.js";
 
-function fakeBackend() {
-  let v = "";
-  return { getItem: () => v, setItem: (_k, val) => { v = val; } };
+function fakeBackend(seed = {}) {
+  const data = new Map(Object.entries(seed));
+  return {
+    getItem: (key) => data.get(key) ?? "",
+    setItem: (key, value) => data.set(key, value),
+    snapshot: () => Object.fromEntries(data),
+  };
 }
+
+describe("Write draft book", () => {
+  it("upserts v2 drafts by stable id and permits repeated names", () => {
+    const be = fakeBackend();
+    const book = createDraftBook(be);
+    book.save(createDraft({ id: "a", name: "Untitled", sections: [{ id: "a-section", name: "Section", chords: [] }] }));
+    book.save(createDraft({ id: "b", name: "Untitled", sections: [{ id: "b-section", name: "Section", chords: [] }] }));
+    book.save(createDraft({ id: "a", name: "Changed", sections: [{ id: "a-section", name: "Section", chords: [] }] }));
+    expect(book.list().map((draft) => draft.id)).toEqual(["a", "b"]);
+    expect(book.get("a").name).toBe("Changed");
+  });
+
+  it("keeps v1 recovery data untouched", () => {
+    const legacy = JSON.stringify([{ id: "old", name: "Old", sheet: "C G", savedAt: 1 }]);
+    const be = fakeBackend({ "keylit.songs.v1": legacy });
+    const book = createDraftBook(be);
+    expect(book.legacy()[0].id).toBe("old");
+    book.save(adaptLegacySketch(book.legacy()[0]));
+    expect(be.snapshot()["keylit.songs.v1"]).toBe(legacy);
+    expect(JSON.parse(be.snapshot()["keylit.write.drafts.v2"]).drafts).toHaveLength(1);
+  });
+
+  it("ignores corrupt v2 data and still exposes legacy recovery", () => {
+    const be = fakeBackend({
+      "keylit.write.drafts.v2": "{broken",
+      "keylit.songs.v1": JSON.stringify([{ id: "old", name: "Old", sheet: "C" }]),
+    });
+    const book = createDraftBook(be);
+    expect(book.list()).toEqual([]);
+    expect(book.legacy()).toHaveLength(1);
+  });
+
+  it("filters valid JSON whose draft schema, IDs, or chord symbols are invalid", () => {
+    const be = fakeBackend({
+      "keylit.write.drafts.v2": JSON.stringify({ version: 2, drafts: [
+        { id: "bad-chord", name: "Bad", key: { tonic: 0, mode: "major" }, sections: [{ id: "s", name: "Verse", chords: [{ id: "c", symbol: "H13" }] }] },
+        { id: "dup", name: "Dup", key: { tonic: 0, mode: "major" }, sections: [{ id: "s", name: "Verse", chords: [{ id: "same", symbol: "C" }, { id: "same", symbol: "G" }] }] },
+      ] }),
+    });
+    expect(createDraftBook(be).list()).toEqual([]);
+  });
+});
 
 describe("song library", () => {
   it("saves and lists songs newest-first", () => {
