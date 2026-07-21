@@ -12,6 +12,7 @@ const validSymbol = (value) => {
 };
 
 const cleanId = (value) => String(value || "").trim();
+const isCanonicalId = (value) => typeof value === "string" && value.length > 0 && value.trim() === value;
 const cleanName = (value, fallback) => {
   const name = String(value || "").trim();
   return name || fallback;
@@ -45,10 +46,9 @@ function fallbackId(prefix, used) {
 
 function mintId(value, prefix, used, makeId) {
   const requested = value || (typeof makeId === "function" ? makeId(prefix) : fallbackId(prefix, used));
-  const id = cleanId(requested);
-  if (!id || used.has(id)) return null;
-  used.add(id);
-  return id;
+  if (!isCanonicalId(requested) || used.has(requested)) return null;
+  used.add(requested);
+  return requested;
 }
 
 function sectionIndex(draft, sectionId) {
@@ -96,11 +96,9 @@ export function createDraft(input = {}) {
     const chords = [];
     rawChords.forEach((rawSlot, chordAt) => {
       const slot = rawSlot && typeof rawSlot === "object" ? rawSlot : {};
-      const symbol = validSymbol(slot.symbol);
-      if (!symbol) return;
       chords.push({
         id: uniqueId(slot.id, `${sectionId}-chord-${chordAt}`, usedIds),
-        symbol,
+        symbol: String(slot.symbol || "").trim(),
       });
     });
     return { id: sectionId, name: cleanName(section.name, "Section"), chords };
@@ -121,7 +119,7 @@ export function validateDraft(draft) {
   if (!draft || typeof draft !== "object" || Array.isArray(draft)) {
     return { ok: false, errors: ["draft must be an object"] };
   }
-  if (!cleanId(draft.id)) errors.push("draft id is required");
+  if (!isCanonicalId(draft.id)) errors.push("draft id is required");
   if (!cleanName(draft.name, "")) errors.push("draft name is required");
   if (!draft.key || typeof draft.key !== "object"
     || !Number.isInteger(draft.key.tonic) || draft.key.tonic < 0 || draft.key.tonic > 11
@@ -135,14 +133,20 @@ export function validateDraft(draft) {
   if ("savedAt" in draft && (!Number.isFinite(draft.savedAt))) errors.push("draft savedAt is invalid");
 
   const ids = new Set();
-  for (const [sectionAt, section] of (draft.sections || []).entries()) {
+  const sections = Array.isArray(draft.sections) ? draft.sections : [];
+  const addId = (value, label) => {
+    const canonical = typeof value === "string" ? value.trim() : "";
+    if (!isCanonicalId(value)) errors.push(`${label} id is required`);
+    if (!canonical) return;
+    if (ids.has(canonical)) errors.push(`duplicate id ${canonical}`);
+    else ids.add(canonical);
+  };
+  for (const [sectionAt, section] of sections.entries()) {
     if (!section || typeof section !== "object" || Array.isArray(section)) {
       errors.push(`section ${sectionAt} is invalid`);
       continue;
     }
-    if (!cleanId(section.id)) errors.push(`section ${sectionAt} id is required`);
-    else if (ids.has(section.id)) errors.push(`duplicate id ${section.id}`);
-    else ids.add(section.id);
+    addId(section.id, `section ${sectionAt}`);
     if (!cleanName(section.name, "")) errors.push(`section ${sectionAt} name is required`);
     if (!Array.isArray(section.chords)) {
       errors.push(`section ${sectionAt} chords are invalid`);
@@ -153,9 +157,7 @@ export function validateDraft(draft) {
         errors.push(`chord ${sectionAt}:${chordAt} is invalid`);
         continue;
       }
-      if (!cleanId(slot.id)) errors.push(`chord ${sectionAt}:${chordAt} id is required`);
-      else if (ids.has(slot.id)) errors.push(`duplicate id ${slot.id}`);
-      else ids.add(slot.id);
+      addId(slot.id, `chord ${sectionAt}:${chordAt}`);
       if (!validSymbol(slot.symbol)) errors.push(`chord ${sectionAt}:${chordAt} symbol is invalid`);
     }
   }
@@ -313,7 +315,7 @@ export function applyCompositionOp(draft, op, { makeId } = {}) {
       if (index < 0) return draft;
       const source = draft.sections[index];
       const used = allSlotIds(draft);
-      const id = mintId(null, "section", used, makeId);
+      const id = mintId(op.id, "section", used, makeId);
       if (!id) return draft;
       const chords = [];
       for (const slot of source.chords) {
@@ -378,7 +380,7 @@ export function applyCompositionOp(draft, op, { makeId } = {}) {
       const chordAt = slotIndex(draft.sections[sectionAt], op.chordId);
       if (chordAt < 0) return draft;
       const used = allSlotIds(draft);
-      const id = mintId(null, "chord", used, makeId);
+      const id = mintId(op.id, "chord", used, makeId);
       if (!id) return draft;
       const chords = draft.sections[sectionAt].chords.slice();
       chords.splice(chordAt + 1, 0, { id, symbol: chords[chordAt].symbol });
@@ -405,12 +407,16 @@ export function applyCompositionOp(draft, op, { makeId } = {}) {
       return withChords(draft, sectionAt, moved);
     }
     case "suggestion/apply": {
+      if (![
+        "replace", "insertBefore", "insertAfter", "newSection",
+      ].includes(op.kind) || !Array.isArray(op.symbols) || !op.symbols.length
+        || op.symbols.some((symbol) => !validSymbol(symbol))) return draft;
       const sectionAt = sectionIndex(draft, op.sectionId);
       if (sectionAt < 0) return draft;
       const used = allSlotIds(draft);
       const section = draft.sections[sectionAt];
       if (op.kind === "newSection") {
-        const sectionId = mintId(null, "section", used, makeId);
+        const sectionId = mintId(op.id, "section", used, makeId);
         const chords = sectionId && slotsForSymbols(op.symbols, used, makeId);
         if (!sectionId || !chords) return draft;
         return {
