@@ -3,6 +3,9 @@
 // sheet, savedAt }. Inject a backend (Map-like) for tests.
 
 import { createDraft, validateDraft } from "./lib/composition.js";
+import {
+  addEntry, moveEntry, normalizeBenchState, removeEntry, restoreEntry, updateEntry,
+} from "./lib/setlists.js";
 
 const KEY = "keylit.songs.v1";
 
@@ -122,22 +125,48 @@ export const userSongbook = createUserSongbook();
 /* ---- the Bench Book: setlists + practice log ---------------------------- */
 // Musician-shaped memory: what's on tonight's bench, and what actually got
 // practiced (play-along scores land here). One key, one JSON blob, capped.
-const BENCH_KEY = "keylit.bench.v1";
+const BENCH_KEY = "keylit.bench.v2";
+const LEGACY_BENCH_KEY = "keylit.bench.v1";
 const LOG_CAP = 500;
 
-export function createBenchBook(backend) {
+function defaultId(prefix = "id") {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return `${prefix}-${crypto.randomUUID()}`;
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function parseJson(be, key) {
+  try {
+    const raw = be.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function isV2BenchEnvelope(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  if (keys.length !== 3 || !keys.includes("version") || !keys.includes("setlists") || !keys.includes("log")) return false;
+  if (value.version !== 2 || !Array.isArray(value.setlists) || !Array.isArray(value.log)) return false;
+  return value.setlists.every((setlist) => setlist && typeof setlist === "object"
+    && !Array.isArray(setlist) && typeof setlist.id === "string" && setlist.id.trim()
+    && Array.isArray(setlist.entries));
+}
+
+export function createBenchBook(backend, { makeId = defaultId, now = Date.now } = {}) {
   const be = selectBackend(backend);
   const read = () => {
-    try {
-      const v = JSON.parse(be.getItem(BENCH_KEY) || "{}");
-      return { setlists: Array.isArray(v.setlists) ? v.setlists : [], log: Array.isArray(v.log) ? v.log : [] };
-    } catch { return { setlists: [], log: [] }; }
+    const v2 = parseJson(be, BENCH_KEY);
+    if (isV2BenchEnvelope(v2)) return normalizeBenchState(v2, { makeId });
+    return normalizeBenchState(parseJson(be, LEGACY_BENCH_KEY), { makeId });
   };
-  const write = (state) => be.setItem(BENCH_KEY, JSON.stringify(state));
-  const withSetlist = (id, fn) => {
+  const write = (state) => {
+    const normalized = normalizeBenchState(state, { makeId });
+    be.setItem(BENCH_KEY, JSON.stringify({ version: 2, setlists: normalized.setlists, log: normalized.log }));
+  };
+  const update = (transform) => {
     const st = read();
-    const sl = st.setlists.find((s) => s.id === id);
-    if (sl) { fn(sl); write(st); }
+    const next = transform(st);
+    if (next !== st) write(next);
+    return next;
   };
 
   return {
@@ -145,44 +174,75 @@ export function createBenchBook(backend) {
     raw() { return read(); },
     /** Replace wholesale (import path — caller merged already). */
     replace(state) {
-      write({
-        setlists: Array.isArray(state?.setlists) ? state.setlists : [],
-        log: Array.isArray(state?.log) ? state.log : [],
-      });
+      write(state);
     },
     setlists() { return read().setlists; },
-    createSetlist(name, now) {
+    createSetlist(name) {
       const st = read();
-      const sl = { id: `sl-${(now || 0).toString(36)}-${st.setlists.length}`, name: name || "Setlist", songs: [], notes: "", createdAt: now || 0 };
+      const id = makeId("setlist");
+      if (typeof id !== "string" || !id.trim() || st.setlists.some((setlist) => setlist.id === id)) return null;
+      const sl = { id, name: typeof name === "string" && name ? name : "Setlist", entries: [], notes: "", createdAt: now() };
       st.setlists.push(sl);
       write(st);
       return sl;
     },
-    renameSetlist(id, name) { withSetlist(id, (sl) => { sl.name = name || sl.name; }); },
-    removeSetlist(id) { const st = read(); st.setlists = st.setlists.filter((s) => s.id !== id); write(st); },
-    setSetlistNotes(id, notes) { withSetlist(id, (sl) => { sl.notes = notes || ""; }); },
-    /** song: { songKey, title, artist, ...display extras } — songKey dedupes. */
-    addToSetlist(id, song) {
-      withSetlist(id, (sl) => {
-        if (!sl.songs.some((s) => s.songKey === song.songKey)) sl.songs.push(song);
+    renameSetlist(id, name) {
+      update((st) => {
+        const sl = st.setlists.find((item) => item.id === id);
+        if (!sl || typeof name !== "string" || !name || sl.name === name) return st;
+        return { ...st, setlists: st.setlists.map((item) => item.id === id ? { ...item, name } : item) };
       });
     },
-    removeFromSetlist(id, songKey) { withSetlist(id, (sl) => { sl.songs = sl.songs.filter((s) => s.songKey !== songKey); }); },
-    /** dir: -1 moves the song at idx up, +1 down. */
-    moveInSetlist(id, idx, dir) {
-      withSetlist(id, (sl) => {
-        const j = idx + dir;
-        if (idx < 0 || idx >= sl.songs.length || j < 0 || j >= sl.songs.length) return;
-        const [s] = sl.songs.splice(idx, 1);
-        sl.songs.splice(j, 0, s);
+    removeSetlist(id) {
+      update((st) => {
+        const setlists = st.setlists.filter((setlist) => setlist.id !== id);
+        return setlists.length === st.setlists.length ? st : { ...st, setlists };
       });
+    },
+    setSetlistNotes(id, notes) {
+      update((st) => {
+        const sl = st.setlists.find((item) => item.id === id);
+        const value = typeof notes === "string" ? notes : "";
+        if (!sl || sl.notes === value) return st;
+        return { ...st, setlists: st.setlists.map((item) => item.id === id ? { ...item, notes: value } : item) };
+      });
+    },
+    /** Add an occurrence; repeats are intentional and receive unique entry IDs. */
+    addToSetlist(id, song) {
+      const st = read();
+      const next = addEntry(st, id, song, { makeId });
+      if (next === st) return null;
+      write(next);
+      return next.setlists.find((setlist) => setlist.id === id)?.entries.at(-1) || null;
+    },
+    setEntryNote(id, entryId, note) {
+      const st = read();
+      const next = updateEntry(st, id, entryId, { note });
+      if (next === st) return null;
+      write(next);
+      return next.setlists.find((setlist) => setlist.id === id)?.entries.find((entry) => entry.entryId === entryId) || null;
+    },
+    moveInSetlist(id, entryId, toIndex) {
+      update((st) => moveEntry(st, id, entryId, toIndex));
+    },
+    removeFromSetlist(id, entryId) {
+      const out = removeEntry(read(), id, entryId);
+      if (out.removed) write(out.state);
+      return out.removed;
+    },
+    restoreToSetlist(id, entry, index) {
+      const st = read();
+      const next = restoreEntry(st, id, entry, index);
+      if (next === st) return null;
+      write(next);
+      return next.setlists.find((setlist) => setlist.id === id)?.entries.find((item) => item.entryId === entry.entryId) || null;
     },
     /** entry: { songKey, title, artist?, at, kind: "playalong"|"ran-it", accuracy?, total?, clean? } */
     logPractice(entry) {
-      const st = read();
-      st.log.push(entry);
-      if (st.log.length > LOG_CAP) st.log = st.log.slice(st.log.length - LOG_CAP);
-      write(st);
+      update((st) => {
+        const log = st.log.concat(entry);
+        return { ...st, log: log.length > LOG_CAP ? log.slice(log.length - LOG_CAP) : log };
+      });
     },
     log(songKey) {
       const all = read().log.slice().sort((a, b) => (b.at || 0) - (a.at || 0));
