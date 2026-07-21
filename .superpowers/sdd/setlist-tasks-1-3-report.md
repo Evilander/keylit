@@ -11,11 +11,12 @@
 - `43aecb0` — `feat(setlists): add stable entry model`
 - `a589705` — `feat(setlists): migrate the bench book to v2 entries`
 - `2eb68d6` — `fix(setlists): preserve v2 entries through backup`
+- `0d28104` — `fix(setlists): normalize imported bench state`
 
 ## Verification
 
 - `npx vitest run src/lib/setlists.test.js src/storage.test.js src/lib/backup.test.js src/lib/bench.test.js` — 54 passed.
-- `npm test` — 49 files, 946 tests passed.
+- `npm test` — 49 files, 947 tests passed.
 - `npm run build` — production build completed.
 
 ## Residual
