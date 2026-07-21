@@ -922,6 +922,109 @@ export function validateSuggestionEvidence(suggestion, context = {}) {
   return { ok: errors.length === 0, errors };
 }
 
+function externalSymbols(rawIdea) {
+  if (!Array.isArray(rawIdea?.symbols)
+    || !rawIdea.symbols.length
+    || rawIdea.symbols.length > 8
+    || rawIdea.symbols.some((symbol) => typeof symbol !== "string" || symbol.length > 64)) {
+    return null;
+  }
+  const symbols = rawIdea.symbols.map((symbol) => symbol.trim());
+  if (symbols.some((symbol) => !symbol)) return null;
+  const chords = symbols.map(parseChord);
+  return chords.every(validChord) ? { symbols, chords } : null;
+}
+
+function verifiedExternalEvidence(intent, chords, resolved) {
+  const scored = scoreCandidate({
+    contextChords: resolved.contextChords,
+    candidatePath: chords,
+    target: resolved.target,
+    key: resolved.key,
+  });
+  const evidence = [...scored.evidence];
+  const fn = functionEvidence(intent, chords, resolved);
+  if (fn) evidence.push(fn);
+  evidence.push(...namedEvidence(intent, chords, resolved));
+
+  if (["lead-in", "between", "turnaround"].includes(intent)) {
+    const path = evidencePath(intent, chords, resolved);
+    if (!resolvesToTarget(path, resolved.target, resolved.key)) return null;
+    evidence.push(`target:${sourceSymbol(resolved.target)}`);
+  }
+
+  if (intent === "contrast") {
+    const contrast = contrastEvidence(resolved.chords, chords, resolved.key);
+    if (contrast.rejectedReason || contrast.groups.length < 2) return null;
+    evidence.push(...contrast.groups.map((group) => `contrast:${group}`));
+  }
+
+  return { score: scored.score, evidence: [...new Set(evidence)] };
+}
+
+// Deep output is only an idea seed. Every target, function, contrast group, and
+// explanation is rebuilt here with the same predicates used by offline ideas.
+export function verifyExternalIdea(rawIdea, context = {}) {
+  if (!rawIdea || typeof rawIdea !== "object" || Array.isArray(rawIdea)) return null;
+  const requestedIntent = INTENTS.has(context?.intent) ? context.intent : rawIdea.intent;
+  if (!INTENTS.has(requestedIntent) || rawIdea.intent !== requestedIntent) return null;
+  if (rawIdea.kind !== kindForIntent(requestedIntent)) return null;
+  const parsed = externalSymbols(rawIdea);
+  if (!parsed) return null;
+
+  const resolved = contextForIntent(context, requestedIntent);
+  if (!resolved.valid) return null;
+  const verified = verifiedExternalEvidence(requestedIntent, parsed.chords, resolved);
+  if (!verified) return null;
+
+  const candidate = {
+    intent: requestedIntent,
+    kind: rawIdea.kind,
+    symbols: parsed.symbols,
+    chords: parsed.chords,
+    evidence: verified.evidence,
+    why: whyFromEvidence(parsed.symbols, verified.evidence),
+    score: verified.score,
+    source: "offline",
+  };
+  if (!validateSuggestionEvidence(candidate, context).ok) return null;
+
+  const rationale = typeof rawIdea.rationale === "string"
+    ? rawIdea.rationale.trim().slice(0, 500)
+    : "";
+  return {
+    ...candidate,
+    id: `ai:${requestedIntent}:${pathKey(parsed.chords)}`,
+    source: "ai",
+    ...(rationale ? { rationale } : {}),
+  };
+}
+
+function suggestionSoundPath(suggestion) {
+  const parsed = externalSymbols(suggestion);
+  return parsed ? pathKey(parsed.chords) : null;
+}
+
+export function mergeDeepIdeas(offlineIdeas, rawIdeas, context = {}) {
+  const offline = Array.isArray(offlineIdeas) ? offlineIdeas : [];
+  if (!Array.isArray(rawIdeas)) return [...offline];
+
+  const merged = [...offline];
+  const seen = new Set(offline.map(suggestionSoundPath).filter(Boolean));
+  let appended = 0;
+  for (const rawIdea of rawIdeas) {
+    if (appended >= 3) break;
+    const verified = verifyExternalIdea(rawIdea, context);
+    if (!verified) continue;
+    const soundPath = suggestionSoundPath(verified);
+    if (!soundPath || seen.has(soundPath)) continue;
+    seen.add(soundPath);
+    merged.push(verified);
+    appended++;
+  }
+  return merged;
+}
+
 export function suggestForIntent(input = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return [];
   const {

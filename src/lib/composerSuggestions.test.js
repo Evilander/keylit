@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { createDraft } from "./composition.js";
 import {
   contrastEvidence,
+  mergeDeepIdeas,
   paletteForKey,
   scoreCandidate,
   suggestForIntent,
   validateSuggestionEvidence,
+  verifyExternalIdea,
 } from "./composerSuggestions.js";
 import { parseChord } from "./theory.js";
 
@@ -573,5 +575,82 @@ describe("context-aware offline composer suggestions", () => {
     expect(second.map(({ id, symbols, score }) => ({ id, symbols, score })))
       .toEqual(first.map(({ id, symbols, score }) => ({ id, symbols, score })));
     expect(new Set(first.map((item) => item.id)).size).toBe(first.length);
+  });
+
+  it("keeps offline ideas first and rejects Deep claims that miss their target", () => {
+    const context = {
+      draft: makeDraft(0, "major", ["C", "F", "G7", "C"]),
+      sectionId: "s",
+      chordId: "c3",
+      gapIndex: 3,
+      intent: "lead-in",
+    };
+    const bad = {
+      intent: "lead-in",
+      kind: "insertBefore",
+      symbols: ["F#"],
+      rationale: "leads to C",
+      evidence: ["target:C"],
+    };
+    const good = {
+      intent: "lead-in",
+      kind: "insertBefore",
+      symbols: ["Dm7", "G7"],
+      rationale: "ii-V to C",
+      evidence: ["made up by the model"],
+    };
+
+    expect(verifyExternalIdea(bad, context)).toBeNull();
+    const verified = verifyExternalIdea(good, context);
+    expect(verified).toMatchObject({
+      source: "ai",
+      symbols: ["Dm7", "G7"],
+      rationale: "ii-V to C",
+      evidence: expect.arrayContaining(["ii-V:C", "target:C"]),
+    });
+    expect(verified.evidence).not.toContain("made up by the model");
+    expect(verified.why).toMatch(/verified ii–V/i);
+
+    const offline = [{ id: "offline", source: "offline", symbols: ["G7"] }];
+    const merged = mergeDeepIdeas(offline, [bad, good], context);
+    expect(merged[0]).toBe(offline[0]);
+    expect(merged.some((idea) => idea.source === "ai"
+      && idea.symbols.join(" ") === "Dm7 G7")).toBe(true);
+    expect(merged.some((idea) => idea.symbols.includes("F#"))).toBe(false);
+  });
+
+  it("deduplicates enharmonic Deep sequences by sound and appends at most three", () => {
+    const context = {
+      draft: makeDraft(0, "major", ["C", "F", "G7", "C"]),
+      sectionId: "s",
+      chordId: "c2",
+      intent: "next",
+    };
+    const offline = [{ id: "offline", source: "offline", symbols: ["G#"] }];
+    const raw = [
+      { intent: "next", kind: "insertAfter", symbols: ["Ab"], rationale: "duplicate" },
+      { intent: "next", kind: "insertAfter", symbols: ["C"], rationale: "one" },
+      { intent: "next", kind: "insertAfter", symbols: ["Dm"], rationale: "two" },
+      { intent: "next", kind: "insertAfter", symbols: ["Em"], rationale: "three" },
+      { intent: "next", kind: "insertAfter", symbols: ["F"], rationale: "four" },
+    ];
+
+    const merged = mergeDeepIdeas(offline, raw, context);
+    expect(merged.slice(0, offline.length)).toEqual(offline);
+    expect(merged.filter((idea) => idea.source === "ai")).toHaveLength(3);
+    expect(merged.some((idea) => idea.source === "ai" && idea.symbols[0] === "Ab"))
+      .toBe(false);
+  });
+
+  it("returns the offline list unchanged for missing or malformed Deep output", () => {
+    const offline = [{ id: "offline", source: "offline", symbols: ["C"] }];
+    const context = {
+      draft: makeDraft(0, "major", ["C"]),
+      sectionId: "s",
+      chordId: "c0",
+      intent: "next",
+    };
+    expect(mergeDeepIdeas(offline, null, context)).toEqual(offline);
+    expect(mergeDeepIdeas(offline, { ideas: "bad" }, context)).toEqual(offline);
   });
 });
