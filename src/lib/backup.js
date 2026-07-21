@@ -6,6 +6,8 @@
 // v1 (2026-07): { keylit: 1, songs, setlists }            — export-only era
 // v2 (2026-07-15): { keylit: 2, songs, setlists, log, prefs, exportedAt }
 
+import { normalizeSetlist } from "./setlists.js";
+
 /** The only preference keys a backup may carry — nothing else crosses machines. */
 export const PREF_KEYS = [
   "keylit.theme.v1",
@@ -26,6 +28,10 @@ export function buildBackup({ songs = [], setlists = [], log = [], prefs = {}, e
 // __proto__-shaped keys) instead of trusting the file's shapes.
 const str = (v) => (typeof v === "string" ? v : null);
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+const boundedStr = (v, limit = 160) => typeof v === "string" && v.length > 0 && v.length <= limit ? v : null;
+
+// Sanity caps: a crafted "backup" shouldn't be able to balloon memory.
+const MAX_SONGS = 5000, MAX_SETLISTS = 500, MAX_LOG = 10000, MAX_ENTRIES_PER_SETLIST = 5000;
 
 function cleanSong(s) {
   if (!s || typeof s !== "object") return null;
@@ -52,18 +58,31 @@ function cleanSong(s) {
 }
 
 function cleanSetlist(sl) {
-  if (!sl || typeof sl !== "object" || !str(sl.id) || !Array.isArray(sl.songs)) return null;
-  return {
+  if (!sl || typeof sl !== "object" || Array.isArray(sl) || !boundedStr(sl.id)) return null;
+  const source = Array.isArray(sl.entries) ? sl.entries : Array.isArray(sl.songs) ? sl.songs : null;
+  if (!source) return null;
+  const entries = source.slice(0, MAX_ENTRIES_PER_SETLIST)
+    .filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry) && str(entry.songKey))
+    .map((entry) => ({
+      ...(boundedStr(entry.entryId) ? { entryId: entry.entryId } : {}),
+      songKey: entry.songKey,
+      source: str(entry.source),
+      id: str(entry.id),
+      title: str(entry.title),
+      artist: str(entry.artist),
+      key: str(entry.key),
+      note: str(entry.note),
+      tuning: str(entry.tuning),
+      capo: num(entry.capo),
+    }));
+  const makeId = (prefix = "entry") => `backup-${prefix}-${sl.id}`;
+  return normalizeSetlist({
     id: sl.id,
-    name: str(sl.name) || "Setlist",
-    notes: str(sl.notes) || "",
-    createdAt: num(sl.createdAt) ?? 0,
-    // entries: { songKey, title, artist, …display extras } — a null or
-    // primitive entry crashes every setlist renderer downstream
-    songs: sl.songs
-      .filter((e) => e && typeof e === "object" && !Array.isArray(e) && str(e.songKey))
-      .map((e) => ({ ...e, songKey: e.songKey, title: str(e.title) || "Untitled", artist: str(e.artist) })),
-  };
+    name: str(sl.name),
+    notes: str(sl.notes),
+    createdAt: num(sl.createdAt),
+    entries,
+  }, { makeId });
 }
 
 function cleanLogEntry(e) {
@@ -72,9 +91,6 @@ function cleanLogEntry(e) {
   if (at == null) return null;
   return { ...e, songKey: e.songKey, at, title: str(e.title) || "Untitled" };
 }
-
-// Sanity caps: a crafted "backup" shouldn't be able to balloon memory.
-const MAX_SONGS = 5000, MAX_SETLISTS = 500, MAX_LOG = 10000;
 
 /** Parse + validate a backup file's JSON text (or object). Accepts v1 and v2.
  * Returns { ok: true, data } (data normalized to v2 shape) or { ok: false, error }. */
@@ -108,7 +124,7 @@ const songSlug = (s) => `${slug(s.artist)}--${slug(s.title)}`;
  * Returns { songs, setlists, log, report }.
  */
 export function mergeBackup(current, incoming, { logCap = 500 } = {}) {
-  const report = { songsAdded: 0, songsSkipped: 0, setlistsAdded: 0, setlistsSkipped: 0, logAdded: 0 };
+  const report = { songsAdded: 0, songsSkipped: 0, setlistsAdded: 0, setlistsSkipped: 0, setlistNamesSkipped: [], logAdded: 0 };
 
   const songs = current.songs.slice();
   const haveIds = new Set(songs.map((s) => s.id));
@@ -122,11 +138,16 @@ export function mergeBackup(current, incoming, { logCap = 500 } = {}) {
   }
 
   const setlists = current.setlists.slice();
-  const haveSl = new Set(setlists.map((sl) => sl.id));
+  const haveSl = new Map(setlists.map((sl) => [sl.id, sl]));
   for (const sl of incoming.setlists) {
-    if (haveSl.has(sl.id)) { report.setlistsSkipped++; continue; }
+    if (haveSl.has(sl.id)) {
+      report.setlistsSkipped++;
+      const local = haveSl.get(sl.id);
+      report.setlistNamesSkipped.push((typeof local.name === "string" && local.name ? local.name : "Setlist").slice(0, 80));
+      continue;
+    }
     setlists.push(sl);
-    haveSl.add(sl.id);
+    haveSl.set(sl.id, sl);
     report.setlistsAdded++;
   }
 
@@ -150,7 +171,11 @@ export function reportLine(report, prefsApplied = 0) {
   const bits = [];
   bits.push(`${report.songsAdded} song${report.songsAdded === 1 ? "" : "s"} in${report.songsSkipped ? ` (${report.songsSkipped} you already had)` : ""}`);
   if (report.setlistsAdded || report.setlistsSkipped) {
-    bits.push(`${report.setlistsAdded} setlist${report.setlistsAdded === 1 ? "" : "s"}${report.setlistsSkipped ? ` (${report.setlistsSkipped} already here)` : ""}`);
+    const names = Array.isArray(report.setlistNamesSkipped) ? report.setlistNamesSkipped.slice(0, 3) : [];
+    const skipped = report.setlistsSkipped
+      ? ` (${report.setlistsSkipped} already here${names.length ? `: ${names.join(", ")}${report.setlistsSkipped > names.length ? ", …" : ""}` : ""})`
+      : "";
+    bits.push(`${report.setlistsAdded} setlist${report.setlistsAdded === 1 ? "" : "s"}${skipped}`);
   }
   if (report.logAdded) bits.push(`${report.logAdded} practice entries`);
   if (prefsApplied) bits.push("settings restored");
