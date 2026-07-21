@@ -26,6 +26,7 @@ export default function ComposerPicker({
   documentId,
   revision = 0,
   onEdit,
+  onSelect,
   onAudition,
   requestDeep,
 }) {
@@ -74,6 +75,7 @@ export default function ComposerPicker({
         ? Math.max(0, section.chords.findIndex((chord) => chord.id === targetId) + 1)
         : section.chords.length;
     onEdit?.({ type: "chord/insert", sectionId, index, symbol: clean });
+    onSelect?.({ sectionId, chordId: null, gapIndex: index + 1 });
   };
 
   const applyIdea = (idea) => {
@@ -84,7 +86,12 @@ export default function ComposerPicker({
       gapIndex,
       transpose: 0,
     });
-    if (operation) onEdit?.(operation);
+    if (operation) {
+      onEdit?.(operation);
+      if (Number.isInteger(gapIndex)) {
+        onSelect?.({ sectionId, chordId: null, gapIndex: gapIndex + (idea.symbols?.length || 0) });
+      }
+    }
   };
 
   const loadDeep = async () => {
