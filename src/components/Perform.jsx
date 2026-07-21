@@ -7,10 +7,12 @@
 // The playhead line sits ~35% down the stage. Keyboard-first by design —
 // at a gig your hands are busy and your boot can find a spacebar.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Play, Pause, ChevronLeft, ChevronRight, Maximize2, SkipBack } from "lucide-react";
 import { chartOutline, sectionIndex, progressionAnchors } from "../lib/chartlines.js";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 import PerformChart from "./PerformChart.jsx";
+import PerformSongPage from "./PerformSongPage.jsx";
 import Metronome from "./Metronome.jsx";
 import Keyboard from "./Keyboard.jsx";
 
@@ -20,7 +22,7 @@ const loadPrefs = () => {
   catch { return { mode: "roll", speed: 36, size: 18 }; }
 };
 
-export default function Perform({
+function SinglePerform({
   sheet, loaded, keyName,
   activeKey, transpose, prog,
   currentIdx, onSelectIdx, isPlaying, onTogglePlay, tempo, onTempo,
@@ -293,4 +295,149 @@ export default function Perform({
       </p>
     </div>
   );
+}
+
+function isTerminal(slot) {
+  return slot?.status === "ready" || slot?.status === "error";
+}
+
+function PerformSet({ run, onRequestPage, onExitSet, onPickSong, onPlayPageChord, onStopPageWalk, tempo = 1500 }) {
+  const [prefs, setPrefs] = useState(loadPrefs);
+  const [mode, setMode] = useState("roll");
+  const [rolling, setRolling] = useState(false);
+  const [visibleIndex, setVisibleIndex] = useState(0);
+  const [walk, setWalk] = useState({ pageIndex: 0, chordIndex: 0, playing: false });
+  const stageRef = useRef(null);
+  const pageNodes = useRef(new Map());
+  const sentinelNodes = useRef(new Map());
+  const reduced = useMemo(() => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches, []);
+  const pages = run?.pages || [];
+
+  useEffect(() => {
+    setMode("roll"); setRolling(false); setVisibleIndex(0); setWalk({ pageIndex: 0, chordIndex: 0, playing: false });
+  }, [run?.runId]);
+
+  const requestFrontier = useCallback((after = null) => {
+    if (!pages.length) return;
+    if (after != null && isTerminal(pages[after]) && pages[after + 1]?.status === "idle") onRequestPage?.(after + 1);
+  }, [pages, onRequestPage]);
+
+  useEffect(() => {
+    if (pages[0]?.status === "idle") onRequestPage?.(0);
+  }, [run?.runId, pages, onRequestPage]);
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return undefined;
+    const activeObserver = new IntersectionObserver((entries) => {
+      const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (visible) flushSync(() => setVisibleIndex(Number(visible.target.dataset.performIndex || 0)));
+    }, { root: stageRef.current, rootMargin: "-35% 0px -64% 0px", threshold: [0, 0.01, 0.5] });
+    const preloadObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) if (entry.isIntersecting) requestFrontier(Number(entry.target.dataset.index));
+    }, { root: stageRef.current, rootMargin: "0px 0px -25% 0px" });
+    pageNodes.current.forEach((node) => activeObserver.observe(node));
+    sentinelNodes.current.forEach((node) => preloadObserver.observe(node));
+    return () => { activeObserver.disconnect(); preloadObserver.disconnect(); };
+  }, [run?.runId, pages, requestFrontier]);
+
+  const scrollPage = useCallback((index) => {
+    pageNodes.current.get(index)?.scrollIntoView?.({ block: "start", behavior: reduced ? "auto" : "smooth" });
+  }, [reduced]);
+
+  useEffect(() => {
+    if (!rolling || mode !== "roll") return undefined;
+    const stage = stageRef.current;
+    if (!stage) return undefined;
+    let frame = 0, previous = performance.now(), carry = 0;
+    const tick = (now) => {
+      const elapsed = Math.min(100, now - previous); previous = now;
+      carry += ((prefs.speed || 36) * elapsed) / 1000;
+      if (carry >= 1) { const pixels = Math.floor(carry); stage.scrollTop += pixels; carry -= pixels; }
+      if (stage.scrollTop + stage.clientHeight >= stage.scrollHeight - 2) { setRolling(false); return; }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [rolling, mode, prefs.speed]);
+
+  useEffect(() => {
+    if (mode !== "walk" || !walk.playing) return undefined;
+    const slot = pages[walk.pageIndex];
+    const progression = slot?.page?.progression || [];
+    if (slot?.status !== "ready" || !progression.length) return undefined;
+    const timer = setTimeout(() => {
+      if (walk.chordIndex < progression.length - 1) {
+        const next = walk.chordIndex + 1;
+        onPlayPageChord?.({ pageKey: slot.page.key, chordIndex: next, chord: progression[next] });
+        flushSync(() => setWalk((current) => ({ ...current, chordIndex: next })));
+        return;
+      }
+      const nextPage = Math.min(pages.length - 1, walk.pageIndex + 1);
+      flushSync(() => setWalk({ pageIndex: nextPage, chordIndex: 0, playing: false }));
+      scrollPage(nextPage);
+      onStopPageWalk?.();
+    }, Math.max(100, tempo));
+    return () => clearTimeout(timer);
+  }, [mode, walk, pages, tempo, onPlayPageChord, onStopPageWalk, scrollPage]);
+
+  const startWalk = () => {
+    const slot = pages[walk.pageIndex];
+    const progression = slot?.page?.progression || [];
+    if (slot?.status !== "ready" || !progression.length) return;
+    onPlayPageChord?.({ pageKey: slot.page.key, chordIndex: walk.chordIndex, chord: progression[walk.chordIndex] });
+    setWalk((current) => ({ ...current, playing: true }));
+  };
+  const moveWalk = (direction) => setWalk((current) => {
+    const total = pages[current.pageIndex]?.page?.progression?.length || 0;
+    return { ...current, playing: false, chordIndex: Math.max(0, Math.min(Math.max(0, total - 1), current.chordIndex + direction)) };
+  });
+  const setPref = (patch) => setPrefs((current) => {
+    const next = { ...current, ...patch };
+    try { localStorage.setItem(PREF_KEY, JSON.stringify(next)); } catch { /* optional */ }
+    return next;
+  });
+  const goFullscreen = () => {
+    const stage = stageRef.current;
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else stage?.requestFullscreen?.().catch(() => {});
+  };
+  const onKeys = (event) => {
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
+    if (event.key === " ") { event.preventDefault(); mode === "roll" ? setRolling((value) => !value) : startWalk(); }
+    if (event.key === "ArrowRight") { event.preventDefault(); mode === "roll" ? scrollPage(Math.min(pages.length - 1, visibleIndex + 1)) : moveWalk(1); }
+    if (event.key === "ArrowLeft") { event.preventDefault(); mode === "roll" ? scrollPage(Math.max(0, visibleIndex - 1)) : moveWalk(-1); }
+    if (event.key.toLowerCase() === "f") { event.preventDefault(); goFullscreen(); }
+  };
+
+  return (
+    <div className="perform-set-stage" ref={stageRef} tabIndex={0} onKeyDown={onKeys} aria-label="continuous performance set">
+      <div className="perform-set-toolbar">
+        <div><span className="kl-eyebrow">{run.name}</span><span className="kl-meta"> · {visibleIndex + 1} of {pages.length}</span></div>
+        <div className="kl-seg" role="tablist" aria-label="performance mode">
+          <button role="tab" aria-selected={mode === "roll"} onClick={() => { setRolling(false); setMode("roll"); }}>Roll</button>
+          <button role="tab" aria-selected={mode === "walk"} onClick={() => { setRolling(false); setMode("walk"); }}>Walk</button>
+        </div>
+        {mode === "roll" ? <>
+          <button className="bench-btn" onClick={() => setRolling((value) => !value)}>{rolling ? "Hold" : "Roll"}</button>
+          <label className="kl-meta">speed <input aria-label="scroll speed" type="range" min={8} max={140} value={prefs.speed || 36} onChange={(event) => setPref({ speed: Number(event.target.value) })} /></label>
+        </> : <button className="bench-btn primary" onClick={startWalk}>Play</button>}
+        <button className="bench-btn" onClick={() => scrollPage(Math.max(0, visibleIndex - 1))} aria-label="previous page">Previous</button>
+        <button className="bench-btn" onClick={() => scrollPage(Math.min(pages.length - 1, visibleIndex + 1))} aria-label="next page">Next</button>
+        <button className="bench-btn" onClick={goFullscreen} aria-label="fullscreen"><Maximize2 size={14} /></button>
+        <button className="bench-btn" onClick={onExitSet}>Exit set</button>
+      </div>
+      {pages.map((slot, index) => <PerformSongPage key={slot.entry.entryId} slot={slot} index={index}
+        active={visibleIndex === index} activeChordIndex={mode === "walk" && walk.pageIndex === index ? walk.chordIndex : null}
+        onRetry={() => onRequestPage?.(index)}
+        registerPage={(node) => { if (node) { node.dataset.performIndex = index; pageNodes.current.set(index, node); } else pageNodes.current.delete(index); }}
+        registerSentinel={(node) => { if (node) sentinelNodes.current.set(index, node); else sentinelNodes.current.delete(index); }} />)}
+      <div className="perform-set-end">End of set</div>
+      <button className="bench-btn" onClick={onPickSong}>Pick another song</button>
+    </div>
+  );
+}
+
+export default function Perform({ singleSong = null, run = null, ...props }) {
+  if (run) return <PerformSet run={run} {...props} />;
+  return <SinglePerform {...(singleSong || props)} />;
 }
