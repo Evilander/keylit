@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "../test/render.js";
+import { fireEvent, render, screen, waitFor } from "../test/render.js";
 import { createDraft } from "../lib/composition.js";
 import ProgressionComposer from "./ProgressionComposer.jsx";
 
@@ -24,6 +24,11 @@ const baseProps = {
   onEdit: vi.fn(),
   onAudition: vi.fn(),
   onUndo: vi.fn(),
+};
+const deferred = () => {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
 };
 
 describe("ProgressionComposer", () => {
@@ -77,5 +82,17 @@ describe("ProgressionComposer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Whole song" }));
     expect(onAudition).toHaveBeenCalledTimes(2);
     expect(onAudition.mock.calls[0][0]).toHaveLength(2);
+  });
+
+  it("discards a late Deep response after the isolated draft revision changes", async () => {
+    const pending = deferred();
+    const requestDeep = vi.fn(() => pending.promise);
+    const view = render(<ProgressionComposer {...baseProps} documentId="draft-1" revision={1} requestDeep={requestDeep} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Ideas" }));
+    fireEvent.click(screen.getByRole("button", { name: "Deep ideas" }));
+    view.rerender(<ProgressionComposer {...baseProps} documentId="draft-1" revision={2} requestDeep={requestDeep} />);
+    pending.resolve({ ok: true, data: { ideas: [{ intent: "next", kind: "insertAfter", symbols: ["Am"], rationale: "late idea" }] } });
+    await Promise.resolve();
+    await waitFor(() => expect(screen.queryByText("late idea")).not.toBeInTheDocument());
   });
 });

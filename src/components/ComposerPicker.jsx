@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { parseChord } from "../lib/theory.js";
 import { spellChord } from "../lib/spelling.js";
 import { mergeDeepIdeas, paletteForKey, suggestForIntent } from "../lib/composerSuggestions.js";
@@ -37,6 +37,9 @@ export default function ComposerPicker({
   const selectedSection = draft.sections.find((section) => section.id === sectionId) || draft.sections[0];
   const targetId = selection?.chordId || null;
   const gapIndex = Number.isInteger(selection?.gapIndex) ? selection.gapIndex : undefined;
+  const requestFingerprint = JSON.stringify({ documentId: documentId || draft.id, revision, selection: selection || null });
+  const latestRequestRef = useRef(requestFingerprint);
+  latestRequestRef.current = requestFingerprint;
   const parsed = parseChord(symbol.trim());
 
   const ideas = useMemo(() => suggestForIntent({
@@ -86,11 +89,7 @@ export default function ComposerPicker({
 
   const loadDeep = async () => {
     if (!requestDeep || deep.loading) return;
-    const captured = {
-      documentId: documentId || draft.id,
-      revision,
-      selection: JSON.stringify(selection || null),
-    };
+    const captured = requestFingerprint;
     setDeep({ loading: true, error: "", ideas: [] });
     const result = await requestDeep({
       progression: selectedSection?.chords.map((slot) => slot.symbol) || [],
@@ -98,10 +97,7 @@ export default function ComposerPicker({
       intent,
       context: { sectionId, chordId: targetId, gapIndex },
     });
-    const unchanged = captured.documentId === (documentId || draft.id)
-      && captured.revision === revision
-      && captured.selection === JSON.stringify(selection || null);
-    if (!unchanged) return;
+    if (captured !== latestRequestRef.current) return;
     if (!result?.ok) {
       setDeep({ loading: false, error: result?.error || "Deep ideas unavailable — offline ideas still work.", ideas: [] });
       return;
