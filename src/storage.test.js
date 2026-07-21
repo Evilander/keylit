@@ -213,6 +213,16 @@ describe("bench book — setlists", () => {
     expect(be.snapshot()["keylit.bench.v2"]).toBe(JSON.stringify({ version: 3, setlists: [], log: [] }));
   });
 
+  it("normalizes an imported bench state through restore", () => {
+    const be = fakeBackend();
+    const bb = createBenchBook(be, { makeId: sequenceIds(), now: () => 1 });
+    bb.restore({ setlists: [{ id: "old", name: "Old", songs: [{ songKey: "old:a", title: "A" }] }], log: [] });
+    expect(JSON.parse(be.snapshot()["keylit.bench.v2"])).toMatchObject({
+      version: 2,
+      setlists: [{ id: "old", entries: [{ songKey: "old:a", title: "A" }] }],
+    });
+  });
+
   it("removes and restores one repeated occurrence", () => {
     const bb = createBenchBook(fakeBackend(), { makeId: sequenceIds(), now: () => 1 });
     const sl = bb.createSetlist("Set", 1);
