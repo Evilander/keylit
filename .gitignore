@@ -16,6 +16,7 @@ release
 # Working artifacts
 .playwright-mcp
 .superpowers/
+.worktrees/
 review-*.png
 keylit-*.png
 .vercel
