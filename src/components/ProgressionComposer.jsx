@@ -138,6 +138,7 @@ export default function ProgressionComposer({
         documentId={documentId || draft.id}
         revision={revision}
         onEdit={onEdit}
+        onSelect={onSelect}
         onAudition={onAudition}
         requestDeep={requestDeep}
       />
