@@ -7,7 +7,7 @@ describe("buildBackup / parseBackup", () => {
   it("round-trips a v2 backup", () => {
     const built = buildBackup({
       songs: [song("s1", "Smog", "Cold Blooded Old Times")],
-      setlists: [{ id: "sl1", name: "Tonight", songs: [] }],
+      setlists: [{ id: "sl1", name: "Tonight", entries: [] }],
       log: [{ songKey: "smog--cold-blooded-old-times", at: 123 }],
       prefs: { "keylit.theme.v1": "dark", "not.a.real.key": "x" },
       exportedAt: "2026-07-15",
@@ -57,8 +57,8 @@ describe("buildBackup / parseBackup", () => {
     expect(s.format).toBe("chords");
     expect("extraJunk" in s).toBe(false);   // whitelist: unknown keys shed
     const sl = parsed.data.setlists[0];
-    expect(sl.songs).toHaveLength(1);       // null/primitive/keyless entries gone
-    expect(sl.songs[0].title).toBe("Untitled");
+    expect(sl.entries).toHaveLength(1);     // null/primitive/keyless entries gone
+    expect(sl.entries[0].title).toBe("Untitled");
     expect(parsed.data.log).toHaveLength(0); // unparseable timestamp = no entry
   });
 
@@ -67,12 +67,48 @@ describe("buildBackup / parseBackup", () => {
     const parsed = parseBackup({ keylit: 2, songs: many });
     expect(parsed.data.songs.length).toBeLessThanOrEqual(5000);
   });
+
+  it("normalizes legacy songs and v2 entries without dropping repeats or per-entry notes", () => {
+    const parsed = parseBackup({ keylit: 2, songs: [], setlists: [{
+      id: "sl", name: "Tonight", songs: [
+        { songKey: "user:a", source: "user", id: "a", title: "A", key: "Eb", capo: 0 },
+        { songKey: "user:a", source: "user", id: "a", title: "A", note: "encore" },
+      ],
+    }] });
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.setlists[0].entries).toHaveLength(2);
+    expect(parsed.data.setlists[0].entries[0].capo).toBe(0);
+    expect(parsed.data.setlists[0].entries[0].key).toBe("Eb");
+    expect(parsed.data.setlists[0].entries[1].note).toBe("encore");
+  });
+
+  it("normalizes a backup containing legacy and v2 setlists in one file", () => {
+    const parsed = parseBackup({ keylit: 2, songs: [], setlists: [
+      { id: "old", name: "Old", songs: [{ songKey: "legacy:key", title: "Legacy" }] },
+      { id: "new", name: "New", entries: [{ entryId: "e", songKey: "user:a", source: "user", id: "a", title: "A", key: "F#", capo: 0, note: "count four" }] },
+    ] });
+    expect(parsed.ok).toBe(true);
+    expect(parsed.data.setlists.map((setlist) => setlist.entries.length)).toEqual([1, 1]);
+    expect(parsed.data.setlists[1].entries[0]).toMatchObject({ key: "F#", capo: 0, note: "count four" });
+  });
+
+  it("whitelists entries and replaces duplicate or oversized entry IDs", () => {
+    const parsed = parseBackup({ keylit: 2, songs: [], setlists: [{ id: "sl", entries: [
+      { entryId: "same", songKey: "user:a", title: "A", unknown: "nope" },
+      { entryId: "same", songKey: "user:a", title: "A again" },
+      { entryId: "x".repeat(161), songKey: "user:b", title: "B" },
+    ] }] });
+    const entries = parsed.data.setlists[0].entries;
+    expect(new Set(entries.map((entry) => entry.entryId)).size).toBe(3);
+    expect("unknown" in entries[0]).toBe(false);
+    expect(entries[2].entryId).toBe("legacy-sl-2-user-b");
+  });
 });
 
 describe("mergeBackup — never destroys, never duplicates", () => {
   const current = {
     songs: [song("home-1", "Owen", "Bad News")],
-    setlists: [{ id: "sl1", name: "Tonight", songs: [] }],
+    setlists: [{ id: "sl1", name: "Tonight", entries: [] }],
     log: [{ songKey: "owen--bad-news", at: 100 }],
   };
 
@@ -83,7 +119,7 @@ describe("mergeBackup — never destroys, never duplicates", () => {
         song("away-9", "Owen", "Bad News"),             // same song, other machine's id
         song("away-2", "Joan of Arc", "The Sun Rose"), // genuinely new
       ],
-      setlists: [{ id: "sl1", name: "Tonight", songs: [] }, { id: "sl2", name: "Basement", songs: [] }],
+      setlists: [{ id: "sl1", name: "Tonight", entries: [] }, { id: "sl2", name: "Basement", entries: [] }],
       log: [{ songKey: "owen--bad-news", at: 100 }, { songKey: "owen--bad-news", at: 200 }],
     };
     const { songs, setlists, log, report } = mergeBackup(current, incoming);
@@ -114,6 +150,14 @@ describe("mergeBackup — never destroys, never duplicates", () => {
     expect(report.songsAdded).toBe(0);
     expect(report.setlistsAdded).toBe(0);
     expect(report.logAdded).toBe(0);
+  });
+
+  it("names local-wins setlists skipped during merge", () => {
+    const incoming = { songs: [], setlists: [{ id: "same", name: "Incoming", entries: [] }], log: [], prefs: {} };
+    const current = { songs: [], setlists: [{ id: "same", name: "My Open Mic", entries: [] }], log: [] };
+    const out = mergeBackup(current, incoming);
+    expect(out.report.setlistNamesSkipped).toEqual(["My Open Mic"]);
+    expect(reportLine(out.report)).toMatch(/My Open Mic/);
   });
 });
 
