@@ -179,7 +179,8 @@ describe("song library", () => {
 });
 
 describe("bench book — setlists", () => {
-  const song = (t) => ({ songKey: t.toLowerCase(), title: t, artist: "Artist" });
+  const song = (t) => ({ songKey: t.toLowerCase(), source: "user", id: t.toLowerCase(), title: t, artist: "Artist" });
+  const sequenceIds = () => { let n = 0; return (prefix = "id") => `${prefix}-${++n}`; };
 
   it("creates, renames and removes setlists", () => {
     const bb = createBenchBook(fakeBackend());
@@ -191,17 +192,49 @@ describe("bench book — setlists", () => {
     expect(bb.setlists()).toEqual([]);
   });
 
-  it("adds songs once, removes them, reorders them", () => {
-    const bb = createBenchBook(fakeBackend());
+  it("writes a flat v2 envelope while leaving v1 untouched", () => {
+    const v1 = JSON.stringify({ setlists: [{ id: "old", name: "Old", songs: [] }], log: [] });
+    const be = fakeBackend({ "keylit.bench.v1": v1 });
+    const bb = createBenchBook(be, { makeId: sequenceIds(), now: () => 20 });
+    const made = bb.createSetlist("New", 20);
+    expect(made.createdAt).toBe(20);
+    bb.addToSetlist(made.id, { songKey: "user:a", source: "user", id: "a", title: "A", capo: 0 });
+    const stored = JSON.parse(be.snapshot()["keylit.bench.v2"]);
+    expect(stored.version).toBe(2);
+    expect(stored.setlists.find((item) => item.id === made.id).entries[0].capo).toBe(0);
+    expect(be.snapshot()["keylit.bench.v1"]).toBe(v1);
+  });
+
+  it("uses v1 only as in-memory recovery when v2 is malformed", () => {
+    const v1 = JSON.stringify({ setlists: [{ id: "old", name: "Old", songs: [{ songKey: "old:a", title: "Old A" }] }], log: [] });
+    const be = fakeBackend({ "keylit.bench.v1": v1, "keylit.bench.v2": JSON.stringify({ version: 3, setlists: [], log: [] }) });
+    const bb = createBenchBook(be, { makeId: sequenceIds(), now: () => 1 });
+    expect(bb.setlists()[0].entries[0].title).toBe("Old A");
+    expect(be.snapshot()["keylit.bench.v2"]).toBe(JSON.stringify({ version: 3, setlists: [], log: [] }));
+  });
+
+  it("removes and restores one repeated occurrence", () => {
+    const bb = createBenchBook(fakeBackend(), { makeId: sequenceIds(), now: () => 1 });
+    const sl = bb.createSetlist("Set", 1);
+    const first = bb.addToSetlist(sl.id, song("Candle"));
+    const second = bb.addToSetlist(sl.id, song("Candle"));
+    const removed = bb.removeFromSetlist(sl.id, first.entryId);
+    expect(bb.setlists()[0].entries.map((entry) => entry.entryId)).toEqual([second.entryId]);
+    bb.restoreToSetlist(sl.id, removed.entry, removed.index);
+    expect(bb.setlists()[0].entries.map((entry) => entry.entryId)).toEqual([first.entryId, second.entryId]);
+  });
+
+  it("adds, moves, updates, and removes stable occurrences", () => {
+    const bb = createBenchBook(fakeBackend(), { makeId: sequenceIds(), now: () => 100 });
     const sl = bb.createSetlist("Tonight", 100);
-    bb.addToSetlist(sl.id, song("Candle"));
-    bb.addToSetlist(sl.id, song("Harvest"));
-    bb.addToSetlist(sl.id, song("Candle"));            // dupe ignored
-    expect(bb.setlists()[0].songs.map((s) => s.title)).toEqual(["Candle", "Harvest"]);
-    bb.moveInSetlist(sl.id, 1, -1);                     // Harvest up
-    expect(bb.setlists()[0].songs.map((s) => s.title)).toEqual(["Harvest", "Candle"]);
-    bb.removeFromSetlist(sl.id, "candle");
-    expect(bb.setlists()[0].songs.map((s) => s.title)).toEqual(["Harvest"]);
+    const candle = bb.addToSetlist(sl.id, song("Candle"));
+    const harvest = bb.addToSetlist(sl.id, song("Harvest"));
+    bb.moveInSetlist(sl.id, harvest.entryId, 0);
+    bb.setEntryNote(sl.id, candle.entryId, "hold the last chord");
+    expect(bb.setlists()[0].entries.map((s) => s.title)).toEqual(["Harvest", "Candle"]);
+    expect(bb.setlists()[0].entries[1].note).toBe("hold the last chord");
+    expect(bb.removeFromSetlist(sl.id, candle.entryId)).toMatchObject({ entry: { entryId: candle.entryId }, index: 1 });
+    expect(bb.setlists()[0].entries.map((s) => s.title)).toEqual(["Harvest"]);
   });
 
   it("keeps per-setlist notes", () => {
