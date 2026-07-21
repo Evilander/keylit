@@ -63,6 +63,12 @@ import { benchBook, userSongbook } from "./storage.js";
 import { slugSongKey } from "./lib/bench.js";
 import { decodeShare } from "./lib/sharelink.js";
 import { buildUserSong } from "./lib/usersong.js";
+import { chartOutline, progressionAnchors } from "./lib/chartlines.js";
+import {
+  acceptPerformPage, buildPerformPage, createPerformRun,
+  failPerformPage, requestPerformPage as markPerformPageRequested,
+} from "./lib/performpage.js";
+import { createLatestSongLoader, resolveSongData } from "./songloader.js";
 import { canonicalTuning, chartShiftForGuitar, STANDARD_TUNING, TUNINGS, uniformTuningOffset } from "./lib/tuning.js";
 import GuitarSetup from "./components/GuitarSetup.jsx";
 
@@ -180,6 +186,10 @@ export default function App() {
   const [chartSpelling, setChartSpelling] = useState(savedSpelling);
   // Opened from a setlist: { name, rows, idx } drives the gig strip (prev/next).
   const [setlistCtx, setSetlistCtx] = useState(null);
+  const [performRun, setPerformRun] = useState(null);
+  const performRunRef = useRef(null);
+  const performIdRef = useRef(0);
+  const songLoaderRef = useRef(null);
   // Write is deliberately isolated from Song and Theory. Cross-room movement
   // happens only through explicit snapshot actions such as "take it to the desk".
   const [writeSession, setWriteSession] = useState(() => {
@@ -256,18 +266,24 @@ export default function App() {
   }, []);
 
   const loadSheet = (s) => {
+    songLoaderRef.current?.invalidate();
     setSheet(s); setCurrentIdx(0); setIsPlaying(false); setTranspose(0); setKeyOverride(null); setPlayCapo(null);
   };
 
-  const openSong = useCallback(async (entry, ctx = null) => {
-    const song = await loadSong(entry);
-    if (!song) return;
-    // Keep the id: setlist records need source+id to stay resolvable later.
-    setLoaded({ id: song.id ?? entry.id, title: song.title, artist: song.artist, source: song.source, sourceUrl: song.sourceUrl, tuning: song.tuning, tuningRaw: song.tuningRaw, capo: song.capo, key: song.key, format: song.format });
-    loadSheet(song.body || "");
-    setSetlistCtx(ctx); // opened outside a setlist clears the gig strip
-    setSection("song");
-  }, []);
+  if (!songLoaderRef.current) {
+    songLoaderRef.current = createLatestSongLoader({
+      resolveSong: (entry) => resolveSongData(entry, { loadSong }),
+      onAccept: (song, entry, ctx) => {
+        setPerformRun(null);
+        performRunRef.current = null;
+        setLoaded({ id: song.id ?? entry.id, title: song.title, artist: song.artist, source: song.source, sourceUrl: song.sourceUrl, tuning: song.tuning, tuningRaw: song.tuningRaw, capo: song.capo, key: song.key, format: song.format });
+        loadSheet(song.body || "");
+        setSetlistCtx(ctx);
+        setSection("song");
+      },
+    });
+  }
+  const openSong = useCallback((entry, ctx = null) => songLoaderRef.current.open(entry, ctx), []);
 
   // A chart handed over in the URL fragment (#s=…) — it never touched a server.
   useEffect(() => {
@@ -421,6 +437,21 @@ export default function App() {
   // (ChordLab). Key names and the tutor keep plain, key-aware spelling.
   const namedKey = useMemo(() => ({ ...activeKey, spelling: chartSpelling }),
     [activeKey.tonic, activeKey.mode, chartSpelling]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sendChordsToWrite = useCallback((chords, name = "Song idea") => {
+    if (!Array.isArray(chords) || !chords.length) { setSection("write"); return; }
+    const draft = createDraft({
+      id: nextWriteId("draft"),
+      name,
+      key: activeKey,
+      sections: [{
+        id: nextWriteId("section"),
+        name: "Verse",
+        chords: chords.map((chord) => ({ id: nextWriteId("chord"), symbol: typeof chord === "string" ? chord : chordSymbol(chord) })),
+      }],
+    });
+    replaceWriteDraft(draft, { historyMode: "push" });
+    setSection("write");
+  }, [activeKey, nextWriteId, replaceWriteDraft]);
   const sendSongToWrite = useCallback(() => {
     if (!view.prog.length) { setSection("write"); return; }
     const sections = [];
@@ -442,6 +473,84 @@ export default function App() {
     replaceWriteDraft(draft, { historyMode: "push" });
     setSection("write");
   }, [view.prog, activeKey, loaded?.title, nextWriteId, replaceWriteDraft]);
+
+  const startPerformSet = useCallback((setlist, startEntryId = null) => {
+    const run = createPerformRun(setlist, {
+      tuning: guitarTuning,
+      capo: effectiveCapo || 0,
+      transpose,
+      startEntryId,
+      runId: `perform-${Date.now().toString(36)}-${(++performIdRef.current).toString(36)}`,
+    });
+    performRunRef.current = run;
+    setPerformRun(run);
+    setSetlistCtx(null);
+    setIsPlaying(false);
+    setSection("perform");
+  }, [guitarTuning, effectiveCapo, transpose]);
+
+  const requestPerformSetPage = useCallback(async (index) => {
+    const current = performRunRef.current;
+    const slot = current?.pages?.[index];
+    if (!slot || slot.status === "loading" || slot.status === "ready") return;
+    const requestId = `page-${Date.now().toString(36)}-${(++performIdRef.current).toString(36)}`;
+    const requested = markPerformPageRequested(current, { runId: current.runId, index, requestId });
+    performRunRef.current = requested;
+    setPerformRun(requested);
+    const capture = { runId: current.runId, requestId, index, entry: slot.entry, setup: slot.setup };
+
+    let song;
+    try { song = await resolveSongData(capture.entry, { loadSong }); } catch { song = null; }
+    if (!song) {
+      const failed = failPerformPage(performRunRef.current, { ...capture, message: "Chart could not be resolved from its saved source." });
+      performRunRef.current = failed;
+      setPerformRun(failed);
+      return;
+    }
+
+    const sourceSheet = String(song.body || "");
+    const sourceTuning = canonicalTuning(song.tuningRaw || song.tuning || "standard");
+    const targetTuning = canonicalTuning(capture.setup.tuning || "standard");
+    const hasDeclaredCapo = song.capo !== null && song.capo !== undefined && song.capo !== "";
+    const sourceCapoValue = Number(song.capo);
+    const sourceCapo = hasDeclaredCapo && Number.isFinite(sourceCapoValue)
+      ? Math.max(0, Math.round(sourceCapoValue))
+      : detectCapo(sourceSheet);
+    const targetCapo = Number.isFinite(Number(capture.setup.capo)) ? Math.max(0, Math.round(Number(capture.setup.capo))) : sourceCapo;
+    let pageSheet = sourceSheet;
+    let pageRetab = null;
+    if (sourceTuning.id !== targetTuning.id || sourceCapo !== targetCapo) {
+      const changed = swapTabBlocks(sourceSheet, {
+        from: { tuning: sourceTuning.id, capo: sourceCapo },
+        to: { tuning: targetTuning.id, capo: targetCapo },
+      });
+      if (changed) {
+        pageSheet = changed.text;
+        pageRetab = { ...changed, tag: `re-fretted for ${targetTuning.name}${targetCapo ? ` · capo ${targetCapo}` : ""}` };
+      }
+    }
+    const shift = Number(capture.setup.transpose) || 0;
+    const progression = parseSheet(pageSheet).progression.map((chord) => transposeChord(chord, shift));
+    const pageKey = detectKey(progression);
+    const outline = chartOutline(pageSheet);
+    const page = buildPerformPage({
+      entry: capture.entry,
+      loaded: song,
+      sheet: pageSheet,
+      outline,
+      progression,
+      anchors: progressionAnchors(outline),
+      activeKey: pageKey,
+      keyName: `${spellPc(pageKey.tonic, pageKey)} ${pageKey.mode}`,
+      retab: pageRetab,
+      tuning: targetTuning.id,
+      capo: targetCapo,
+      transpose: shift,
+    });
+    const accepted = acceptPerformPage(performRunRef.current, { ...capture, page });
+    performRunRef.current = accepted;
+    setPerformRun(accepted);
+  }, []);
   // The piano PLAYS sounding pitch (shapes + capo + transpose).
   const audioVoicings = mode === "smooth" ? soundingView.smoothFull : soundingView.rootFull;
   audioVoicingRef.current = audioVoicings;
@@ -909,7 +1018,13 @@ export default function App() {
         <div className="kl-wordmark">Keylit<b>.</b></div>
         <nav className="kl-roomtabs" aria-label="Rooms">
           {NAV.map((n) => (
-            <button key={n.id} className="kl-roomtab" aria-current={section === n.id} onClick={() => setSection(n.id)}>
+            <button key={n.id} className="kl-roomtab" aria-current={section === n.id} onClick={() => {
+              if (n.id !== "perform" && performRunRef.current) {
+                performRunRef.current = null;
+                setPerformRun(null);
+              }
+              setSection(n.id);
+            }}>
               {n.label}
             </button>
           ))}
@@ -954,10 +1069,7 @@ export default function App() {
               onPotd={(action) => {
                 arm();
                 if (action === "hear") { auditionChords(potd.chords); return; }
-                setLoaded({ title: `${potd.name} — progression of the day`, artist: null, source: "spark", key: potd.keyName });
-                loadSheet(`[${potd.name} · ${potd.keyName}]\n${potd.sheet}`);
-                setSetlistCtx(null);
-                setSection("song");
+                sendChordsToWrite(potd.chords, `${potd.name} · ${potd.keyName}`);
               }}
               onSetlist={() => { setPracticeTab("bench"); setSection("practice"); }}
               onPaste={() => { setSection("song"); setImportTarget("song"); setImportOpen(true); }}
@@ -994,7 +1106,10 @@ export default function App() {
                 <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8, alignItems: "center" }}>
                   {/* Only songs with a source+id make live setlist entries;
                       pasted/shared/ear charts would leave dead rows. */}
-                  {loaded?.id != null && <AddToSetlist song={loaded} />}
+                  {loaded?.id != null && <AddToSetlist song={loaded} onOpenSetlists={() => {
+                    setPracticeTab("bench");
+                    setSection("practice");
+                  }} />}
                   {sheet.trim() && (!loaded || loaded.source === "user" || loaded.source === "shared" || loaded.source === "ear") && (
                     <ShareChart data={{
                       title: loaded?.title || "Untitled chart", artist: loaded?.artist || undefined,
@@ -1072,13 +1187,44 @@ export default function App() {
 
           {section === "perform" && (
             <Perform
-              sheet={displaySheet} retabTag={retabTag} loaded={loaded} keyName={keyNameFull}
-              activeKey={readingKey} transpose={readingShift}
-              prog={readingView.prog} currentIdx={currentIdx} onSelectIdx={selectIdx}
-              isPlaying={isPlaying} onTogglePlay={togglePlay} tempo={tempo} onTempo={setTempo}
-              roleFor={roleForKeyboard} flash={flash} onKeyPress={playSingleKey}
-              setlistCtx={setlistCtx} onOpenSetlistSong={openSong}
+              run={performRun}
+              singleSong={performRun ? null : {
+                sheet: displaySheet,
+                retabTag,
+                loaded,
+                keyName: keyNameFull,
+                activeKey: readingKey,
+                transpose: readingShift,
+                prog: readingView.prog,
+                currentIdx,
+                onSelectIdx: selectIdx,
+                isPlaying,
+                onTogglePlay: togglePlay,
+                tempo,
+                onTempo: setTempo,
+                roleFor: roleForKeyboard,
+                flash,
+                onKeyPress: playSingleKey,
+                setlistCtx,
+                onOpenSetlistSong: openSong,
+                onPickSong: () => setSection("library"),
+              }}
+              onRequestPage={requestPerformSetPage}
+              onExitSet={() => {
+                performRunRef.current = null;
+                setPerformRun(null);
+                setPracticeTab("bench");
+                setSection("practice");
+              }}
               onPickSong={() => setSection("library")}
+              onPlayPageChord={({ chord }) => {
+                arm();
+                ensureAndPlay(rootPositionFull(chord), Math.max(0.4, tempo / 1000 * 0.8));
+              }}
+              onStopPageWalk={() => {
+                try { allNotesOff(midiOutRef.current); } catch { /* output may have disconnected */ }
+              }}
+              tempo={tempo}
             />
           )}
 
@@ -1276,7 +1422,7 @@ export default function App() {
                 <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
                 <button role="tab" aria-selected={practiceTab === "session"} onClick={() => setPracticeTab("session")}>The Session</button>
                 <button role="tab" aria-selected={practiceTab === "time"} onClick={() => setPracticeTab("time")}>Metronome</button>
-                <button role="tab" aria-selected={practiceTab === "bench"} onClick={() => setPracticeTab("bench")}>Bench Book</button>
+                <button role="tab" aria-selected={practiceTab === "bench"} onClick={() => setPracticeTab("bench")}>Setlists</button>
                 <button role="tab" aria-selected={practiceTab === "mirror"} onClick={() => setPracticeTab("mirror")}>The Mirror</button>
               </div>
               {practiceTab === "drills" && (
@@ -1307,10 +1453,12 @@ export default function App() {
                   <Metronome />
                 </div>
               )}
-              {practiceTab === "bench" && <BenchBook onOpen={openSong} />}
+              {practiceTab === "bench" && <BenchBook onOpen={openSong}
+                onPerformSet={(setlist) => startPerformSet(setlist)}
+                onRunFrom={(setlist, entryId) => startPerformSet(setlist, entryId)} />}
               {practiceTab === "mirror" && (
                 <MirrorPanel onAudition={auditionChords}
-                  onTakeToDesk={(chords) => { loadProgression(chords); setSection("write"); }} />
+                  onTakeToDesk={(chords) => sendChordsToWrite(chords, "Mirror idea")} />
               )}
             </div>
           )}
