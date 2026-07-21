@@ -10,12 +10,13 @@ import { segmentMelody, harmonizeNotes } from "../lib/harmonize.js";
 import { chordSymbol } from "../lib/theory.js";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 
-export default function HumHarmony({ activeKey, onAudition, onLoadProgression }) {
+export default function HumHarmony({ activeKey, onAudition, onCommitChords, onLoadProgression }) {
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [denied, setDenied] = useState(false);
   const [liveName, setLiveName] = useState(null);
   const [phrases, setPhrases] = useState(null); // [{ midis, cands, picked }]
+  const [placement, setPlacement] = useState("append");
   const audioRef = useRef(null);
   const samplesRef = useRef([]);
   const mountedRef = useRef(true);
@@ -116,10 +117,20 @@ export default function HumHarmony({ activeKey, onAudition, onLoadProgression })
             {listening && <span className="kl-pulse" style={{ fontFamily: MONO, fontSize: 12, color: C.rootText }}>listening{liveName ? ` — ${liveName}` : ""} · breathe to split phrases</span>}
             {denied && <span style={{ fontSize: 12, color: C.bassText }}>mic said no — check permissions</span>}
             {picked.length > 0 && (
-              <button className="bench-btn" style={{ marginLeft: "auto" }}
-                onClick={() => onLoadProgression?.(picked)}>
-                send {picked.length} chord{picked.length === 1 ? "" : "s"} to the rail <ArrowRight size={13} />
-              </button>
+              <>
+                {onCommitChords && (
+                  <div className="kl-seg" style={{ marginLeft: "auto" }}>
+                    <button aria-pressed={placement === "append"} onClick={() => setPlacement("append")}>append</button>
+                    <button aria-pressed={placement === "replace"} onClick={() => setPlacement("replace")}>replace section</button>
+                  </div>
+                )}
+                <button className="bench-btn" style={onCommitChords ? undefined : { marginLeft: "auto" }}
+                  onClick={() => onCommitChords
+                    ? onCommitChords({ symbols: picked.map(chordSymbol), placement })
+                    : onLoadProgression?.(picked)}>
+                  {onCommitChords ? `${placement === "append" ? "append to" : "replace"} section` : `send ${picked.length} chord${picked.length === 1 ? "" : "s"} to the rail`} <ArrowRight size={13} />
+                </button>
+              </>
             )}
           </div>
 

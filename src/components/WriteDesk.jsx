@@ -1,414 +1,253 @@
-// WriteDesk.jsx — the Write room, rebuilt on Jeff Tweedy's How to Write One
-// Song (mined from Tyler's own copy, 2026-07-15). The old SongTools bar
-// crammed five jobs into one strip; the desk lays them out the way the book
-// does — his actual daily practice: stockpile WORDS, stockpile MUSIC, PAIR
-// them — plus the One Song Timer, the exercises, sketches that keep words
-// and chords together, and a quiet corner for the DAW plumbing.
-// Quoted lines are verbatim from the book and marked; everything else is
-// paraphrase.
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Wand2, Save, Trash2, Download, Cable, ClipboardPaste, Timer, Shuffle, ChevronDown, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Cable, ClipboardPaste, Download, RotateCcw, Save, Shuffle, Timer, Trash2, Wand2 } from "lucide-react";
+import { createDraft, adaptLegacySketch, deriveProgression } from "../lib/composition.js";
 import { generateProgression, GEN_STYLES } from "../lib/generate.js";
-import { parseSheet } from "../lib/theory.js";
+import { chordSymbol, SHARP_NAMES } from "../lib/theory.js";
 import { midiBlob } from "../lib/midi.js";
-import { spellPc } from "../lib/spelling.js";
-import { library } from "../storage.js";
-import { C, MONO, DISPLAY } from "../ui/theme.js";
-import PocketRecorder from "./PocketRecorder.jsx";
+import { draftBook } from "../storage.js";
+import ProgressionComposer from "./ProgressionComposer.jsx";
 import HumHarmony from "./HumHarmony.jsx";
+import PocketRecorder from "./PocketRecorder.jsx";
 
-const PAD_KEY = "keylit.write.pad.v1";
-const loadPad = () => { try { return localStorage.getItem(PAD_KEY) || ""; } catch { return ""; } };
+const TIMER_KEY = "keylit.write.timer.v1";
+let writeId = 0;
+const freshId = (prefix) => `${prefix}-${Date.now().toString(36)}-${(++writeId).toString(36)}`;
 
-// The book's exercises, tightened for cards. Quotes verbatim.
 const EXERCISES = [
-  {
-    name: "Word ladder", time: "10–15 min",
-    steps: ["Pick a subject. Write 10 verbs that belong to it.", "Write 10 nouns you can see from your chair.", "Pair verbs with nouns that DON'T go together.", "Write a short nonsense poem from the pairs — meaning comes later."],
-    note: "Use the pad and the dealer on this desk.",
-  },
-  {
-    name: "Steal words from a book", time: "ongoing",
-    steps: ["Hum a melody — yours or anyone's — and keep humming.", "Open any book to a random page and skim, not read.", "Write down every word that jumps at the melody's rhythm.", "Over-collect. Come back after the melody fades and keep what's still alive."],
-  },
-  {
-    name: "Cut-ups", time: "15 min",
-    steps: ["Print or copy something you already wrote, double-spaced.", "Cut it into lines or phrases.", "Reorder by pull from a hat, or by feel.", "The cheap version that works: move the LAST line of a verse to the front."],
-  },
-  {
-    name: "Have a conversation", time: "a day",
-    steps: ["Ask someone easy to talk to to interrogate you about your life. Record it.", "Let time pass. Transcribe your side only.", "Mark the phrases with unpremeditated honesty.", "Arrange the marked lines into a verse — first pass adds no words at all."],
-  },
-  {
-    name: "Playing with rhymes", time: "standing habit",
-    steps: ["Write freestanding couplets attached to nothing, like crossword clues.", "Ban the telegraphed rhyme — his named enemy is train/rain."],
-  },
-  {
-    name: "Don't be yourself", time: "one lyric",
-    steps: ["Write the whole lyric as someone or something else — Johnny Cash, an insect, the kitchen table.", "Use the distance to say what you can't say straight."],
-  },
+  ["Word ladder", "List ten verbs and ten visible nouns. Pair the combinations that should not work; keep the lines that surprise you."],
+  ["Cut-ups", "Break an existing lyric into lines. Move the last line first, then rebuild by sound instead of story."],
+  ["Wrong instrument", "Play the section on the instrument you know least. Keep the accident you would never choose on purpose."],
+  ["Mumble translation", "Sing vowel shapes over the movement. Transcribe what the sounds almost say before polishing grammar."],
+  ["Change the narrator", "Write the verse as a different person, object, or place. Distance often produces the honest line."],
+  ["Start with the weak part", "Reverse the section, begin on its least convincing chord, or make the quiet part loud."],
 ];
 
-const FINISHING = [
-  ["Start in the wrong place", "invert the instinct — start from the weakest part, play the progression in reverse, play the quiet song loud."],
-  ["Start in the right place", "“a good first line is the most determining factor in whether a song I've written sees the light of day.” Find the line you love; make it line one."],
-  ["Put it away", "sleep on the stuck song and work on another. The counter-move is also real: sometimes sit in the discomfort and push through."],
-  ["Mumble tracks", "sing nonsense that fits the melody's vowels, then “translate” it on relisten — “it starts feeling almost like you're translating from another language.”"],
-];
+function makeProgressionDraft(current, chords, name, nowStamp) {
+  return createDraft({
+    ...current,
+    name: current?.name || name || "Untitled",
+    key: current?.key,
+    savedAt: current?.savedAt || 0,
+    sections: [{
+      id: freshId("section"),
+      name: name || "Section",
+      chords: chords.map((chord) => ({ id: freshId("chord"), symbol: typeof chord === "string" ? chord : chordSymbol(chord) })),
+    }],
+    lyrics: current?.lyrics || "",
+    _stamp: nowStamp,
+  });
+}
 
 export default function WriteDesk({
-  activeKey, sheet, voicings, tempoMs = 1500,
-  onImport, onLoadProgression, onLoadSheet, onPlay, onAudition, nowStamp,
-  midiSupported, midiOutputs = [], midiOutId = "", onPickMidiOut, onRefreshMidi,
+  draft,
+  selection,
+  spelling = "sharps",
+  book = draftBook,
+  activeKey = draft?.key || { tonic: 0, mode: "major" },
+  voicings = [],
+  tempoMs = 1500,
+  revision = 0,
+  canUndo = false,
+  onEdit,
+  onUndo,
+  onSelect,
+  onReplaceDraft,
+  onImport,
+  onPlay,
+  onAudition,
+  requestDeep,
+  nowStamp = () => Date.now(),
+  midiSupported,
+  midiOutputs = [],
+  midiOutId = "",
+  onPickMidiOut,
+  onRefreshMidi,
 }) {
-  /* ---- the one song timer ---- */
-  // endsAt is wall-clock and PERSISTED: leaving the Write room mid-song must
-  // not kill a running timer — you come back and it's still counting.
-  const TIMER_KEY = "keylit.write.timer.v1";
-  const loadEndsAt = () => {
-    try { const v = Number(localStorage.getItem(TIMER_KEY) || 0); return v > Date.now() ? v : null; }
-    catch { return null; }
-  };
+  const [notice, setNotice] = useState("");
+  const [saved, setSaved] = useState(() => book.list());
+  const [legacy, setLegacy] = useState(() => book.legacy?.() || []);
+  const [style, setStyle] = useState("pop");
+  const [sevenths, setSevenths] = useState(false);
   const [mins, setMins] = useState(10);
-  const [endsAt, setEndsAtState] = useState(loadEndsAt);
-  const setEndsAt = (v) => {
-    setEndsAtState(v);
-    try { v ? localStorage.setItem(TIMER_KEY, String(v)) : localStorage.removeItem(TIMER_KEY); } catch { /* noop */ }
-  };
-  const [left, setLeft] = useState(() => (endsAt ? Math.max(0, Math.round((endsAt - Date.now()) / 1000)) : 0));
-  const [rang, setRang] = useState(false);
-  useEffect(() => {
-    if (!endsAt) return;
-    const tick = () => {
-      const s = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
-      setLeft(s);
-      if (s === 0) {
-        clearInterval(id);
-        setEndsAt(null);
-        setRang(true);
-        // three rising piano pings — the bell on the desk
-        [76, 83, 88].forEach((m, i) => setTimeout(() => onPlay?.([m], 0.5), i * 260));
-      }
-    };
-    const id = setInterval(tick, 250);
-    tick(); // resume immediately on re-entry, not a 250ms beat later
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [endsAt, onPlay]);
-
-  /* ---- words: the pad + the ladder dealer ---- */
-  const [pad, setPad] = useState(loadPad);
-  const savePad = (v) => { setPad(v); try { localStorage.setItem(PAD_KEY, v); } catch { /* noop */ } };
+  const [endsAt, setEndsAtState] = useState(() => {
+    try {
+      const value = Number(localStorage.getItem(TIMER_KEY) || 0);
+      return value > Date.now() ? value : null;
+    } catch { return null; }
+  });
+  const [left, setLeft] = useState(() => endsAt ? Math.max(0, Math.round((endsAt - Date.now()) / 1000)) : 0);
   const [verbs, setVerbs] = useState("");
   const [nouns, setNouns] = useState("");
   const [pairs, setPairs] = useState([]);
-  const deal = () => {
-    const vs = verbs.split(/\n+/).map((s) => s.trim()).filter(Boolean);
-    const ns = nouns.split(/\n+/).map((s) => s.trim()).filter(Boolean);
-    if (!vs.length || !ns.length) return;
-    const out = [];
-    const used = new Set();
-    for (let i = 0; i < Math.min(5, vs.length, ns.length); i++) {
-      let v = vs[Math.floor(Math.random() * vs.length)];
-      let n = ns[Math.floor(Math.random() * ns.length)];
-      const k = `${v}|${n}`;
-      if (used.has(k)) { i--; if (used.size > vs.length * ns.length - 2) break; continue; }
-      used.add(k);
-      out.push(`${v} the ${n}`);
-    }
-    setPairs(out);
+
+  const setEndsAt = (value) => {
+    setEndsAtState(value);
+    try { value ? localStorage.setItem(TIMER_KEY, String(value)) : localStorage.removeItem(TIMER_KEY); } catch { /* optional */ }
   };
 
-  /* ---- music: spark + judgment looseners ---- */
-  const [style, setStyle] = useState("pop");
-  const [genMode, setGenMode] = useState(activeKey.mode || "major");
-  const [sevenths, setSevenths] = useState(false);
-  const [note, setNote] = useState("");
+  useEffect(() => {
+    if (!endsAt) return undefined;
+    const tick = () => {
+      const seconds = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
+      setLeft(seconds);
+      if (!seconds) {
+        setEndsAt(null);
+        [76, 83, 88].forEach((midi, index) => setTimeout(() => onPlay?.([midi], 0.45), index * 240));
+      }
+    };
+    const timer = setInterval(tick, 250);
+    tick();
+    return () => clearInterval(timer);
+  }, [endsAt, onPlay]);
+
+  const progression = useMemo(() => deriveProgression(draft).progression, [draft]);
+  const selectedSectionId = selection?.sectionId || draft.sections[0]?.id;
+  const selectedSection = draft.sections.find((section) => section.id === selectedSectionId) || draft.sections[0];
+
   const spark = () => {
-    const tonic = activeKey.tonic ?? 0;
-    const { chords, name: tplName } = generateProgression({ tonic, mode: genMode, style, seventhsBias: sevenths });
-    onLoadProgression(chords);
-    setNote(`${spellPc(tonic, { tonic, mode: genMode })} ${genMode} · ${tplName} — it's on the rail below`);
-  };
-  const reverse = () => {
-    const { progression } = parseSheet(sheet);
-    if (progression.length < 2) { setNote("nothing on the stand to reverse"); return; }
-    onLoadProgression(progression.slice().reverse());
-    setNote("progression reversed — familiar chords, wrong order, new song");
+    const seed = generateProgression({ tonic: draft.key.tonic, mode: draft.key.mode, style, seventhsBias: sevenths });
+    onReplaceDraft?.(makeProgressionDraft(draft, seed.chords, seed.name, nowStamp()), { historyMode: "push" });
+    setNotice(`${seed.name} is on the desk. Keep it, bend it, or throw it away.`);
   };
 
-  /* ---- sketches: words + chords saved together ---- */
-  const [name, setName] = useState("");
-  const [songs, setSongs] = useState(() => library.list());
-  const saveSketch = () => {
-    const stamp = nowStamp ? nowStamp() : songs.length + 1;
-    // Explicit same name = update (the library's contract). But a BLANK name
-    // must never silently replace an earlier blank-name sketch — two
-    // different "Untitled"s destroying each other is data loss.
-    let sketchName = name.trim();
-    if (!sketchName) {
-      const taken = new Set(songs.map((s) => s.name));
-      sketchName = "Untitled";
-      for (let n = 2; taken.has(sketchName); n++) sketchName = `Untitled (${n})`;
-    }
-    const song = library.save({ name: sketchName, sheet, lyrics: pad, savedAt: stamp });
-    setName(song.name); // so an immediate re-save updates instead of forking
-    setSongs(library.list());
-    setNote(`kept "${song.name}" — chords and words together`);
+  const saveDraft = () => {
+    const next = { ...draft, savedAt: nowStamp() };
+    book.save(next);
+    setSaved(book.list());
+    setNotice(`Kept “${next.name}” with its exact sections, repeats, and words.`);
   };
-  const loadSketch = (id) => {
-    const s = library.get(id);
-    if (!s) return;
-    // Words never silently vanish: a pad that isn't saved in any sketch gets
-    // stashed as its own sketch before the swap.
-    const padNow = pad.trim();
-    const padIsSaved = !padNow || songs.some((x) => (x.lyrics || "").trim() === padNow);
-    if (!padIsSaved) {
-      const at = nowStamp ? nowStamp() : 0;
-      library.save({ name: `Stashed words — ${new Date(at).toLocaleString()}`, sheet: "", lyrics: pad, savedAt: at });
-    }
-    onLoadSheet(s.sheet);
-    // ALWAYS both halves — a lyric-less sketch must not inherit stale words
-    savePad(s.lyrics || "");
-    setName(s.name);
-    setSongs(library.list());
-    setNote(padIsSaved ? `opened "${s.name}"` : `opened "${s.name}" — your unsaved words were stashed as their own sketch`);
-  };
-  const delSketch = (id) => { library.remove(id); setSongs(library.list()); };
 
-  /* ---- the daw corner ---- */
+  const openDraft = (id) => {
+    const next = book.get(id);
+    if (!next) return;
+    onReplaceDraft?.(next, { historyMode: "reset" });
+    setNotice(`Opened “${next.name}”.`);
+  };
+
+  const openLegacy = (item) => {
+    const next = adaptLegacySketch(item);
+    onReplaceDraft?.(next, { historyMode: "reset" });
+    setNotice(`Recovered “${next.name}” without deleting the old sketch.`);
+  };
+
+  const removeDraft = (id) => {
+    book.remove(id);
+    setSaved(book.list());
+  };
+
   const exportMidi = () => {
-    const useful = (voicings || []).filter((v) => v && v.length);
-    if (!useful.length) { setNote("nothing to export yet"); return; }
+    const useful = voicings.filter((voicing) => Array.isArray(voicing) && voicing.length);
+    if (!useful.length) { setNotice("Add a chord before exporting MIDI."); return; }
     const beatsPerChord = 2;
     const tempoBpm = Math.max(40, Math.min(220, Math.round((60000 / tempoMs) * beatsPerChord)));
-    const blob = midiBlob(useful, { tempoBpm, beatsPerChord });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${(name.trim() || "keylit-sketch").replace(/[^a-z0-9]+/gi, "-")}.mid`;
-    a.click();
+    const url = URL.createObjectURL(midiBlob(useful, { tempoBpm, beatsPerChord }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${draft.name.replace(/[^a-z0-9]+/gi, "-") || "keylit-draft"}.mid`;
+    anchor.click();
     URL.revokeObjectURL(url);
-    setNote("exported .mid");
+    setNotice("Exported the exact visible progression as MIDI.");
   };
 
-  const [exOpen, setExOpen] = useState(false);
-  const card = { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10, minWidth: 0 };
-  const stationTitle = (n, t) => (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-      <span style={{ fontFamily: MONO, fontSize: 11, color: C.rootText, fontWeight: 700 }}>{n}</span>
-      <span style={{ fontFamily: DISPLAY, fontSize: 19, color: C.ink }}>{t}</span>
-    </div>
-  );
+  const dealPairs = () => {
+    const leftWords = verbs.split(/\n+/).map((word) => word.trim()).filter(Boolean);
+    const rightWords = nouns.split(/\n+/).map((word) => word.trim()).filter(Boolean);
+    const count = Math.min(5, leftWords.length, rightWords.length);
+    setPairs(Array.from({ length: count }, (_, index) => `${leftWords[index]} the ${rightWords[(index + 1) % rightWords.length]}`));
+  };
+
+  const commitHum = ({ symbols, placement }) => {
+    if (!symbols?.length) return;
+    const sections = draft.sections.map((section) => {
+      if (section.id !== selectedSection.id) return section;
+      const added = symbols.map((symbol) => ({ id: freshId("chord"), symbol }));
+      return { ...section, chords: placement === "replace" ? added : [...section.chords, ...added] };
+    });
+    onReplaceDraft?.(createDraft({ ...draft, sections }), { historyMode: "push" });
+  };
 
   return (
-    <div>
-      {/* ---- the timer: the book's sharpest tool ---- */}
-      <div className="faceplate hero" style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
-        <Timer size={18} style={{ color: C.rootText, flex: "0 0 auto" }} />
-        <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontFamily: DISPLAY, fontSize: 19, color: C.ink }}>The one song timer</div>
-          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 3 }}>
-            Whatever exists when it rings <i>counts as a song</i>. No exceptions, no judgment — then record it before the feeling leaves.
-          </div>
-        </div>
+    <div className="write-desk">
+      <div className="faceplate write-timer">
+        <Timer size={17} />
+        <div><strong>One song timer</strong><span>Whatever exists when it rings counts.</span></div>
         {endsAt ? (
-          <>
-            <span style={{ fontFamily: MONO, fontSize: 34, fontWeight: 700, color: C.rootText }}>
-              {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
-            </span>
-            <button className="bench-btn" onClick={() => { setEndsAt(null); setRang(false); }}>give up honorably</button>
-          </>
-        ) : rang ? (
-          <>
-            <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: C.toneText }}>That's ONE song. Record it ↓</span>
-            <button className="bench-btn" onClick={() => setRang(false)}>again</button>
-          </>
+          <><b>{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</b><button className="bench-btn" onClick={() => setEndsAt(null)}>Stop</button></>
         ) : (
-          <>
-            <div className="kl-seg" role="radiogroup" aria-label="timer length">
-              {[5, 10, 15].map((m) => (
-                <button key={m} role="radio" aria-checked={mins === m} onClick={() => setMins(m)}>{m}m</button>
-              ))}
-            </div>
-            <button className="bench-btn primary" onClick={() => {
-              // arm audio inside THIS gesture (empty play = init only) — else
-              // the session's first sound would be the bell itself, which
-              // autoplay policy silently swallows
-              onPlay?.([], 0);
-              setRang(false); setEndsAt(Date.now() + mins * 60000); setLeft(mins * 60);
-            }}>
-              Write one song
-            </button>
-          </>
+          <><div className="kl-seg">{[5, 10, 15].map((value) => <button key={value} aria-pressed={mins === value} onClick={() => setMins(value)}>{value}m</button>)}</div><button className="bench-btn primary" onClick={() => { onPlay?.([], 0); setLeft(mins * 60); setEndsAt(Date.now() + mins * 60000); }}>Write one song</button></>
         )}
       </div>
 
-      {/* ---- the daily desk: words · music · pair ---- */}
-      <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 14, alignItems: "start" }}>
-        <div className="faceplate" style={card}>
-          {stationTitle("01", "Stockpile words")}
-          <textarea value={pad} onChange={(e) => savePad(e.target.value)} spellCheck={false}
-            placeholder={"the pad keeps itself — lines, fragments, overheard things.\nnothing here has to be good."}
-            aria-label="lyric pad"
-            style={{ width: "100%", minHeight: 150, resize: "vertical", background: C.panel2, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 10, padding: "10px 12px", fontFamily: "var(--kl-sans)", fontSize: 13.5, lineHeight: 1.55, outline: "none" }} />
-          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 10 }}>
-            <div className="kl-eyebrow" style={{ marginBottom: 6 }}>The word ladder</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <textarea value={verbs} onChange={(e) => setVerbs(e.target.value)} placeholder={"verbs\none per line"} aria-label="verbs"
-                style={{ minHeight: 84, resize: "vertical", background: C.panel2, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 12.5, fontFamily: "var(--kl-sans)", outline: "none" }} />
-              <textarea value={nouns} onChange={(e) => setNouns(e.target.value)} placeholder={"nouns you can see\none per line"} aria-label="nouns"
-                style={{ minHeight: 84, resize: "vertical", background: C.panel2, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "7px 9px", fontSize: 12.5, fontFamily: "var(--kl-sans)", outline: "none" }} />
-            </div>
-            <button className="bench-btn" style={{ marginTop: 8, padding: "6px 13px", fontSize: 12.5 }} onClick={deal}>
-              <Shuffle size={13} /> deal wrong pairs
-            </button>
-            {pairs.length > 0 && (
-              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>
-                {pairs.map((p, i) => (
-                  <button key={i} onClick={() => savePad(pad ? `${pad}\n${p}` : p)} title="add to the pad"
-                    style={{ textAlign: "left", background: "transparent", border: 0, cursor: "pointer", fontFamily: DISPLAY, fontSize: 15, color: C.ink, padding: "2px 0" }}>
-                    {p}
-                  </button>
-                ))}
-                <span style={{ fontSize: 11, color: C.faint }}>click a pair to keep it on the pad</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="faceplate" style={card}>
-          {stationTitle("02", "Stockpile music")}
-          <div className="flex items-center" style={{ gap: 7, flexWrap: "wrap" }}>
-            <select value={style} onChange={(e) => setStyle(e.target.value)} style={sel} aria-label="spark style">
-              {GEN_STYLES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <select value={genMode} onChange={(e) => setGenMode(e.target.value)} style={sel} aria-label="spark mode">
-              <option value="major">major</option>
-              <option value="minor">minor</option>
-            </select>
-            <label style={{ fontSize: 11.5, color: C.muted, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
-              <input type="checkbox" checked={sevenths} onChange={(e) => setSevenths(e.target.checked)} /> 7ths
-            </label>
-            <button className="bench-btn primary" style={{ padding: "7px 14px", fontSize: 12.5 }} onClick={spark}><Wand2 size={13} /> Spark</button>
-          </div>
-          <p style={{ fontSize: 12.5, color: C.muted, margin: 0, lineHeight: 1.55 }}>
-            A progression seed in your key — it lands on the rail below, where the Lab can bend it.
-          </p>
-          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 10 }}>
-            <div className="kl-eyebrow" style={{ marginBottom: 6 }}>Loosen your judgment</div>
-            <button className="bench-btn" style={{ padding: "6px 13px", fontSize: 12.5 }} onClick={reverse}>
-              <RotateCcw size={13} /> reverse the progression
-            </button>
-            <p style={{ fontSize: 12, color: C.faint, margin: "8px 0 0", lineHeight: 1.55 }}>
-              Or retune the guitar to something you don't know, or write on the instrument you're worst at.
-              Being willing to sound bad is the skill.
-            </p>
-          </div>
-          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 10 }}>
-            <div className="kl-eyebrow" style={{ marginBottom: 6 }}>Steal like a songwriter</div>
-            <p style={{ fontSize: 12, color: C.faint, margin: 0, lineHeight: 1.55 }}>
-              Learn a song you love in the Library, hum a NEW melody over its changes, and come back
-              after the original fades. Credit anything you keep unchanged.
-            </p>
-          </div>
-        </div>
-
-        <div className="faceplate" style={card}>
-          {stationTitle("03", "Pair them")}
-          <p style={{ fontSize: 12.5, color: C.muted, margin: 0, lineHeight: 1.55 }}>
-            Sing the pad over whatever's on the rail. No words ready? Mumble vowels that fit, then
-            “translate” what you hear back — the melody knows before you do.
-          </p>
-          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 10 }}>
-            <PocketRecorder />
-          </div>
-        </div>
+      <div className="write-draft-bar">
+        <label>Draft name<input value={draft.name} onChange={(event) => onEdit?.({ type: "draft/name", name: event.target.value })} /></label>
+        <label>Key<select value={draft.key.tonic} onChange={(event) => onEdit?.({ type: "draft/key", key: { ...draft.key, tonic: Number(event.target.value) } })}>{SHARP_NAMES.map((name, tonic) => <option key={name} value={tonic}>{name}</option>)}</select></label>
+        <label>Mode<select value={draft.key.mode} onChange={(event) => onEdit?.({ type: "draft/key", key: { ...draft.key, mode: event.target.value } })}><option value="major">major</option><option value="minor">minor</option></select></label>
+        <button className="bench-btn" onClick={saveDraft}><Save size={13} /> Keep sketch</button>
+        <span>{notice}</span>
       </div>
 
-      {/* ---- sketches: keep words and chords in one drawer ---- */}
-      <div className="flex items-center" style={{ gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="sketch name" aria-label="sketch name"
-          style={{ ...sel, width: 160, cursor: "text" }} />
-        <button className="bench-btn" style={{ padding: "7px 14px", fontSize: 12.5 }} onClick={saveSketch}><Save size={13} /> Keep sketch</button>
-        {songs.length > 0 && songs.map((s) => (
-          <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, border: `1.5px solid ${C.line}`, borderRadius: 999, padding: "5px 7px 5px 13px" }}>
-            <button onClick={() => loadSketch(s.id)} style={{ background: "transparent", border: 0, cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: C.ink, padding: 0 }}
-              title={s.lyrics ? "chords + words" : "chords"}>
-              {s.name}
-            </button>
-            <button onClick={() => delSketch(s.id)} aria-label={`delete sketch ${s.name}`}
-              style={{ background: "transparent", border: 0, cursor: "pointer", color: C.faint, display: "inline-flex", padding: 2 }}><Trash2 size={12} /></button>
-          </span>
-        ))}
-        {note && <span style={{ fontSize: 12, color: C.toneText, fontFamily: MONO }}>{note}</span>}
+      <ProgressionComposer
+        draft={draft}
+        selection={selection}
+        spelling={spelling}
+        documentId={draft.id}
+        revision={revision}
+        canUndo={canUndo}
+        onEdit={onEdit}
+        onUndo={onUndo}
+        onSelect={onSelect}
+        onAudition={onAudition}
+        requestDeep={requestDeep}
+      />
+
+      <div className="write-seed-bar">
+        <span className="kl-eyebrow">Need a starting point?</span>
+        <select aria-label="Spark style" value={style} onChange={(event) => setStyle(event.target.value)}>{GEN_STYLES.map((name) => <option key={name}>{name}</option>)}</select>
+        <label><input type="checkbox" checked={sevenths} onChange={(event) => setSevenths(event.target.checked)} /> 7ths</label>
+        <button className="bench-btn" onClick={spark}><Wand2 size={13} /> Spark</button>
+        <button className="bench-btn" onClick={() => onEdit?.({ type: "section/reverse", sectionId: selectedSection.id })}><RotateCcw size={13} /> Reverse the section</button>
       </div>
 
-      {/* ---- melody-first: hum a line, choose its floor ---- */}
-      <HumHarmony activeKey={activeKey} onAudition={onAudition} onLoadProgression={onLoadProgression} />
-
-      {/* ---- the exercises, from the book ---- */}
-      <section style={{ marginTop: 20, borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
-        <button onClick={() => setExOpen((v) => !v)} aria-expanded={exOpen}
-          style={{ display: "flex", alignItems: "center", gap: 10, background: "transparent", border: 0, cursor: "pointer", padding: 0 }}>
-          <ChevronDown size={15} style={{ color: C.faint, transform: exOpen ? "none" : "rotate(-90deg)", transition: "transform 160ms ease" }} />
-          <span className="kl-eyebrow">The exercises · from How to Write One Song</span>
-        </button>
-        {exOpen && (
-          <div style={{ marginTop: 12 }}>
-            <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 12 }}>
-              {EXERCISES.map((ex) => (
-                <div key={ex.name} className="faceplate" style={{ padding: "13px 15px" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
-                    <span style={{ fontFamily: DISPLAY, fontSize: 16, color: C.ink }}>{ex.name}</span>
-                    <span className="kl-meta" style={{ color: C.faint }}>{ex.time}</span>
-                  </div>
-                  <ol style={{ margin: "8px 0 0", paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
-                    {ex.steps.map((s, i) => <li key={i} style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>{s}</li>)}
-                  </ol>
-                  {ex.note && <p style={{ fontSize: 11.5, color: C.rootText, margin: "8px 0 0" }}>{ex.note}</p>}
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <div className="kl-eyebrow" style={{ marginBottom: 6 }}>When you're stuck</div>
-              {FINISHING.map(([t, d]) => (
-                <div key={t} style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: `1px solid ${C.line}`, alignItems: "baseline" }}>
-                  <span style={{ fontFamily: DISPLAY, fontSize: 14.5, color: C.ink, whiteSpace: "nowrap" }}>{t}</span>
-                  <span style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.5 }}>{d}</span>
-                </div>
-              ))}
-            </div>
+      <details className="write-drawer" open>
+        <summary>Words · lines, fragments, and Tweedy-style constraint tools</summary>
+        <div className="write-drawer-body write-words-grid">
+          <textarea aria-label="Lyric pad" value={draft.lyrics} onChange={(event) => onEdit?.({ type: "draft/lyrics", lyrics: event.target.value })} placeholder="Lines, fragments, overheard things. Nothing here has to be good yet." />
+          <div className="write-word-tools">
+            <textarea aria-label="Verbs" value={verbs} onChange={(event) => setVerbs(event.target.value)} placeholder="verbs · one per line" />
+            <textarea aria-label="Nouns" value={nouns} onChange={(event) => setNouns(event.target.value)} placeholder="visible nouns · one per line" />
+            <button className="bench-btn" onClick={dealPairs}><Shuffle size={13} /> Deal wrong pairs</button>
+            {pairs.map((pair) => <button key={pair} onClick={() => onEdit?.({ type: "draft/lyrics", lyrics: `${draft.lyrics}${draft.lyrics ? "\n" : ""}${pair}` })}>{pair}</button>)}
           </div>
-        )}
-      </section>
+        </div>
+      </details>
 
-      {/* ---- the quiet corner: plumbing to the DAW ---- */}
-      <div className="flex items-center" style={{ gap: 12, marginTop: 16, flexWrap: "wrap" }}>
-        <button onClick={onImport} style={quiet} title="paste a chord sheet or tab"><ClipboardPaste size={13} /> import chords</button>
-        <button onClick={exportMidi} style={quiet}><Download size={13} /> export .mid</button>
-        {midiSupported ? (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <Cable size={13} color={midiOutId ? C.toneText : C.faint} />
-            <select value={midiOutId} onFocus={onRefreshMidi} onChange={(e) => onPickMidiOut(e.target.value)} style={sel} aria-label="MIDI output"
-              title="send chords live to a DAW/VST">
-              <option value="">MIDI out: off</option>
-              {midiOutputs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
-          </span>
-        ) : (
-          <span style={{ fontSize: 11.5, color: C.faint }}>MIDI out needs Chrome/Edge</span>
-        )}
-      </div>
+      <details className="write-drawer">
+        <summary>Melody · record a thought or hum a line into chords</summary>
+        <div className="write-drawer-body"><PocketRecorder /><HumHarmony activeKey={activeKey} onAudition={onAudition} onCommitChords={commitHum} /></div>
+      </details>
+
+      <details className="write-drawer">
+        <summary>Exercises · useful ways to get unstuck</summary>
+        <div className="write-drawer-body write-exercises">{EXERCISES.map(([name, text]) => <article key={name}><strong>{name}</strong><p>{text}</p></article>)}</div>
+      </details>
+
+      <details className="write-drawer">
+        <summary>Saved drafts · reopen without changing Song or Theory</summary>
+        <div className="write-drawer-body write-saved">
+          {saved.map((item) => <span key={item.id}><button onClick={() => openDraft(item.id)}>{item.name}</button><button aria-label={`Delete ${item.name}`} onClick={() => removeDraft(item.id)}><Trash2 size={12} /></button></span>)}
+          {legacy.filter((item) => !saved.some((draftItem) => draftItem.id === item.id)).map((item) => <button key={item.id} onClick={() => openLegacy(item)}>Recover legacy · {item.name}</button>)}
+          {!saved.length && !legacy.length && <small>No saved drafts yet.</small>}
+        </div>
+      </details>
+
+      <details className="write-drawer">
+        <summary>DAW and import</summary>
+        <div className="write-drawer-body write-daw">
+          <button className="bench-btn" onClick={onImport}><ClipboardPaste size={13} /> Send imported chords to Write</button>
+          <button className="bench-btn" onClick={exportMidi}><Download size={13} /> Export .mid</button>
+          {midiSupported ? <label><Cable size={13} /> MIDI out<select value={midiOutId} onFocus={onRefreshMidi} onChange={(event) => onPickMidiOut?.(event.target.value)}><option value="">off</option>{midiOutputs.map((output) => <option key={output.id} value={output.id}>{output.name}</option>)}</select></label> : <small>MIDI out needs Chrome or Edge.</small>}
+        </div>
+      </details>
     </div>
   );
 }
-
-const sel = {
-  background: "var(--kl-sunken)", color: "var(--kl-ink)", border: "1px solid var(--kl-hair)",
-  borderRadius: 8, padding: "6px 9px", fontSize: 12.5, cursor: "pointer", fontFamily: "var(--kl-sans)",
-};
-const quiet = {
-  display: "inline-flex", alignItems: "center", gap: 6, background: "transparent",
-  color: "var(--kl-muted)", border: 0, padding: "4px 2px", fontSize: 12.5, cursor: "pointer",
-};

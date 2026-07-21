@@ -30,9 +30,13 @@
     "@anthropic-ai/sdk": "^0.69.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
+    "jsdom": "^29.1.1",
     "vite": "^6.0.7",
     "vitest": "^2.1.8"
   },

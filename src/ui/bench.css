@@ -275,3 +275,200 @@
     transition: none !important;
   }
 }
+
+/* ---- Write: section-aware progression workbench ---- */
+.write-composer {
+  border-top: 1px solid var(--kl-hair);
+  padding-top: 16px;
+}
+
+.composer-head,
+.composer-section-tools,
+.composer-audition,
+.composer-intents {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.composer-head { justify-content: space-between; }
+.composer-head h2 { margin: 3px 0 0; font: 400 25px/1.1 var(--kl-display); }
+
+.composer-section-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  margin-top: 14px;
+  padding-bottom: 5px;
+}
+
+.composer-section-tabs button,
+.composer-section-add button,
+.composer-intents button {
+  border: 1px solid var(--kl-hair);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--kl-muted);
+  padding: 7px 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  font: 600 12px/1 var(--kl-sans);
+}
+
+.composer-section-tabs button[aria-selected="true"],
+.composer-intents button.active {
+  border-color: var(--kl-root);
+  background: var(--kl-root);
+  color: #1c1305;
+}
+
+.composer-section-add {
+  display: flex;
+  align-items: end;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+}
+
+.composer-section-add label { display: grid; gap: 4px; color: var(--kl-muted); font-size: 11px; }
+.composer-section-add input,
+.composer-section-tools input,
+.composer-any input {
+  border: 1px solid var(--kl-hair);
+  border-radius: 8px;
+  background: var(--kl-sunken);
+  color: var(--kl-ink);
+  padding: 8px 10px;
+  font: 13px var(--kl-sans);
+}
+
+.composer-section-tools { margin-top: 8px; }
+.composer-section-tools input { font-family: var(--kl-display); font-size: 16px; }
+
+.composer-strip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 14px 2px 16px;
+  scroll-snap-type: x proximity;
+}
+
+.composer-slot { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+.composer-chord {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 7px;
+  min-width: 70px;
+  min-height: 58px;
+  border: 1px solid var(--kl-hair);
+  border-radius: 11px;
+  background: var(--kl-paper);
+  color: var(--kl-ink);
+  padding: 8px 10px;
+  scroll-snap-align: start;
+  cursor: pointer;
+}
+
+.composer-chord strong { font: 700 16px var(--kl-mono); }
+.composer-chord span { grid-column: 2; color: var(--kl-muted); font: 10px var(--kl-mono); }
+.composer-chord.selected { border-color: var(--kl-root); box-shadow: inset 0 -3px 0 var(--kl-root); }
+.composer-slot-actions { display: grid; grid-template-columns: repeat(2, 24px); gap: 2px; }
+.composer-slot-actions button {
+  width: 24px; height: 24px; border: 0; border-radius: 6px;
+  background: var(--kl-sunken); color: var(--kl-muted); cursor: pointer;
+}
+.composer-slot-actions button:disabled { opacity: .3; cursor: default; }
+
+.composer-gap {
+  flex: 0 0 32px;
+  width: 32px;
+  min-height: 48px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px dashed var(--kl-hair);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--kl-faint);
+  cursor: pointer;
+}
+.composer-gap.selected { border-color: var(--kl-tone); color: var(--kl-tone); background: color-mix(in srgb, var(--kl-tone) 8%, transparent); }
+
+.composer-picker { margin-top: 2px; border-top: 1px solid var(--kl-hair); padding-top: 12px; }
+.composer-picker-tabs { margin-bottom: 12px; }
+.composer-palette { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 7px; }
+.composer-choice {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  border: 1px solid var(--kl-hair); border-radius: 9px; background: var(--kl-sunken);
+  color: var(--kl-ink); padding: 9px 10px; cursor: pointer;
+}
+.composer-choice strong { font: 700 14px var(--kl-mono); }
+.composer-choice span { color: var(--kl-muted); font: 10px var(--kl-mono); }
+.composer-any { display: grid; gap: 7px; }
+.composer-any > div { display: flex; gap: 7px; flex-wrap: wrap; }
+.composer-any input { min-width: min(260px, 100%); font-family: var(--kl-mono); }
+.composer-any p, .composer-empty { margin: 0; color: var(--kl-faint); font-size: 11.5px; }
+.composer-error { color: var(--kl-bass); font-size: 12px; }
+.composer-intents { margin-bottom: 10px; }
+.composer-idea-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(235px, 1fr)); }
+.composer-idea { display: flex; gap: 7px; align-items: stretch; border-left: 3px solid var(--kl-tone); border-radius: 9px; background: var(--kl-sunken); padding: 8px; }
+.composer-idea-main { flex: 1; display: grid; gap: 4px; text-align: left; border: 0; background: transparent; color: var(--kl-ink); cursor: pointer; }
+.composer-idea-main strong { font: 700 13px var(--kl-mono); }
+.composer-idea-main span { color: var(--kl-muted); font-size: 11.5px; line-height: 1.4; }
+.write-drawer > summary { cursor: pointer; list-style: none; }
+
+@media (max-width: 700px) {
+  .composer-chord { min-width: 78px; min-height: 52px; }
+  .composer-slot-actions { display: none; }
+  .composer-audition { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-strip { scroll-behavior: auto; }
+}
+
+.write-desk { display: grid; gap: 14px; }
+.write-timer { display: flex; align-items: center; gap: 12px; padding: 12px 15px; flex-wrap: wrap; }
+.write-timer > div:first-of-type { display: grid; flex: 1; min-width: 190px; }
+.write-timer > div:first-of-type strong { font-family: var(--kl-display); font-size: 17px; }
+.write-timer > div:first-of-type span { color: var(--kl-muted); font-size: 11.5px; }
+.write-timer > b { color: var(--kl-root); font: 700 28px var(--kl-mono); }
+.write-draft-bar,
+.write-seed-bar { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
+.write-draft-bar label { display: grid; gap: 3px; color: var(--kl-muted); font-size: 10.5px; }
+.write-draft-bar input,
+.write-draft-bar select,
+.write-seed-bar select,
+.write-daw select {
+  background: var(--kl-sunken); color: var(--kl-ink); border: 1px solid var(--kl-hair);
+  border-radius: 8px; padding: 7px 9px; font: 12.5px var(--kl-sans);
+}
+.write-draft-bar > span { color: var(--kl-tone); font: 11px var(--kl-mono); }
+.write-seed-bar { border-top: 1px solid var(--kl-hair); padding-top: 12px; }
+.write-seed-bar label { color: var(--kl-muted); font-size: 12px; }
+.write-drawer { border-top: 1px solid var(--kl-hair); padding-top: 11px; }
+.write-drawer > summary { color: var(--kl-ink); font: 600 13px var(--kl-sans); }
+.write-drawer-body { padding: 12px 0 2px; }
+.write-words-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(230px, .8fr); gap: 12px; }
+.write-words-grid textarea {
+  width: 100%; min-height: 145px; resize: vertical; background: var(--kl-sunken); color: var(--kl-ink);
+  border: 1px solid var(--kl-hair); border-radius: 10px; padding: 10px; font: 13px/1.55 var(--kl-sans);
+}
+.write-word-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; align-content: start; }
+.write-word-tools textarea { min-height: 70px; }
+.write-word-tools button { text-align: left; }
+.write-exercises { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 9px; }
+.write-exercises article { border-left: 3px solid var(--kl-root); background: var(--kl-sunken); border-radius: 8px; padding: 10px 12px; }
+.write-exercises p { margin: 5px 0 0; color: var(--kl-muted); font-size: 12px; line-height: 1.45; }
+.write-saved, .write-daw { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.write-saved > span { display: inline-flex; border: 1px solid var(--kl-hair); border-radius: 999px; overflow: hidden; }
+.write-saved button { border: 0; background: transparent; color: var(--kl-ink); padding: 7px 10px; cursor: pointer; }
+.write-daw label { display: inline-flex; align-items: center; gap: 6px; color: var(--kl-muted); font-size: 12px; }
+
+@media (max-width: 700px) {
+  .write-words-grid { grid-template-columns: 1fr; }
+  .write-draft-bar label:first-child { width: 100%; }
+  .write-draft-bar label:first-child input { width: 100%; }
+}

@@ -9,7 +9,8 @@ import {
   suggestCapo,
 } from "./lib/theory.js";
 import { rootPositionFull, smoothUpper, addBass, clampVoicing } from "./lib/voicing.js";
-import { analyzeSheet } from "./lib/llm.js";
+import { analyzeSheet, deepProgressionIdeas } from "./lib/llm.js";
+import { adaptLegacySketch, applyCompositionOp, createDraft, deriveProgression, replaceDraftInSession } from "./lib/composition.js";
 import { respell, spellChord, spellPc } from "./lib/spelling.js";
 import { wheelMoves } from "./lib/voice.js";
 import { progressionOfTheDay } from "./lib/potd.js";
@@ -132,6 +133,19 @@ function persistChoice(key, value) {
   try { localStorage.setItem(key, value); } catch { /* storage is optional */ }
 }
 
+function firstWriteSelection(draft) {
+  const section = draft.sections[0];
+  return { sectionId: section.id, chordId: section.chords[0]?.id || null, gapIndex: section.chords.length ? null : 0 };
+}
+
+function validWriteSelection(draft, selection) {
+  const section = draft.sections.find((item) => item.id === selection?.sectionId);
+  if (!section) return firstWriteSelection(draft);
+  if (selection?.chordId && section.chords.some((item) => item.id === selection.chordId)) return selection;
+  if (Number.isInteger(selection?.gapIndex) && selection.gapIndex >= 0 && selection.gapIndex <= section.chords.length) return selection;
+  return { sectionId: section.id, chordId: section.chords[0]?.id || null, gapIndex: section.chords.length ? null : 0 };
+}
+
 export default function App() {
   const [sheet, setSheet] = useState(DEFAULT_SHEET);
   const [loaded, setLoaded] = useState(null); // corpus song metadata, or null for a custom chart
@@ -166,12 +180,26 @@ export default function App() {
   const [chartSpelling, setChartSpelling] = useState(savedSpelling);
   // Opened from a setlist: { name, rows, idx } drives the gig strip (prev/next).
   const [setlistCtx, setSetlistCtx] = useState(null);
+  // Write is deliberately isolated from Song and Theory. Cross-room movement
+  // happens only through explicit snapshot actions such as "take it to the desk".
+  const [writeSession, setWriteSession] = useState(() => {
+    const draft = createDraft({
+      id: "write-draft",
+      name: "Untitled",
+      key: { tonic: 0, mode: "major" },
+      sections: [{ id: "write-section", name: "Verse", chords: [] }],
+    });
+    return { draft, selection: firstWriteSelection(draft), history: [], revision: 0 };
+  });
+  const writeIdRef = useRef(0);
+  const nextWriteId = useCallback((prefix) => `${prefix}-${Date.now().toString(36)}-${(++writeIdRef.current).toString(36)}`, []);
 
   const armedRef = useRef(false);
   const stripRef = useRef(null);
   const audioVoicingRef = useRef([]);
   const sheetRef = useRef(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [importTarget, setImportTarget] = useState("song");
   const [handed, setHanded] = useState(null);
   const [handedKept, setHandedKept] = useState(false);
   const [midiOutputs, setMidiOutputs] = useState([]);
@@ -195,6 +223,36 @@ export default function App() {
 
   const refreshMidiOutputs = useCallback(async () => {
     try { setMidiOutputs(listOutputs(await requestMidi())); } catch (e) { /* denied/unsupported */ }
+  }, []);
+
+  const editWriteDraft = useCallback((operation) => {
+    setWriteSession((current) => {
+      const draft = applyCompositionOp(current.draft, operation, { makeId: nextWriteId });
+      if (draft === current.draft) return current;
+      return {
+        draft,
+        selection: validWriteSelection(draft, current.selection),
+        history: [...current.history, current.draft],
+        revision: current.revision + 1,
+      };
+    });
+  }, [nextWriteId]);
+
+  const undoWriteDraft = useCallback(() => {
+    setWriteSession((current) => {
+      if (!current.history.length) return current;
+      const draft = current.history[current.history.length - 1];
+      return {
+        draft,
+        selection: validWriteSelection(draft, current.selection),
+        history: current.history.slice(0, -1),
+        revision: current.revision + 1,
+      };
+    });
+  }, []);
+
+  const replaceWriteDraft = useCallback((draft, options = {}) => {
+    setWriteSession((current) => replaceDraftInSession(current, draft, options));
   }, []);
 
   const loadSheet = (s) => {
@@ -236,6 +294,18 @@ export default function App() {
 
   const { progression: baseProg } = useMemo(() => parseSheet(sheet), [sheet]);
   const sourceProg = labProg || baseProg;
+  const writeProgression = useMemo(
+    () => deriveProgression(writeSession.draft).progression,
+    [writeSession.draft],
+  );
+  const writeVoicings = useMemo(() => {
+    let previous = null;
+    return writeProgression.map((chord) => {
+      const upper = smoothUpper(chord, previous);
+      previous = upper;
+      return clampVoicing(addBass(upper, chord));
+    });
+  }, [writeProgression]);
 
   useEffect(() => { setLabProg(null); setLabHistory([]); }, [sheet]);
 
@@ -351,6 +421,27 @@ export default function App() {
   // (ChordLab). Key names and the tutor keep plain, key-aware spelling.
   const namedKey = useMemo(() => ({ ...activeKey, spelling: chartSpelling }),
     [activeKey.tonic, activeKey.mode, chartSpelling]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sendSongToWrite = useCallback(() => {
+    if (!view.prog.length) { setSection("write"); return; }
+    const sections = [];
+    for (const chord of view.prog) {
+      const name = chord.section || "Section";
+      let target = sections[sections.length - 1];
+      if (!target || target.name !== name) {
+        target = { id: nextWriteId("section"), name, chords: [] };
+        sections.push(target);
+      }
+      target.chords.push({ id: nextWriteId("chord"), symbol: chordSymbol(chord) });
+    }
+    const draft = createDraft({
+      id: nextWriteId("draft"),
+      name: loaded?.title ? `${loaded.title} · workshop` : "Song workshop",
+      key: activeKey,
+      sections,
+    });
+    replaceWriteDraft(draft, { historyMode: "push" });
+    setSection("write");
+  }, [view.prog, activeKey, loaded?.title, nextWriteId, replaceWriteDraft]);
   // The piano PLAYS sounding pitch (shapes + capo + transpose).
   const audioVoicings = mode === "smooth" ? soundingView.smoothFull : soundingView.rootFull;
   audioVoicingRef.current = audioVoicings;
@@ -869,7 +960,7 @@ export default function App() {
                 setSection("song");
               }}
               onSetlist={() => { setPracticeTab("bench"); setSection("practice"); }}
-              onPaste={() => { setSection("song"); setImportOpen(true); }}
+              onPaste={() => { setSection("song"); setImportTarget("song"); setImportOpen(true); }}
               onDemo={() => { setLoaded(null); loadSheet(DEFAULT_SHEET); setSection("song"); }}
               onHeard={(sheetText, title) => {
                 setLoaded({ title: title || "Heard from audio", artist: null, source: "ear" });
@@ -1042,7 +1133,7 @@ export default function App() {
                       <h1 className="kl-title">Nothing on the stand yet.</h1>
                       <div className="flex items-center" style={{ gap: 8, marginTop: 16 }}>
                         <BenchButton onClick={() => setSection("library")}>Pick from the Library</BenchButton>
-                        <BenchButton onClick={() => setImportOpen(true)}>Paste a chart or tab</BenchButton>
+                        <BenchButton onClick={() => { setImportTarget("song"); setImportOpen(true); }}>Paste a chart or tab</BenchButton>
                       </div>
                     </div>
                   )}
@@ -1088,7 +1179,7 @@ export default function App() {
                     <p style={{ color: C.faint, fontSize: 12, textAlign: "center", marginTop: 10 }}>
                       C sits at noon, same as the printed chart. The dotted wedge wears your key — change key and watch it travel. Click any key to <b style={{ color: C.muted }}>hear it</b> and hand it the wedge; your song's chords stay lit by their job. The faint threads are the song's walk between them, worn deeper where it walks again.
                     </p>
-                    <TheoryGuide activeKey={activeKey} onAudition={auditionChords} onGoWrite={() => setSection("write")} />
+                    <TheoryGuide activeKey={activeKey} onAudition={auditionChords} onGoWrite={sendSongToWrite} />
                     <WheelLesson activeKey={activeKey} onAudition={auditionChords}
                       onPickTonic={pickTonic}
                       onDrill={() => { setPracticeTab("drills"); setSection("practice"); }} />
@@ -1156,23 +1247,24 @@ export default function App() {
               <h1 className="kl-title" style={{ marginTop: 4 }}>Write</h1>
               <QuoteLine quote={roomQuote("write")} style={{ margin: "10px 0 16px" }} />
               <WriteDesk
-                activeKey={activeKey} sheet={sheet} voicings={audioVoicings} tempoMs={tempo}
-                onImport={() => setImportOpen(true)} onLoadProgression={loadProgression} onLoadSheet={(s) => { setLoaded(null); loadSheet(s); }}
+                draft={writeSession.draft}
+                selection={writeSession.selection}
+                spelling={chartSpelling}
+                activeKey={writeSession.draft.key}
+                voicings={writeVoicings}
+                tempoMs={tempo}
+                revision={writeSession.revision}
+                canUndo={writeSession.history.length > 0}
+                onEdit={editWriteDraft}
+                onUndo={undoWriteDraft}
+                onSelect={(selection) => setWriteSession((current) => ({ ...current, selection }))}
+                onReplaceDraft={replaceWriteDraft}
+                onImport={() => { setImportTarget("write"); setImportOpen(true); }}
                 onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }}
                 onAudition={auditionChords}
+                requestDeep={deepProgressionIdeas}
                 nowStamp={() => Date.now()} midiSupported={isMidiSupported()} midiOutputs={midiOutputs} midiOutId={midiOutId}
                 onPickMidiOut={pickMidiOut} onRefreshMidi={refreshMidiOutputs} />
-              {numbersRailPanel}
-              <div style={{ marginTop: 18 }}>
-                <ChordLab prog={view.prog} activeKey={namedKey} selectedIdx={currentIdx} onSelectIdx={selectIdx} onAudition={auditionChords} onApply={applyLab} />
-              </div>
-              {(labProg || labHistory.length > 0) && (
-                <div className="flex items-center" style={{ gap: 8, marginTop: 10 }}>
-                  <BenchButton onClick={undoLab} disabled={!labHistory.length}><Undo2 size={14} /> Undo edit</BenchButton>
-                  <button onClick={resetLab} style={{ background: "transparent", color: C.muted, border: "none", fontSize: 12.5, cursor: "pointer" }}>revert to sheet</button>
-                  <span style={{ fontSize: 11.5, color: C.faint }}>edits live here, not in your chord sheet</span>
-                </div>
-              )}
             </div>
           )}
 
@@ -1249,7 +1341,16 @@ export default function App() {
           currentSymbol: current ? chordSymbol(current) : undefined,
           room: NAV.find((n) => n.id === section)?.label,
         }} />
-      <ImportModal open={importOpen} onLoad={(s) => { setLoaded(null); loadSheet(s); }} onClose={() => setImportOpen(false)} />
+      <ImportModal open={importOpen} onLoad={(text) => {
+        if (importTarget === "write") {
+          const draft = adaptLegacySketch({ id: nextWriteId("draft"), name: "Imported draft", sheet: text });
+          replaceWriteDraft(draft, { historyMode: "push" });
+          setSection("write");
+          return;
+        }
+        setLoaded(null);
+        loadSheet(text);
+      }} onClose={() => setImportOpen(false)} />
       <style>{`.spin{animation:kl-spin 1s linear infinite}`}</style>
     </div>
   );
