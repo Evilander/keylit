@@ -32,11 +32,12 @@ const BEAM_WIDTH = 16;
 const BEAM_STEPS = 4;
 const CONTRAST_LIMIT = 5;
 
-const pc = (value) => ((Number(value) % 12) + 12) % 12;
+const pc = (value) => ((value % 12) + 12) % 12;
 
 function cleanKey(key) {
+  const tonic = Number.isFinite(key?.tonic) ? Math.trunc(key.tonic) : 0;
   return {
-    tonic: pc(key?.tonic || 0),
+    tonic: pc(tonic),
     mode: key?.mode === "minor" ? "minor" : "major",
   };
 }
@@ -46,7 +47,9 @@ function validChord(chord) {
     && Number.isFinite(chord.rootSemitone)
     && typeof chord.quality === "string"
     && Array.isArray(chord.intervals)
-    && chord.intervals.length);
+    && chord.intervals.length
+    && chord.intervals.every(Number.isFinite)
+    && (chord.bassSemitone == null || Number.isFinite(chord.bassSemitone)));
 }
 
 function sourceSymbol(chord) {
@@ -60,6 +63,16 @@ function soundKey(chord) {
   const intervals = [...new Set(chord.intervals.map((interval) => pc(interval)))].sort((a, b) => a - b);
   const bass = chord.bassSemitone == null ? "-" : pc(chord.bassSemitone);
   return `${pc(chord.rootSemitone)}:${intervals.join(",")}:${bass}`;
+}
+
+function familyKey(chord) {
+  if (!validChord(chord)) return "invalid";
+  const intervals = [...new Set(chord.intervals.map((interval) => pc(interval)))].sort((a, b) => a - b);
+  return `${pc(chord.rootSemitone)}:${intervals.join(",")}`;
+}
+
+function sameChordFamily(a, b) {
+  return validChord(a) && validChord(b) && familyKey(a) === familyKey(b);
 }
 
 function pathKey(chords) {
@@ -179,7 +192,9 @@ function isAppliedDominant(chord, target) {
 function isIiForTarget(chord, target) {
   if (!validChord(chord) || !validChord(target)) return false;
   const minorTarget = ["min", "dim"].includes(qualClass(target.quality));
-  return sameChordSound(chord, iiOf(target.rootSemitone, minorTarget));
+  const seventh = iiOf(target.rootSemitone, minorTarget);
+  const triad = buildChord(target.rootSemitone + 2, minorTarget ? "dim" : "m");
+  return sameChordFamily(chord, seventh) || sameChordFamily(chord, triad);
 }
 
 function hasIiVInto(path, target) {
@@ -219,7 +234,7 @@ function diatonicSounds(key) {
 }
 
 function isDiatonicSound(chord, key) {
-  return diatonicSounds(key).some((choice) => sameChordSound(choice, chord));
+  return diatonicSounds(key).some((choice) => sameChordFamily(choice, chord));
 }
 
 function functionalApproach(path, target, key) {
@@ -265,10 +280,14 @@ function metric(value) {
   return String(Number(Number(value).toFixed(8)));
 }
 
-export function scoreCandidate({ contextChords = [], candidatePath = [], target = null, key } = {}) {
+export function scoreCandidate(input = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  const {
+    contextChords = [], candidatePath = [], target = null, key,
+  } = source;
   const normalized = cleanKey(key);
-  const context = contextChords.filter(validChord);
-  const candidates = candidatePath.filter(validChord);
+  const context = (Array.isArray(contextChords) ? contextChords : []).filter(validChord);
+  const candidates = (Array.isArray(candidatePath) ? candidatePath : []).filter(validChord);
   const previous = context[context.length - 1] || null;
   const candidate = candidates[0] || null;
   const previousFn = previous
@@ -344,8 +363,8 @@ function isReversal(source, seed) {
 }
 
 export function contrastEvidence(sourceChords = [], seedChords = [], key) {
-  const source = sourceChords.filter(validChord);
-  const seed = seedChords.filter(validChord);
+  const source = (Array.isArray(sourceChords) ? sourceChords : []).filter(validChord);
+  const seed = (Array.isArray(seedChords) ? seedChords : []).filter(validChord);
   const sourceSounds = new Set(source.map(soundKey));
   const seedSounds = new Set(seed.map(soundKey));
   const union = new Set([...sourceSounds, ...seedSounds]);
@@ -357,15 +376,20 @@ export function contrastEvidence(sourceChords = [], seedChords = [], key) {
   const profileDistance = ["T", "S", "D"]
     .reduce((sum, fn) => sum + Math.abs(sourceProfile[fn] - seedProfile[fn]), 0);
 
+  if (!source.length) {
+    return { groups: [], jaccard, profileDistance, rejectedReason: "no-source" };
+  }
+  if (!seed.length) {
+    return { groups: [], jaccard, profileDistance, rejectedReason: "no-seed" };
+  }
+
   let rejectedReason = null;
   if (samePath(source, seed)) rejectedReason = "identity";
   else if (isRotation(source, seed)) rejectedReason = "rotation";
   else if (isReversal(source, seed)) rejectedReason = "reversal";
 
   const groups = [];
-  if (!source.length
-    || !seed.length
-    || !sameChordSound(source[0], seed[0])
+  if (!sameChordSound(source[0], seed[0])
     || harmonicFunction(source[0], cleanKey(key).tonic, cleanKey(key).mode)
       !== harmonicFunction(seed[0], cleanKey(key).tonic, cleanKey(key).mode)) {
     groups.push("opening");
@@ -382,51 +406,112 @@ export function contrastEvidence(sourceChords = [], seedChords = [], key) {
 
 function sectionContext({ draft, sectionId, chordId, gapIndex } = {}) {
   const key = cleanKey(draft?.key);
-  const all = flattenDraft(draft).filter((entry) => entry.sectionId === sectionId && validChord(entry.chord));
-  const selectedIndex = all.findIndex((entry) => entry.chordId === chordId);
-  const requestedGap = Number.isInteger(gapIndex) ? gapIndex : null;
-  const gap = requestedGap == null ? null : Math.max(0, Math.min(requestedGap, all.length));
-  return { key, entries: all, chords: all.map((entry) => entry.chord), selectedIndex, gap };
+  const sections = Array.isArray(draft?.sections) ? draft.sections : [];
+  const section = sections.find((candidate) => candidate?.id === sectionId);
+  if (!section
+    || !Array.isArray(section.chords)
+    || section.chords.some((slot) => !slot
+      || typeof slot !== "object"
+      || typeof slot.id !== "string"
+      || typeof slot.symbol !== "string")) {
+    return { valid: false, key, entries: [], chords: [], selectedIndex: -1, gap: null };
+  }
+  const entries = flattenDraft({ ...draft, sections: [section] });
+  let valid = true;
+  let selectedIndex = -1;
+  if (chordId !== undefined && chordId !== null) {
+    selectedIndex = entries.findIndex((entry) => entry.chordId === chordId);
+    if (selectedIndex < 0 || !validChord(entries[selectedIndex]?.chord)) valid = false;
+  }
+  let gap = null;
+  if (gapIndex !== undefined && gapIndex !== null) {
+    if (!Number.isInteger(gapIndex) || gapIndex < 0 || gapIndex > entries.length) valid = false;
+    else gap = gapIndex;
+  }
+  return {
+    valid,
+    key,
+    entries,
+    chords: entries.map((entry) => entry.chord).filter(validChord),
+    selectedIndex,
+    gap,
+  };
+}
+
+function chordAt(entries, index) {
+  const chord = entries[index]?.chord;
+  return validChord(chord) ? chord : null;
+}
+
+function historyThrough(entries, index) {
+  if (!chordAt(entries, index)) return [];
+  return entries.slice(0, index + 1).map((entry) => entry.chord).filter(validChord);
 }
 
 function contextForIntent(context, intent) {
   const base = sectionContext(context);
-  const { chords, selectedIndex, gap, key } = base;
+  const { entries, selectedIndex, gap } = base;
+  const invalid = (extra = {}) => ({
+    ...base,
+    valid: false,
+    target: null,
+    previous: null,
+    contextChords: [],
+    ...extra,
+  });
+  if (!base.valid) return invalid();
   if (intent === "lead-in") {
-    const targetIndex = selectedIndex >= 0 ? selectedIndex : (gap ?? 0);
-    const target = chords[targetIndex] || chords[0] || paletteForKey(key)[0].chord;
-    return { ...base, target, previous: chords[targetIndex - 1] || null, contextChords: chords.slice(0, targetIndex) };
-  }
-  if (intent === "between") {
-    const insertion = gap ?? (selectedIndex >= 0 ? selectedIndex : 1);
-    const target = chords[insertion] || chords[selectedIndex] || null;
+    const targetIndex = selectedIndex >= 0 ? selectedIndex : gap;
+    const target = targetIndex == null ? null : chordAt(entries, targetIndex);
+    if (!target) return invalid();
+    const previous = chordAt(entries, targetIndex - 1);
     return {
       ...base,
       target,
-      previous: chords[insertion - 1] || null,
-      contextChords: chords.slice(0, insertion),
+      previous,
+      contextChords: previous ? historyThrough(entries, targetIndex - 1) : [],
+    };
+  }
+  if (intent === "between") {
+    const insertion = gap ?? (selectedIndex >= 0 ? selectedIndex : null);
+    const target = insertion == null ? null : chordAt(entries, insertion);
+    if (!target) return invalid();
+    const previous = chordAt(entries, insertion - 1);
+    return {
+      ...base,
+      target,
+      previous,
+      contextChords: previous ? historyThrough(entries, insertion - 1) : [],
     };
   }
   if (intent === "turnaround") {
-    const target = chords[0] || paletteForKey(key)[0].chord;
-    return { ...base, target, previous: chords[chords.length - 1] || null, contextChords: chords };
+    const target = chordAt(entries, 0);
+    const anchorIndex = selectedIndex >= 0
+      ? selectedIndex
+      : (gap == null ? entries.length - 1 : gap - 1);
+    const previous = chordAt(entries, anchorIndex);
+    if (!target || !previous) return invalid();
+    return { ...base, target, previous, contextChords: historyThrough(entries, anchorIndex) };
   }
   if (intent === "contrast") {
+    if (!base.chords.length) return invalid();
     return {
       ...base,
       target: null,
-      previous: chords[chords.length - 1] || null,
-      contextChords: chords,
+      previous: base.chords[base.chords.length - 1] || null,
+      contextChords: base.chords,
     };
   }
   const anchorIndex = selectedIndex >= 0
     ? selectedIndex
-    : (gap == null ? chords.length - 1 : Math.max(0, gap - 1));
+    : (gap == null ? -1 : gap - 1);
+  const previous = chordAt(entries, anchorIndex);
+  if (!previous) return invalid();
   return {
     ...base,
-    target: chords[anchorIndex + 1] || null,
-    previous: chords[anchorIndex] || null,
-    contextChords: chords.slice(0, anchorIndex + 1),
+    target: chordAt(entries, anchorIndex + 1),
+    previous,
+    contextChords: historyThrough(entries, anchorIndex),
   };
 }
 
@@ -579,24 +664,23 @@ function contrastSeeds(source, key) {
     .map((state) => descriptor(state.path, { style: "any", boldness: 0.7 }));
 }
 
-function sequenceForFunction(intent, chords, resolved) {
+function evidencePath(intent, chords, resolved, destination = resolved.target) {
   const addUnlessSame = (sequence, chord) => {
-    if (validChord(chord) && (!sequence.length || !sameChordSound(sequence[sequence.length - 1], chord))) {
+    if (validChord(chord) && (!sequence.length || !sameChordFamily(sequence[sequence.length - 1], chord))) {
       sequence.push(chord);
     }
   };
   const sequence = [];
-  if (intent === "next" || intent === "between") addUnlessSame(sequence, resolved.previous);
+  const contextual = INTENTS.has(intent);
+  if (contextual && intent !== "contrast") addUnlessSame(sequence, resolved.previous);
   chords.forEach((chord) => addUnlessSame(sequence, chord));
-  if (["next", "lead-in", "between", "turnaround"].includes(intent)) {
-    addUnlessSame(sequence, resolved.target);
-  }
+  if (contextual && intent !== "contrast") addUnlessSame(sequence, destination);
   return sequence;
 }
 
 function functionEvidence(intent, chords, resolved) {
   const { key } = resolved;
-  const path = sequenceForFunction(intent, chords, resolved)
+  const path = evidencePath(intent, chords, resolved)
     .map((chord) => harmonicFunction(chord, key.tonic, key.mode));
   return path.length ? `function:${path.join(">")}` : null;
 }
@@ -604,7 +688,7 @@ function functionEvidence(intent, chords, resolved) {
 function namedEvidence(intent, chords, resolved) {
   const evidence = [];
   const { key, previous, target } = resolved;
-  const namedPath = validChord(previous) ? [previous, ...chords] : [...chords];
+  const namedPath = evidencePath(intent, chords, resolved);
   if (validChord(target)) {
     if (hasIiVInto(namedPath, target)) evidence.push(`ii-V:${sourceSymbol(target)}`);
     const landingPath = targetPath(namedPath, target);
@@ -702,28 +786,20 @@ function evidenceTarget(flag) {
   return separator < 0 ? null : parseChord(flag.slice(separator + 1));
 }
 
-function pathForNamedTarget(chords, target) {
-  return targetPath(chords, target);
-}
-
-function scoreInputsForSuggestion(suggestion, context) {
+function scoreInputsForSuggestion(suggestion, context, chords) {
   const intent = INTENTS.has(suggestion?.intent) ? suggestion.intent : "next";
   const resolved = contextForIntent(context, intent);
-  const chords = suggestionChords(suggestion);
   return { intent, resolved, chords };
 }
 
-function suggestionChords(suggestion) {
-  if (Array.isArray(suggestion?.chords) && suggestion.chords.every(validChord)) {
-    return suggestion.chords;
-  }
-  if (Array.isArray(suggestion?.symbols)) return suggestion.symbols.map(parseChord).filter(Boolean);
-  return [];
+function chordsFromSymbols(symbols) {
+  if (!Array.isArray(symbols) || !symbols.length) return [];
+  return symbols.map((symbol) => typeof symbol === "string" ? parseChord(symbol) : null);
 }
 
 function functionsForSuggestion(suggestion, resolved, chords) {
   const sequence = INTENTS.has(suggestion?.intent)
-    ? sequenceForFunction(suggestion.intent, chords, resolved)
+    ? evidencePath(suggestion.intent, chords, resolved)
     : chords;
   return sequence
     .map((chord) => harmonicFunction(chord, resolved.key.tonic, resolved.key.mode))
@@ -732,17 +808,31 @@ function functionsForSuggestion(suggestion, resolved, chords) {
 
 export function validateSuggestionEvidence(suggestion, context = {}) {
   const errors = [];
-  const { intent, resolved, chords } = scoreInputsForSuggestion(suggestion, context);
   const symbols = Array.isArray(suggestion?.symbols) ? suggestion.symbols : [];
-  if (!chords.length) errors.push("suggestion needs parseable chords");
-  if (symbols.length && (symbols.length !== chords.length
-    || symbols.some((symbol, index) => {
-      const parsed = parseChord(symbol);
-      return !parsed || !sameChordSound(parsed, chords[index]);
-    }))) {
-    errors.push("symbols do not match chords");
+  const parsedSymbols = chordsFromSymbols(symbols);
+  if (!symbols.length || parsedSymbols.some((chord) => !validChord(chord))) {
+    errors.push("suggestion needs parseable symbols");
   }
-  if (!Array.isArray(suggestion?.evidence) || !suggestion.evidence.length) {
+  const chords = parsedSymbols.filter(validChord);
+  if (suggestion?.chords !== undefined) {
+    if (!Array.isArray(suggestion.chords)
+      || suggestion.chords.length !== parsedSymbols.length
+      || suggestion.chords.some((chord, index) =>
+        !validChord(chord) || !validChord(parsedSymbols[index]) || !sameChordSound(chord, parsedSymbols[index]))) {
+      errors.push("chords do not match symbols");
+    }
+  }
+  const { intent, resolved } = scoreInputsForSuggestion(suggestion, context, chords);
+  if (!resolved.valid) errors.push("invalid suggestion context");
+  if (suggestion?.intent !== undefined && !INTENTS.has(suggestion.intent)) errors.push("invalid intent");
+  if (suggestion?.kind !== undefined
+    && !["insertBefore", "insertAfter", "replace", "newSection"].includes(suggestion.kind)) {
+    errors.push("invalid kind");
+  }
+  if (suggestion?.source !== undefined && suggestion.source !== "offline") errors.push("invalid source");
+  if (!Array.isArray(suggestion?.evidence)
+    || !suggestion.evidence.length
+    || suggestion.evidence.some((flag) => typeof flag !== "string")) {
     errors.push("suggestion needs evidence");
     return { ok: false, errors };
   }
@@ -773,14 +863,19 @@ export function validateSuggestionEvidence(suggestion, context = {}) {
     }
     if (flag.startsWith("secondary-dominant:")) {
       const target = evidenceTarget(flag);
-      const path = pathForNamedTarget(chords, target);
+      const path = INTENTS.has(suggestion?.intent)
+        ? evidencePath(suggestion.intent, chords, resolved, target)
+        : targetPath(chords, target);
       const approach = path[path.length - 2];
       if (!isAppliedDominant(approach, target)) errors.push(`unverified ${flag}`);
       continue;
     }
     if (flag.startsWith("ii-V:")) {
       const target = evidenceTarget(flag);
-      if (!hasIiVInto(chords, target)) errors.push(`unverified ${flag}`);
+      const path = INTENTS.has(suggestion?.intent)
+        ? evidencePath(suggestion.intent, chords, resolved, target)
+        : chords;
+      if (!hasIiVInto(path, target)) errors.push(`unverified ${flag}`);
       continue;
     }
     if (flag.startsWith("modal-borrowing:")) {
@@ -816,24 +911,32 @@ export function validateSuggestionEvidence(suggestion, context = {}) {
     errors.push(`unknown evidence ${flag}`);
   }
 
-  if (Number.isFinite(suggestion?.score) && Math.abs(suggestion.score - scored.score) > 1e-8) {
-    errors.push("score does not match evidence");
+  if (Object.prototype.hasOwnProperty.call(suggestion || {}, "score")) {
+    if (!Number.isFinite(suggestion.score)) errors.push("score must be finite");
+    else if (Math.abs(suggestion.score - scored.score) > 1e-8) errors.push("score does not match evidence");
+  }
+  const canonicalWhy = whyFromEvidence(symbols, suggestion.evidence);
+  if (typeof suggestion?.why !== "string" || suggestion.why !== canonicalWhy) {
+    errors.push("why does not match evidence");
   }
   return { ok: errors.length === 0, errors };
 }
 
-export function suggestForIntent({
-  intent,
-  draft,
-  sectionId,
-  chordId,
-  gapIndex,
-  style = "any",
-  boldness = 0.5,
-} = {}) {
+export function suggestForIntent(input = {}) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return [];
+  const {
+    intent,
+    draft,
+    sectionId,
+    chordId,
+    gapIndex,
+    style = "any",
+    boldness = 0.5,
+  } = input;
   if (!INTENTS.has(intent)) return [];
   const context = { draft, sectionId, chordId, gapIndex };
   const resolved = contextForIntent(context, intent);
+  if (!resolved.valid) return [];
   const requestedStyle = typeof style === "string" ? style : "any";
   const boldnessBias = Math.max(0, Math.min(1, Number.isFinite(boldness) ? boldness : 0.5));
   const candidates = intent === "contrast"
