@@ -29,7 +29,7 @@ export default function NumbersRail({ prog, activeKey, currentIdx, transpose = 0
         </div>
 
         {/* chord columns */}
-        <div style={{ overflowX: "auto", flex: 1, minWidth: 0 }}>
+        <div className="kl-scroll-fade-x" style={{ flex: 1, minWidth: 0 }}>
           <div className="flex" style={{ gap: 5, paddingBottom: 6, minWidth: "min-content" }}>
             {prog.map((ch, i) => {
               const active = i === currentIdx;
