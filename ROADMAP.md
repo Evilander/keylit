@@ -1,6 +1,10 @@
 # Keylit — Roadmap
 
-**Handoff for Claude Code.** Read `CLAUDE.md` first. The **Master Plan** below is the current marching order (2026-07-02); the numbered phases after it are the original map and still hold as reference. Each item lists concrete files and an acceptance bar — treat acceptance as the definition of done.
+**Handoff for Claude Code.** Read `CLAUDE.md` first. **The current marching order is
+`ULTRAPLAN.md` (2026-07-22)** — the corpus hunt, the honest UI reckoning, the Tab Hunt UI,
+and the four workflow streamlines, sequenced in waves. The material below is history and
+reference; each item lists concrete files and an acceptance bar — treat acceptance as the
+definition of done.
 
 ---
 
