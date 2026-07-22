@@ -5,12 +5,13 @@
 // stack them straight into the Bench Book.
 import { useEffect, useMemo, useState } from "react";
 import { Search, ChevronRight, X, Plus, Disc3, ListMusic, CircleCheck, Circle, Download } from "lucide-react";
-import { loadManifest, loadSong, groupByArtist, isCoreArtist, SOURCE_LABEL } from "../corpus.js";
+import { invalidateManifest, loadManifest, loadSong, groupByArtist, isCoreArtist, SOURCE_LABEL } from "../corpus.js";
 import { userSongbook, benchBook } from "../storage.js";
 import { slugSongKey } from "../lib/bench.js";
 import { makeZip } from "../lib/zip.js";
 import { buildBackup, parseBackup, mergeBackup, reportLine, PREF_KEYS } from "../lib/backup.js";
 import AddSong from "./AddSong.jsx";
+import TabHunt from "./TabHunt.jsx";
 import Ear from "./Ear.jsx";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 
@@ -61,6 +62,9 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
   };
 
   useEffect(() => { let on = true; loadManifest().then((r) => { if (on) setFetched(r); }); return () => { on = false; }; }, []);
+
+  // A finished tab hunt rewrote the index on disk — pull the fresh shelf in place.
+  const refresh = () => { invalidateManifest(); loadManifest().then(setFetched); };
 
   const download = (name, blob) => {
     const url = URL.createObjectURL(blob);
@@ -292,6 +296,7 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search songs, albums, artists" aria-label="Search the library"
           style={{ width: "100%", padding: "10px 12px 10px 34px", fontFamily: "var(--kl-sans)", fontSize: 14, color: C.ink, background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 10, outline: "none" }} />
       </div>
+      <TabHunt onDone={refresh} />
 
       {tuningFacets.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 12 }}>
@@ -420,11 +425,8 @@ function ArtistGroup({ g, isOpen, onToggle, onOpen, onTuning, onRemove, selectin
       <button onClick={() => onToggle(g.artist)} aria-expanded={isOpen}
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: compact ? "9px 4px" : "13px 4px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
         <ChevronRight size={15} style={{ color: C.faint, flex: "0 0 auto", transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
-        {/* The name never loses the width fight — provenance truncates instead
-            (Alex G once wrapped to "Alex / G" under a four-hostname source list). */}
         <span title={g.artist} style={{ fontFamily: DISPLAY, fontSize: compact ? 16.5 : 21, color: C.ink, flex: "1 1 auto", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.artist}</span>
         <span className="kl-meta" style={{ flex: "0 0 auto", whiteSpace: "nowrap" }}>{g.count} {g.count === 1 ? "song" : "songs"}</span>
-        {!compact && <span className="kl-meta kl-hide-sm" title={sources.join(" · ")} style={{ color: C.faint, flex: "0 1 auto", minWidth: 0, maxWidth: 230, textAlign: "right", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sources.join(" · ")}</span>}
       </button>
       {isOpen && (
         <div style={{ paddingBottom: 10 }}>
@@ -443,6 +445,11 @@ function ArtistGroup({ g, isOpen, onToggle, onOpen, onTuning, onRemove, selectin
               ))}
             </div>
           ))}
+          {/* Provenance reads like a colophon — once, on the open shelf,
+              instead of shouted from every closed row. */}
+          <div className="kl-meta" style={{ color: C.faint, fontSize: 10.5, padding: "8px 4px 2px 31px" }}>
+            from {sources.join(" · ")}
+          </div>
         </div>
       )}
     </div>
