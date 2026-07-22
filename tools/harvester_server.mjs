@@ -18,8 +18,20 @@ const jobs = new Map();
 let busy = false;
 let nextId = 1;
 
-const send = (res, code, body) => {
-  res.setHeader("Access-Control-Allow-Origin", "*"); // 127.0.0.1-bound; only local pages can reach it
+// Only the local dev app may drive this. Binding to 127.0.0.1 keeps the port
+// off the network, but a browser on this machine will still send any website's
+// fetch here — so CORS is locked to localhost origins (any port, for Vite's
+// shifting dev port) instead of "*", and cross-site POSTs are refused outright.
+// A tool with no Origin header (curl, the test harness pre-navigation) is fine.
+const localOrigin = (origin) => {
+  if (!origin) return true;
+  try { return ["localhost", "127.0.0.1"].includes(new URL(origin).hostname); }
+  catch { return false; }
+};
+
+const send = (res, code, body, origin) => {
+  if (origin && localOrigin(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.writeHead(code, { "Content-Type": "application/json" });
@@ -92,35 +104,40 @@ async function hunt(job, artist) {
 const readBody = async (req) => { let b = ""; for await (const c of req) b += c; return b; };
 
 const server = http.createServer(async (req, res) => {
-  if (req.method === "OPTIONS") return send(res, 204, {});
+  const origin = req.headers.origin;
+  if (req.method === "OPTIONS") return send(res, 204, {}, origin);
   try {
+    // A cross-site page must never be able to start a hunt on the dev's box.
+    if (req.method === "POST" && !localOrigin(origin))
+      return send(res, 403, { err: "cross-site requests are refused" }, origin);
+
     if (req.method === "GET" && req.url === "/health")
-      return send(res, 200, { ok: true, corpus: path.join(ROOT, "public", "corpus"), busy });
+      return send(res, 200, { ok: true, corpus: path.join(ROOT, "public", "corpus"), busy }, origin);
 
     if (req.method === "POST" && req.url === "/hunt") {
-      if (busy) return send(res, 409, { err: "a hunt is already running" });
+      if (busy) return send(res, 409, { err: "a hunt is already running" }, origin);
       const { artist } = JSON.parse(await readBody(req));
       if (!artist || typeof artist !== "string" || !artist.trim())
-        return send(res, 400, { err: "missing artist" });
+        return send(res, 400, { err: "missing artist" }, origin);
       busy = true;
       const id = String(nextId++);
       const job = { artist: artist.trim(), stage: "starting", stages: [], log: [], done: false, error: null, manifest: null };
       jobs.set(id, job);
       hunt(job, artist.trim());
-      return send(res, 200, { id });
+      return send(res, 200, { id }, origin);
     }
 
     const m = req.url.match(/^\/hunt\/(\d+)$/);
     if (req.method === "GET" && m) {
       const job = jobs.get(m[1]);
-      if (!job) return send(res, 404, { err: "no such hunt" });
-      return send(res, 200, job);
+      if (!job) return send(res, 404, { err: "no such hunt" }, origin);
+      return send(res, 200, job, origin);
     }
 
-    send(res, 404, { err: "not found" });
+    send(res, 404, { err: "not found" }, origin);
   } catch (e) {
     busy = false;
-    send(res, 500, { err: e.message });
+    send(res, 500, { err: e.message }, origin);
   }
 });
 
