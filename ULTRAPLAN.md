@@ -247,6 +247,29 @@ the four workflows *flow*. Each subsection: current friction → the streamline.
 
 ---
 
+## Shipped so far (2026-07-22, Fable 5 ultracode pass)
+
+- **W1 — wings nav + Song chart-first + rail fades** (`fd607c6`). Eleven flat tabs
+  grouped into four wings (Play/Study/Make/Shed) with a sibling subnav; GuitarSetup
+  folds to a summary chip so the chart's first line clears the fold at 1440×900; theme
+  pill got an aria-label. 14 Playwright checks.
+- **W2 — the Tab Hunt** (`068b03b`). `tools/harvester_server.mjs` supervises the hunt
+  pipeline behind a localhost API; `TabHunt.jsx` is the Library's dev-only hunt box;
+  `corpus.invalidateManifest()` refreshes the shelf in place. Proven live: hunted Judee
+  Sill from the UI, 34 charts home, shelf grew with no reload. Hardened after a security
+  review flagged CORS (`fix(security)` commit): ACAO locked to localhost, cross-site POST
+  refused 403.
+- **W3 — the waterfall lane** (`8c7ff42`). Next three chords fall onto their exact keys
+  (Keyboard exports real key geometry), function-colored, reduced-motion-safe.
+- **W4 — room hotkeys** (1–9/0/-, `?` map) + **bundle split**: 898KB monolith → 473KB
+  main + parallel vendor chunks (tone/react/icons); Shed + Voice are React.lazy.
+- **W5 (partial) — furniture**: Shed skeleton shelf, Voice pre-mic ghost trace, shelf
+  source-noise moved to an open-shelf colophon.
+
+Still open from the plan: one-clock mini-transport (assessed LOW-risk slice only — top-bar
+glance → play/stop+bpm on the metronome singleton; do NOT unify Arranger/Session/TabKeys),
+Practice right-rail, Write hierarchy, Music Stand Mode, App.jsx decomposition, CSS-var theme.
+
 ## Part 5 — Suggested sequencing (waves, each independently valuable)
 
 | Wave | Contents | Why first |
