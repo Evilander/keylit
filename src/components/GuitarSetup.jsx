@@ -1,3 +1,4 @@
+import React, { useState } from "react";
 import { ArrowRight, Guitar, Minus, Plus, Sparkles } from "lucide-react";
 import { spellChord, spellPc } from "../lib/spelling.js";
 import { shapeShiftForTuning, TUNINGS } from "../lib/tuning.js";
@@ -31,6 +32,7 @@ export default function GuitarSetup({
   transpose,
   onUseDetunedSetup,
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const tuning = TUNINGS[tuningId] || TUNINGS.standard;
   const tuningShapeShift = shapeShiftForTuning(tuning.id) || 0;
   const capoChanged = capo !== chartCapo;
@@ -58,8 +60,60 @@ export default function GuitarSetup({
     color: C.ink, border: `1px solid ${C.line}`, cursor: "pointer",
   };
 
+  if (!isExpanded) {
+    const spellingOption = CHORD_NAME_OPTIONS.find((o) => o.id === spelling)?.label || "Guitar ♯";
+    const capoText = capo === 0 ? "no capo" : `capo ${capo}`;
+    const summaryText = `${tuning.name} · ${capoText} · ${spellingOption} names`;
+
+    return (
+      <Faceplate label="Guitar setup"
+        right={
+          <button
+            onClick={() => setIsExpanded(true)}
+            className="bench-btn"
+            style={{ padding: "4px 10px", fontSize: 11.5 }}
+            aria-label="Expand guitar setup"
+          >
+            Adjust
+          </button>
+        }
+        style={{ marginTop: 14, padding: "10px 14px" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "4px 0" }}>
+          <Guitar size={15} color={C.rootText} aria-hidden="true" />
+          <span style={{ fontFamily: "var(--kl-sans)", fontSize: 13, fontWeight: 500, color: C.muted }}>
+            {summaryText}
+          </span>
+          {tuningShapeShift > 0 && (
+            <span className="eng-pill" style={{ fontSize: 10.5, padding: "2px 6px" }}>
+              shapes {signed(tuningShapeShift)}
+            </span>
+          )}
+          {bestCapo != null && bestCapo !== capo && (
+            <span style={{ fontSize: 11.5, color: C.faint, fontStyle: "italic" }}>
+              (easiest: {bestCapo === 0 ? "none" : bestCapo})
+            </span>
+          )}
+        </div>
+      </Faceplate>
+    );
+  }
+
   return (
-    <Faceplate label="Guitar setup" right={<span className="kl-meta">shapes move · sound stays</span>}
+    <Faceplate label="Guitar setup"
+      right={
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button
+            onClick={() => setIsExpanded(false)}
+            className="bench-btn"
+            style={{ padding: "4px 10px", fontSize: 11.5 }}
+            aria-label="Collapse guitar setup"
+          >
+            Collapse
+          </button>
+          <span className="kl-meta">shapes move · sound stays</span>
+        </div>
+      }
       style={{ marginTop: 14, padding: 14 }}>
       <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.1fr) minmax(280px, 0.9fr)", gap: 14, alignItems: "stretch" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

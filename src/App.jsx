@@ -105,6 +105,13 @@ const NAV = [
   { id: "shed", label: "The Shed" },
 ];
 
+const WINGS = [
+  { id: "play", label: "Play", rooms: ["library", "song", "perform", "piano"] },
+  { id: "study", label: "Study", rooms: ["theory", "learn", "chords"] },
+  { id: "make", label: "Make", rooms: ["write", "practice", "voice"] },
+  { id: "shed", label: "Shed", rooms: ["shed"] },
+];
+
 // One shuffle per login: every room draws a different borrowed line, and
 // tomorrow's login deals a different hand. Index by room, never re-pick.
 const QUOTE_DECK = shuffledQuotes();
@@ -1011,23 +1018,31 @@ export default function App() {
     [activeKey.mode]
   );
 
+  const activeWing = WINGS.find((w) => w.rooms.includes(section)) || WINGS[0];
+
   return (
     <div className="kl-app">
-      {/* ---- TOP BAR: brand · room tabs · key readout · theme pill ---- */}
+      {/* ---- TOP BAR: brand · wings · key readout · theme pill ---- */}
       <header className="kl-topnav">
         <div className="kl-wordmark">Keylit<b>.</b></div>
-        <nav className="kl-roomtabs" aria-label="Rooms">
-          {NAV.map((n) => (
-            <button key={n.id} className="kl-roomtab" aria-current={section === n.id} onClick={() => {
-              if (n.id !== "perform" && performRunRef.current) {
-                performRunRef.current = null;
-                setPerformRun(null);
-              }
-              setSection(n.id);
-            }}>
-              {n.label}
-            </button>
-          ))}
+        <nav className="kl-wingtabs" aria-label="Wings">
+          {WINGS.map((w) => {
+            const isActive = activeWing.id === w.id;
+            return (
+              <button key={w.id} className="kl-wingtab" aria-current={isActive} onClick={() => {
+                if (!isActive) {
+                  const targetRoom = w.rooms[0];
+                  if (targetRoom !== "perform" && performRunRef.current) {
+                    performRunRef.current = null;
+                    setPerformRun(null);
+                  }
+                  setSection(targetRoom);
+                }
+              }}>
+                {w.label}
+              </button>
+            );
+          })}
         </nav>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16, flex: "0 0 auto", minWidth: 0 }}>
           {/* the pill only speaks when something's worth saying — silence means the grand is ready */}
@@ -1048,7 +1063,7 @@ export default function App() {
             Key of {keyNameFull}
           </span>
           <button onClick={toggleTheme}
-            aria-label={theme === "dark" ? "back to daylight" : "lamps low"}
+            aria-label="theme"
             title={theme === "dark" ? "Back to daylight" : "Lamps low"}
             style={{ display: "inline-flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10,
               letterSpacing: "0.1em", textTransform: "uppercase", color: C.muted, background: "transparent",
@@ -1058,6 +1073,29 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {/* ---- SUB-NAV BAR: rendered only when a wing has siblings ---- */}
+      {activeWing.rooms.length > 1 && (
+        <div className="kl-subnav">
+          <nav className="kl-roomtabs" aria-label="Rooms">
+            {activeWing.rooms.map((roomId) => {
+              const n = NAV.find((x) => x.id === roomId);
+              if (!n) return null;
+              return (
+                <button key={n.id} className="kl-roomtab" aria-current={section === n.id} onClick={() => {
+                  if (n.id !== "perform" && performRunRef.current) {
+                    performRunRef.current = null;
+                    setPerformRun(null);
+                  }
+                  setSection(n.id);
+                }}>
+                  {n.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      )}
 
       {/* ---- THE ROOM ---- */}
       <main className="kl-main">
