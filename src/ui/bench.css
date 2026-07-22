@@ -256,6 +256,15 @@
 .kl-pulse { animation: kl-pulse 1s ease-in-out infinite; }
 .kl-noteswap { display: inline-block; animation: kl-noteswap 240ms cubic-bezier(.22, 1, .36, 1) both; }
 .kl-breathe { animation: kl-breathe 2.4s ease-in-out infinite; }
+
+/* loading placeholder — a faint shimmer over a panel-toned block */
+@keyframes kl-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.kl-skeleton {
+  background: linear-gradient(100deg, var(--kl-panel2) 40%, var(--kl-panel) 50%, var(--kl-panel2) 60%);
+  background-size: 200% 100%;
+  animation: kl-shimmer 1.4s ease-in-out infinite;
+  border: 1px solid var(--kl-hair);
+}
 .kl-section { animation: kl-rise 400ms cubic-bezier(.22, 1, .36, 1) both; }
 
 .kl-stagger > * { animation: kl-rise 380ms cubic-bezier(.22, 1, .36, 1) both; }
@@ -393,7 +402,7 @@
 /* ---- reduced motion: everything sits still when asked ---- */
 @media (prefers-reduced-motion: reduce) {
   .kl-rise, .kl-pop, .kl-snap, .kl-spin, .kl-pulse, .kl-noteswap, .kl-breathe,
-  .kl-section, .kl-stagger > * {
+  .kl-skeleton, .kl-section, .kl-stagger > * {
     animation: none !important;
     transition: none !important;
   }

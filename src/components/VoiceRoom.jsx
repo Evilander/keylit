@@ -189,6 +189,42 @@ export default function VoiceRoom({ loadedTitle, onPlay, onTranspose }) {
   }, [band]);
   drawRef.current = draw;
 
+  // Before the mic opens the trace loop never runs, so the panel would sit
+  // blank-black. Paint a ghost once: the octave grid it always shows, a faint
+  // demo squiggle, and a one-line invitation — the room reads as an instrument
+  // waiting, not a dead rectangle.
+  useEffect(() => {
+    if (micOn) return;
+    const cv = canvasRef.current;
+    if (!cv) return;
+    const g = cv.getContext("2d");
+    const W = cv.width, H = cv.height;
+    const lo = 36, hi = 84;
+    const y = (m) => H - ((Math.max(lo, Math.min(hi, m)) - lo) / (hi - lo)) * H;
+    g.clearRect(0, 0, W, H);
+    g.strokeStyle = "rgba(127,116,90,0.22)";
+    g.font = "9px 'Martian Mono', monospace";
+    g.fillStyle = "rgba(127,116,90,0.6)";
+    for (let m = lo; m <= hi; m += 12) {
+      g.beginPath(); g.moveTo(0, y(m)); g.lineTo(W, y(m)); g.stroke();
+      g.fillText(noteName(m), 4, y(m) - 3);
+    }
+    g.strokeStyle = "rgba(228,96,47,0.22)";
+    g.lineWidth = 2.4;
+    g.beginPath();
+    for (let px = 0; px <= W; px += 8) {
+      const py = y(60 + 7 * Math.sin(px / 90) * Math.cos(px / 260));
+      px === 0 ? g.moveTo(px, py) : g.lineTo(px, py);
+    }
+    g.stroke();
+    g.lineWidth = 1;
+    g.fillStyle = "rgba(240,234,219,0.5)";
+    g.font = "13px 'Onest', sans-serif";
+    g.textAlign = "center";
+    g.fillText("open the mic — your voice draws here, and stays here", W / 2, H / 2 - 6);
+    g.textAlign = "left";
+  }, [micOn, band]);
+
   /* ---- band capture ---- */
   const startBandCapture = () => {
     captureRef.current = { mode: "band", samples: [] };
