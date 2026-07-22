@@ -60,10 +60,20 @@ export default function PedalLab({ tutor, onIntent }) {
   useEffect(() => { stop(); /* eslint-disable-next-line */ }, [activeKey.tonic, activeKey.mode]);
   useEffect(() => () => { handleRef.current?.stop(); }, []);
 
-  // Light the drone (reserved pedal color) plus whatever chord is passing.
+  // Light the drone (reserved pedal color) plus whatever chord is passing —
+  // but only while the walk is live. At rest, PedalLab is one of five widgets
+  // sharing the Learn keyboard, and tutor.light REPLACES the whole map; if it
+  // lit on mount it would stomp the scale workshop's scale (the room's headline
+  // widget) with a lone violet drone. So it claims the board only once stepping
+  // starts, and hands it back when the walk stops.
+  const litRef = useRef(false);
   useEffect(() => {
+    if (step === null) {
+      if (litRef.current) { tutor.light(null); litRef.current = false; }
+      return;
+    }
     const entries = [{ pc: pedal.pc, role: "pedal", label: pedal.degree }];
-    const ch = step !== null ? chords[step] : null;
+    const ch = chords[step];
     if (ch) {
       for (const iv of ch.intervals) {
         const pc = (ch.rootSemitone + iv) % 12;
@@ -71,6 +81,7 @@ export default function PedalLab({ tutor, onIntent }) {
         entries.push({ pc, role: iv === 0 ? "root" : "tone", label: spellPc(pc, activeKey) });
       }
     }
+    litRef.current = true;
     tutor.light(entries);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedal.pc, step, chords]);
