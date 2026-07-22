@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback, useDeferredValue } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback, useDeferredValue, lazy, Suspense } from "react";
 import {
   Play, Pause, ChevronLeft, ChevronRight, Volume2, VolumeX,
   RotateCcw, Upload, Minus, Plus, Loader2, Undo2, Lightbulb,
@@ -43,7 +43,10 @@ import TabKeys from "./components/TabKeys.jsx";
 import PlayAlong from "./components/PlayAlong.jsx";
 import BenchBook from "./components/BenchBook.jsx";
 import ChordBook from "./components/ChordBook.jsx";
-import Shed from "./components/Shed.jsx";
+// Two leaf rooms carry weight the rest of the app never touches (the Shed's
+// image/PDF viewer, Voice's pitch tracker) and neither shares the audio engine
+// — split them out of the initial bundle behind Suspense.
+const Shed = lazy(() => import("./components/Shed.jsx"));
 import Arranger from "./components/Arranger.jsx";
 import Metronome from "./components/Metronome.jsx";
 import Perform from "./components/Perform.jsx";
@@ -51,7 +54,7 @@ import Coverize from "./components/Coverize.jsx";
 import TutorPanel from "./components/TutorPanel.jsx";
 import TensionStrip from "./components/TensionStrip.jsx";
 import TheoryGuide from "./components/TheoryGuide.jsx";
-import VoiceRoom from "./components/VoiceRoom.jsx";
+const VoiceRoom = lazy(() => import("./components/VoiceRoom.jsx"));
 import MirrorPanel from "./components/MirrorPanel.jsx";
 import RetabPanel, { retabForCurrentSheet } from "./components/RetabPanel.jsx";
 import TabHomes from "./components/TabHomes.jsx";
@@ -1506,9 +1509,11 @@ export default function App() {
           )}
 
           {section === "voice" && (
-            <VoiceRoom loadedTitle={loaded?.title || (sheet.trim() ? "your chart" : null)}
-              onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }}
-              onTranspose={(d) => { arm(); setTranspose((t) => Math.max(-11, Math.min(11, t + d))); }} />
+            <Suspense fallback={<div className="kl-skeleton" style={{ height: 260, borderRadius: 12, marginTop: 18 }} />}>
+              <VoiceRoom loadedTitle={loaded?.title || (sheet.trim() ? "your chart" : null)}
+                onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }}
+                onTranspose={(d) => { arm(); setTranspose((t) => Math.max(-11, Math.min(11, t + d))); }} />
+            </Suspense>
           )}
 
           {section === "chords" && (
@@ -1517,7 +1522,11 @@ export default function App() {
               onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }} />
           )}
 
-          {section === "shed" && <Shed />}
+          {section === "shed" && (
+            <Suspense fallback={<div className="kl-skeleton" style={{ height: 260, borderRadius: 12, marginTop: 18 }} />}>
+              <Shed />
+            </Suspense>
+          )}
         </div>
       </main>
 

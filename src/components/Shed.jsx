@@ -82,7 +82,24 @@ export default function Shed() {
     try { await navigator.clipboard.writeText(p); setCopied(p); setTimeout(() => setCopied(null), 1400); } catch { /* clipboard denied */ }
   };
 
-  if (shelf === null) return <p style={{ color: C.muted, marginTop: 18 }}>Opening the shed…</p>;
+  if (shelf === null) {
+    // The room announces itself while the index loads — a skeleton shelf, not
+    // a bare loading string on an empty page.
+    return (
+      <div style={{ marginTop: 18 }} aria-busy="true" aria-label="opening the shed">
+        <div className="kl-eyebrow">The shed</div>
+        <h2 className="kl-title" style={{ marginTop: 4, fontSize: 26 }}>Woodshedding material</h2>
+        <p style={{ color: C.muted, fontSize: 13.5, maxWidth: 640, margin: "8px 0 20px", lineHeight: 1.5 }}>
+          Songs live in the Library; the books that make your hands better live here.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 14, maxWidth: 720 }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="kl-skeleton" style={{ height: 96, borderRadius: 10 }} aria-hidden="true" />
+          ))}
+        </div>
+      </div>
+    );
+  }
   if (!shelf.length) {
     return (
       <div style={{ marginTop: 18, color: C.muted, fontSize: 14, maxWidth: 560 }}>
