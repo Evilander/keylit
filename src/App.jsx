@@ -21,6 +21,7 @@ import { EngLabel, Readout, BenchButton, QuoteLine } from "./ui/Bench.jsx";
 import { shuffledQuotes } from "./lib/quotes.js";
 import { loadSong, SOURCE_LABEL } from "./corpus.js";
 import Keyboard from "./components/Keyboard.jsx";
+import WaterfallLane from "./components/WaterfallLane.jsx";
 import NumbersRail from "./components/NumbersRail.jsx";
 import ScaleBuilder from "./components/ScaleBuilder.jsx";
 import DegreeFinder from "./components/DegreeFinder.jsx";
@@ -1329,6 +1330,10 @@ export default function App() {
                 </div>
               </div>
               <div className="deck" style={{ padding: "16px 18px", marginTop: 24 }}>
+                <WaterfallLane prog={soundingView.prog}
+                  voicings={mode === "smooth" ? soundingView.smoothFull : soundingView.rootFull}
+                  labels={soundingView.prog.map((ch) => displaySymbol(ch, pitchShift))}
+                  currentIdx={currentIdx} playing={isPlaying} msPerChord={tempo} />
                 <Keyboard height={210} roleFor={roleForKeyboard} onKey={playSingleKey} flash={flash}
                   ariaLabel="piano keyboard — the current chord is lit" />
               </div>

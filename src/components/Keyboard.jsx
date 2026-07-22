@@ -23,6 +23,20 @@ const roleColors = (role) => {
 // sit the way a piano actually casts them, not on a grid.
 const BLACK_NUDGE = { 1: -0.13, 3: 0.13, 6: -0.16, 8: 0, 10: 0.16 };
 
+// Where a key sits, as {left, width} percentages of the instrument — the same
+// math the render uses, exported so overlays (the waterfall lane) can align
+// their marks to the real keys instead of re-deriving a near-miss layout.
+export function keyGeometry(midi) {
+  const whites = KEYS.whiteKeys;
+  const whiteW = 100 / whites.length;
+  const wi = whites.findIndex((w) => w.midi === midi);
+  if (wi >= 0) return { left: wi * whiteW, width: whiteW };
+  const below = whites.findIndex((w) => w.midi === midi - 1);
+  if (below < 0) return null;
+  const bw = whiteW * 0.58;
+  return { left: (below + 1) * whiteW - bw / 2 + (BLACK_NUDGE[midi % 12] || 0) * whiteW, width: bw };
+}
+
 const WHITE_GRADIENT = "linear-gradient(180deg,#FBF7EC 0%,#F1EBDC 82%,#E4DCC8 100%)";
 const BLACK_GRADIENT = "linear-gradient(180deg,#3A362E 0%,#211E19 12%,#16130F 100%)";
 
