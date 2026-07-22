@@ -22,6 +22,7 @@ import { shuffledQuotes } from "./lib/quotes.js";
 import { loadSong, SOURCE_LABEL } from "./corpus.js";
 import Keyboard from "./components/Keyboard.jsx";
 import WaterfallLane from "./components/WaterfallLane.jsx";
+import RoomKeys from "./components/RoomKeys.jsx";
 import NumbersRail from "./components/NumbersRail.jsx";
 import ScaleBuilder from "./components/ScaleBuilder.jsx";
 import DegreeFinder from "./components/DegreeFinder.jsx";
@@ -1021,8 +1022,19 @@ export default function App() {
 
   const activeWing = WINGS.find((w) => w.rooms.includes(section)) || WINGS[0];
 
+  // Leaving Perform tears down its run first (a live playhead must not survive
+  // into another room); every room switch — nav, subnav, hotkey — goes through here.
+  const goRoom = useCallback((id) => {
+    if (id !== "perform" && performRunRef.current) {
+      performRunRef.current = null;
+      setPerformRun(null);
+    }
+    setSection(id);
+  }, []);
+
   return (
     <div className="kl-app">
+      <RoomKeys onGo={goRoom} />
       {/* ---- TOP BAR: brand · wings · key readout · theme pill ---- */}
       <header className="kl-topnav">
         <div className="kl-wordmark">Keylit<b>.</b></div>
@@ -1031,14 +1043,7 @@ export default function App() {
             const isActive = activeWing.id === w.id;
             return (
               <button key={w.id} className="kl-wingtab" aria-current={isActive} onClick={() => {
-                if (!isActive) {
-                  const targetRoom = w.rooms[0];
-                  if (targetRoom !== "perform" && performRunRef.current) {
-                    performRunRef.current = null;
-                    setPerformRun(null);
-                  }
-                  setSection(targetRoom);
-                }
+                if (!isActive) goRoom(w.rooms[0]);
               }}>
                 {w.label}
               </button>
@@ -1083,13 +1088,7 @@ export default function App() {
               const n = NAV.find((x) => x.id === roomId);
               if (!n) return null;
               return (
-                <button key={n.id} className="kl-roomtab" aria-current={section === n.id} onClick={() => {
-                  if (n.id !== "perform" && performRunRef.current) {
-                    performRunRef.current = null;
-                    setPerformRun(null);
-                  }
-                  setSection(n.id);
-                }}>
+                <button key={n.id} className="kl-roomtab" aria-current={section === n.id} onClick={() => goRoom(n.id)}>
                   {n.label}
                 </button>
               );
