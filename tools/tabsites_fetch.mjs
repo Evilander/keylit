@@ -142,6 +142,44 @@ const SITES = {
       return { body, capo: capoFrom(body), format: "tab" };
     },
   },
+  zenandjuice: {
+    // OLGA-era Big Star archive (archive-scout find, 2026-07-22): raw .txt tabs
+    // linked from a plain index. The site also hosts other power-pop bands and a
+    // Velvet Crush bonus section — the allowlist keeps this Big Star only.
+    source: "zenandjuice", dir: "zenandjuice",
+    async list() {
+      const ALBUM = {
+        "feel": "#1 Record", "the ballad of el goodo": "#1 Record", "thirteen": "#1 Record",
+        "my life is right": "#1 Record", "o my soul": "Radio City", "way out west": "Radio City",
+        "september gurls": "Radio City", "im in love with a girl": "Radio City",
+        "back of a car": "Radio City", "daisy glaze": "Radio City",
+        "you get what you deserve": "Radio City", "blue moon": "Third/Sister Lovers",
+        "holocaust": "Third/Sister Lovers", "night time": "Third/Sister Lovers",
+        "o dana": "Third/Sister Lovers",
+      };
+      const base = "http://zenandjuice.com/music/bigstar/chords/";
+      const h = get(base, "utf8");
+      const seen = new Map(), out = [];
+      for (const m of h.matchAll(/<a[^>]+href="([^"]+\.txt)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+        const title = strip(m[2]).replace(/\s+/g, " ").trim();
+        const norm = title.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+\((easy|complete)\)$/, "").trim();
+        if (!(norm in ALBUM)) continue; // not on the Big Star allowlist (e.g. Velvet Crush)
+        const n = (seen.get(norm) || 0) + 1;
+        seen.set(norm, n);
+        out.push({
+          href: new URL(m[1], base).href,
+          title: n > 1 ? `${title} (ver ${n})` : title,
+          album: ALBUM[norm], artist: "Big Star",
+        });
+      }
+      return out;
+    },
+    async fetch(e) {
+      const body = get(e.href, "latin1").replace(/\r\n/g, "\n").trim();
+      if (body.length < 60 || /<html/i.test(body)) return null;
+      return { body, capo: capoFrom(body), format: /\|-{2,}/.test(body) ? "tab" : "chords" };
+    },
+  },
 };
 
 const site = SITES[SITE];
