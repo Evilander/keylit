@@ -184,6 +184,7 @@ export default function App() {
   const [labHistory, setLabHistory] = useState([]);
   const [section, setSection] = useState("library");
   const [practiceTab, setPracticeTab] = useState("drills");
+  const [learnTab, setLearnTab] = useState("scale");
   const [theoryTab, setTheoryTab] = useState("circle");
   const [lessonHL, setLessonHL] = useState(null);
   // One of the THEMES ids — applyTheme mutates the live C palette + writes the
@@ -1413,13 +1414,25 @@ export default function App() {
                 <Keyboard height={150} roleFor={roleForKeyboard} onKey={playSingleKey} flash={flash}
                   ariaLabel="piano keyboard — the lesson is lit" />
               </div>
-              <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 18 }}>
-                <ScaleBuilder tutor={tutor} onIntent={onChipIntent} />
-                <DegreeFinder tutor={tutor} onIntent={onChipIntent} />
-                <EarTrainer prog={view.prog} activeKey={activeKey} songTitle={loaded?.title} onPlaySeq={auditionChords} />
-                <MeterFeel tutor={tutor} />
-                <PedalLab tutor={tutor} onIntent={onChipIntent} />
+              {/* One lesson at the keyboard at a time — five stacked widgets used
+                  to share (and fight over) the lit deck in a single long scroll. */}
+              <div className="kl-seg" role="tablist" aria-label="Learn area" style={{ marginBottom: 14 }}>
+                <button role="tab" aria-selected={learnTab === "scale"} onClick={() => setLearnTab("scale")}>Scale &amp; degrees</button>
+                <button role="tab" aria-selected={learnTab === "ear"} onClick={() => setLearnTab("ear")}>The ear</button>
+                <button role="tab" aria-selected={learnTab === "meter"} onClick={() => setLearnTab("meter")}>Meter</button>
+                <button role="tab" aria-selected={learnTab === "pedal"} onClick={() => setLearnTab("pedal")}>The pedal</button>
               </div>
+              {learnTab === "scale" && (
+                <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 18 }}>
+                  <ScaleBuilder tutor={tutor} onIntent={onChipIntent} />
+                  <DegreeFinder tutor={tutor} onIntent={onChipIntent} />
+                </div>
+              )}
+              {learnTab === "ear" && (
+                <EarTrainer prog={view.prog} activeKey={activeKey} songTitle={loaded?.title} onPlaySeq={auditionChords} />
+              )}
+              {learnTab === "meter" && <MeterFeel tutor={tutor} />}
+              {learnTab === "pedal" && <PedalLab tutor={tutor} onIntent={onChipIntent} />}
             </div>
           )}
 
