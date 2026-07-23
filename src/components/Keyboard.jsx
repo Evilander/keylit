@@ -14,8 +14,7 @@ const roleColors = (role) => {
     case "root": return [C.root, C.rootGlow];
     case "bass": return [C.bass, C.bassGlow];
     case "pedal": return [C.ai, C.aiGlow];
-    case "scale": return [C.tone, C.toneGlow];
-    default: return [C.tone, C.toneGlow]; // tone fallback
+    default: return [C.tone, C.toneGlow]; // tone + scale share the cyan family
   }
 };
 

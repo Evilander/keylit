@@ -116,10 +116,22 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && req.url === "/hunt") {
       if (busy) return send(res, 409, { err: "a hunt is already running" }, origin);
-      const { artist } = JSON.parse(await readBody(req));
-      if (!artist || typeof artist !== "string" || !artist.trim())
-        return send(res, 400, { err: "missing artist" }, origin);
+      // Claim the flag synchronously, before the first await — two requests
+      // arriving together (a double-click on "go") would otherwise both pass
+      // the check during readBody's async gap and spawn overlapping pipelines
+      // that race the same manifest rewrite. Release it on every bail-out path.
       busy = true;
+      let artist;
+      try {
+        ({ artist } = JSON.parse(await readBody(req)));
+      } catch {
+        busy = false;
+        return send(res, 400, { err: "bad json" }, origin);
+      }
+      if (!artist || typeof artist !== "string" || !artist.trim()) {
+        busy = false;
+        return send(res, 400, { err: "missing artist" }, origin);
+      }
       const id = String(nextId++);
       const job = { artist: artist.trim(), stage: "starting", stages: [], log: [], done: false, error: null, manifest: null };
       jobs.set(id, job);
