@@ -223,7 +223,7 @@ export default function VoiceRoom({ loadedTitle, onPlay, onTranspose }) {
     g.textAlign = "center";
     g.fillText("open the mic — your voice draws here, and stays here", W / 2, H / 2 - 6);
     g.textAlign = "left";
-  }, [micOn, band]);
+  }, [micOn]);
 
   /* ---- band capture ---- */
   const startBandCapture = () => {

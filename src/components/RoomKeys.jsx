@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { C, MONO, DISPLAY } from "../ui/theme.js";
+import { MONO, DISPLAY } from "../ui/theme.js";
 
 // RoomKeys — number-row navigation for hands that live on instruments, not
 // mice: 1–9, 0 and - jump straight to a room; ? shows the map. Never fires

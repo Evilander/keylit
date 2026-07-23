@@ -4,8 +4,9 @@ import { C, MONO } from "../ui/theme.js";
 
 // TabHunt — type an artist, the local harvester daemon runs the whole hunt
 // (Ultimate Guitar → Songsterr → index rebuild) and the shelf grows in place.
-// Dev-only by construction: HUNTER is null in production builds, so the
-// component (and the daemon's address) is folded out of the bundle entirely.
+// Dev-only by construction: HUNTER is null in production builds, so everything
+// behind the early return (hooks, fetches, JSX, the daemon address) is
+// dead-code-eliminated — only an inert no-op stub of this component ships.
 // With no daemon running the Library renders pixel-identical to today.
 const HUNTER = import.meta.env.DEV ? "http://127.0.0.1:7433" : null;
 
@@ -30,6 +31,7 @@ export default function TabHunt({ onDone }) {
   const [job, setJob] = useState(null);
   const [verdict, setVerdict] = useState(null);
   const pollRef = useRef(null);
+  const inFlightRef = useRef(false); // synchronous re-entrancy guard (state lags a click)
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -47,7 +49,11 @@ export default function TabHunt({ onDone }) {
 
   const begin = async () => {
     const name = artist.trim();
-    if (!name || job) return;
+    // `job` state lags a fast double-click across the POST round-trip, so the
+    // ref is the real guard — without it two clicks start two overlapping hunts
+    // and the second's interval id clobbers the first's in pollRef.
+    if (!name || job || inFlightRef.current) return;
+    inFlightRef.current = true;
     setVerdict(null);
     try {
       const r = await fetch(`${HUNTER}/hunt`, {
@@ -61,31 +67,37 @@ export default function TabHunt({ onDone }) {
       }
       const { id } = await r.json();
       setJob({ id, artist: name, stages: [] });
-      pollRef.current = setInterval(async () => {
+      // Each interval clears its own id, never whatever currently sits in the
+      // ref, so a poll can't orphan a sibling's timer.
+      const iv = setInterval(async () => {
         try {
           const s = await (await fetch(`${HUNTER}/hunt/${id}`)).json();
           setJob({ id, ...s });
           if (s.done) {
-            clearInterval(pollRef.current);
+            clearInterval(iv);
             const kept = (s.stages || [])
               .filter((st) => st.key !== "manifest")
               .reduce((n, st) => n + st.written, 0);
+            const shelf = s.manifest ? ` — the shelf now holds ${s.manifest.songs} songs` : "";
             setVerdict(
               s.error ? s.error
-                : kept ? `the hunt brought home ${kept} new charts`
+                : kept ? `the hunt brought home ${kept} new charts${shelf}`
                 : "nothing new out there — the shelf already has it all",
             );
             setJob(null);
             if (!s.error && kept) onDone?.();
           }
         } catch {
-          clearInterval(pollRef.current);
+          clearInterval(iv);
           setVerdict("lost the hunter mid-hunt — check the daemon");
           setJob(null);
         }
       }, 1200);
+      pollRef.current = iv;
     } catch {
       setVerdict("the hunter stopped answering");
+    } finally {
+      inFlightRef.current = false;
     }
   };
 

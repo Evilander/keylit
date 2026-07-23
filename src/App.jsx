@@ -1335,6 +1335,7 @@ export default function App() {
                 <WaterfallLane prog={soundingView.prog}
                   voicings={mode === "smooth" ? soundingView.smoothFull : soundingView.rootFull}
                   labels={soundingView.prog.map((ch) => displaySymbol(ch, pitchShift))}
+                  mode={mode}
                   currentIdx={currentIdx} playing={isPlaying} msPerChord={tempo} />
                 <Keyboard height={210} roleFor={roleForKeyboard} onKey={playSingleKey} flash={flash}
                   ariaLabel="piano keyboard — the current chord is lit" />
