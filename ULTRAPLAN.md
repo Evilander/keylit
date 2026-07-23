@@ -265,6 +265,15 @@ the four workflows *flow*. Each subsection: current friction → the streamline.
   main + parallel vendor chunks (tone/react/icons); Shed + Voice are React.lazy.
 - **W5 (partial) — furniture**: Shed skeleton shelf, Voice pre-mic ghost trace, shelf
   source-noise moved to an open-shelf colophon.
+- **Bug fix** (`6517a06`): the Learn room opened showing PedalLab's violet pedal-tonic
+  instead of the cyan scale — both widgets lit the shared board on mount and PedalLab
+  (last in the grid) won. PedalLab now claims the keyboard only during an active walk.
+- **Review pass** (`8f0d569`): a 5-dimension adversarial review (each finding
+  skeptic-verified; security clean) caught a Tab Hunt double-submit race (daemon claimed
+  `busy` after an await; client guarded only on lagging React state) — fixed at both ends
+  and verified (two simultaneous POSTs → one 200 + one 409). Also matched the waterfall's
+  colors to the real `keyRole` (color by pitch class, bass-gold only for slash chords,
+  Shape mode expands across the deck) and cleared four slop items.
 
 Still open from the plan: one-clock mini-transport (assessed LOW-risk slice only — top-bar
 glance → play/stop+bpm on the metronome singleton; do NOT unify Arranger/Session/TabKeys),
