@@ -574,11 +574,23 @@
 
 .write-desk { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .write-desk > * { min-width: 0; max-width: 100%; }
-.write-timer { display: flex; align-items: center; gap: 12px; padding: 12px 15px; flex-wrap: wrap; }
-.write-timer > div:first-of-type { display: grid; flex: 1; min-width: 190px; }
-.write-timer > div:first-of-type strong { font-family: var(--kl-display); font-size: 17px; }
-.write-timer > div:first-of-type span { color: var(--kl-muted); font-size: 11.5px; }
-.write-timer > b { color: var(--kl-root); font: 700 28px var(--kl-mono); }
+/* the ritual strip — one slim line, not a headline plate */
+.write-timer { display: flex; align-items: center; gap: 10px; padding: 8px 12px; flex-wrap: wrap;
+  border: 1px solid var(--kl-hair); border-radius: 12px; background: var(--kl-sunken); color: var(--kl-muted); }
+.write-timer strong { font-family: var(--kl-display); font-weight: 400; font-size: 15px; color: var(--kl-ink); }
+.write-timer-sub { color: var(--kl-faint); font-size: 11px; flex: 1; min-width: 150px; }
+.write-timer > b { color: var(--kl-root); font: 700 22px var(--kl-mono); }
+.write-focus-btn { margin-left: auto; }
+
+/* focus mode — the countdown and the words, nothing else */
+.write-focus-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.write-focus-bar b { color: var(--kl-root); font: 700 26px var(--kl-mono); }
+.write-focus-pad { width: 100%; min-height: 62vh; resize: vertical;
+  background: var(--kl-raised); color: var(--kl-ink);
+  border: 1px solid var(--kl-hair); border-radius: 14px; padding: 22px 24px;
+  font: 15.5px/1.75 var(--kl-sans); outline: none; }
+
+.write-seed-label { color: var(--kl-faint); font: 10.5px var(--kl-mono); letter-spacing: 0.1em; text-transform: uppercase; }
 .write-draft-bar,
 .write-seed-bar { display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }
 .write-draft-bar label { display: grid; gap: 3px; color: var(--kl-muted); font-size: 10.5px; }
