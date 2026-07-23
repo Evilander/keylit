@@ -98,17 +98,22 @@ describe("assignColumns — pitches survive the move", () => {
     // Real corpus case (Sandy, D A D F# B E): the cluster G2 A2 D3 F#3 E4 A4
     // leans on that tuning's open F#3. In drop D the F#3 can't stack onto
     // ascending strings with the rest — but F#4 lives free on the G string.
-    // The fallback used to drop it; it should rescue the octave and flag it.
+    // The fallback rescues the octave and flags it — and the shape it lands in
+    // must be one a hand can actually hold (fretted span ≤ SPAN), not a sprawl.
     const notes = [43, 45, 50, 54, 64, 69].map((midi) => ({ midi }));
     const out = assignColumns([{ col: 0, notes }], { tuningId: "dropD", capo: 0 });
+    const col = out.columns[0];
+    // it keeps every note (octave-rescuing the F#3) AND lands in a shape a hand
+    // can hold — the fix keeps what the old sprawl kept, now within a span.
     expect(out.summary.dropped).toBe(0);
     expect(out.summary.shifted).toBeGreaterThanOrEqual(1);
-    const col = out.columns[0];
-    // every pitch CLASS of the original chord survives
+    const fretted = col.notes.filter((n) => n.fret > 0).map((n) => n.fret);
+    expect(Math.max(...fretted) - Math.min(...fretted)).toBeLessThanOrEqual(4);
+    // every pitch CLASS of the original chord survives, no invented notes
     const wantPcs = new Set(notes.map((n) => n.midi % 12));
     const gotPcs = new Set(col.notes.map((n) => n.midi % 12));
     expect(gotPcs).toEqual(wantPcs);
-    // strictly ascending strings, no doubled string
+    // distinct strings, no doubled string
     const strings = col.notes.map((n) => n.string);
     expect(new Set(strings).size).toBe(strings.length);
   });
@@ -123,6 +128,47 @@ describe("assignColumns — pitches survive the move", () => {
     for (const n of out.columns[0].notes) {
       // anything kept is honestly playable at its printed spot
       expect(n.fret).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("a cluster that won't voice at pitch keeps a PLAYABLE subset, never a sprawl", () => {
+    // Real corpus case (Alex G, Light → D standard): the tight cluster
+    // C#3 G#3 B3 C#4 E4 has no single-hand shape in D standard. The old
+    // fallback kept all five across frets 7–13 (span 6) — a chord no hand
+    // can hold. It must instead keep the notes that FIT one hand and flag
+    // the rest, so what prints is always real.
+    const notes = [49, 56, 59, 61, 64].map((midi) => ({ midi }));
+    const out = assignColumns([{ col: 0, notes }], { tuningId: "dStandard", capo: 0 });
+    const col = out.columns[0];
+    const fretted = col.notes.filter((n) => n.fret > 0).map((n) => n.fret);
+    expect(fretted.length).toBeGreaterThan(0);
+    expect(Math.max(...fretted) - Math.min(...fretted)).toBeLessThanOrEqual(4); // a hand
+    // kept notes are honestly at pitch, from the original chord
+    const opens = getTuning("dStandard").notes;
+    const wantPcs = new Set(notes.map((n) => n.midi % 12));
+    for (const n of col.notes) {
+      expect(opens[n.string] + n.fret).toBe(n.midi); // the printed spot IS the pitch
+      expect(wantPcs.has(n.midi % 12)).toBe(true);
+    }
+    // and it kept a useful chunk, not just the bass
+    expect(col.notes.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("no re-fret ever prints a chord wider than a hand can hold", () => {
+    // The structural guarantee across tunings: an assigned column's fretted
+    // notes always sit within SPAN frets. A wider shape means a fake chord.
+    const clusters = [
+      [49, 56, 59, 61, 64], [43, 45, 50, 54, 64, 69], [48, 52, 55, 60, 64, 67],
+      [40, 47, 52, 56, 59, 64], [45, 52, 57, 60, 64],
+    ];
+    for (const tuningId of ["standard", "dStandard", "dropD", "dropC", "openD", "openG", "dadgad"]) {
+      for (const midis of clusters) {
+        const out = assignColumns([{ col: 0, notes: midis.map((midi) => ({ midi })) }], { tuningId, capo: 0 });
+        const fretted = out.columns[0].notes.filter((n) => n.fret > 0).map((n) => n.fret);
+        if (fretted.length > 1) {
+          expect(Math.max(...fretted) - Math.min(...fretted), `${tuningId} ${midis}`).toBeLessThanOrEqual(4);
+        }
+      }
     }
   });
 });

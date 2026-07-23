@@ -65,6 +65,48 @@ const moveCost = (prev, a) => {
 };
 
 /**
+ * The honest fallback when no single-hand shape holds a whole column (a dense
+ * cluster whose pitches, moved to the target tuning, would sprawl across the
+ * neck). Find the SPAN-fret window (open strings are always free) that seats
+ * the MOST of the notes on distinct strings — octave-revoicing a note to make
+ * it fit before giving up — and report the rest as dropped. The result is an
+ * alternative voicing a hand can actually hold; a chord no one can play is not
+ * a transcription, it's noise. Returns { seated, dropped, shifted }.
+ */
+function playableSubset(notes, opens, capo, maxFret) {
+  let best = null;
+  for (let base = 1; base + SPAN <= maxFret; base++) {
+    const used = new Set();
+    const seated = [];
+    for (let idx = 0; idx < notes.length; idx++) {
+      const n = notes[idx];
+      let pick = null;
+      // written octave first, then its twins — a fit beats a faithful register
+      for (const [midi, sh] of [[n.midi, 0], [n.midi + 12, 1], [n.midi - 12, -1]]) {
+        for (const s of spotsFor(midi, opens, capo, maxFret)) {
+          if (used.has(s.string)) continue;
+          if (s.fret !== 0 && (s.fret < base || s.fret > base + SPAN)) continue;
+          if (!pick || (sh === 0 && pick.sh !== 0) || (sh === pick.sh && s.string < pick.string)) {
+            pick = { string: s.string, fret: s.fret, midi, sh };
+          }
+        }
+      }
+      if (pick) {
+        used.add(pick.string);
+        seated.push({ idx, sh: pick.sh, note: { ...n, midi: pick.midi, octaveShifted: (pick.sh || n.octaveShifted) || undefined, string: pick.string, fret: pick.fret } });
+      }
+    }
+    const shifted = seated.filter((x) => x.sh).length;
+    if (!best || seated.length > best.n || (seated.length === best.n && shifted < best.shifted)) {
+      best = { n: seated.length, shifted, keptIdx: new Set(seated.map((x) => x.idx)), seated: seated.map((x) => x.note) };
+    }
+    if (best.n === notes.length && best.shifted === 0) break; // can't do better
+  }
+  if (!best) best = { n: 0, shifted: 0, keptIdx: new Set(), seated: [] };
+  return { seated: best.seated, shifted: best.shifted, dropped: notes.filter((_, i) => !best.keptIdx.has(i)) };
+}
+
+/**
  * Assign a stream of columns [{ col, notes: [{ midi, tech? }] }] to a target
  * fretboard. Returns { columns, summary } where each column carries assigned
  * notes { midi, string, fret, tech, octaveShifted? } plus dropped[] pitches,
@@ -112,28 +154,15 @@ export function assignColumns(columns, { tuningId, capo = 0, maxFret = 22 } = {}
     if (!col.notes.length) { history.push(null); continue; }
     const options = assignmentsFor(col.notes, opens, capo, maxFret);
     if (!options.length) {
-      // a chord whose members are individually playable but not TOGETHER —
-      // keep the most notes we can (greedy from the bass). Before giving up
-      // on a note, try its octave twin on the remaining strings — the same
-      // honest, FLAGGED compromise the range rescue makes (open-tuning
-      // voicings like an open F#3 often have no home in the target otherwise).
-      // Drop only as a last resort.
-      const kept = [];
-      let minString = 0;
-      for (const n of col.notes) {
-        let midi = n.midi, shifted = n.octaveShifted;
-        let spot = spotsFor(midi, opens, capo, maxFret).find((s) => s.string >= minString);
-        if (!spot) {
-          for (const alt of [n.midi + 12, n.midi - 12]) {
-            const s2 = spotsFor(alt, opens, capo, maxFret).find((s) => s.string >= minString);
-            if (s2) { spot = s2; midi = alt; shifted = alt > n.midi ? 1 : -1; summary.shifted++; break; }
-          }
-        }
-        if (spot) { kept.push({ ...n, midi, octaveShifted: shifted, string: spot.string, fret: spot.fret }); minString = spot.string + 1; }
-        else { col.dropped.push(n.midi); summary.dropped++; }
-      }
-      col.notes = kept;
-      history.push([{ notes: kept, pos: 0, span: 0, opens: 0 }]);
+      // A chord whose members are individually playable but not TOGETHER within
+      // a hand span. Keep the most that fit one shape (octave-revoiced where it
+      // helps), drop-and-flag the rest — an alternative voicing you can hold,
+      // never a shape that spans half the neck.
+      const best = playableSubset(col.notes, opens, capo, maxFret);
+      summary.shifted += best.shifted;
+      for (const n of best.dropped) { col.dropped.push(n.midi); summary.dropped++; }
+      col.notes = best.seated;
+      history.push([{ notes: best.seated, pos: 0, span: 0, opens: 0 }]);
       // add a real chain link so the backtracker consumes exactly one step here
       states = states.map((st) => ({ cost: st.cost, prev: st, placed: 0, pos: st.pos, lastString: st.lastString }));
       continue;
