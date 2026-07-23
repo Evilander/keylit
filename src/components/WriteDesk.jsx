@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { Cable, ClipboardPaste, Download, RotateCcw, Save, Shuffle, Timer, Trash2, Wand2 } from "lucide-react";
-import { createDraft, adaptLegacySketch, deriveProgression } from "../lib/composition.js";
+import { useEffect, useState } from "react";
+import { Cable, ClipboardPaste, Download, Feather, Minimize2, RotateCcw, Save, Shuffle, Timer, Trash2, Wand2 } from "lucide-react";
+import { createDraft, adaptLegacySketch } from "../lib/composition.js";
 import { generateProgression, GEN_STYLES } from "../lib/generate.js";
 import { chordSymbol, SHARP_NAMES } from "../lib/theory.js";
 import { midiBlob } from "../lib/midi.js";
@@ -79,6 +79,7 @@ export default function WriteDesk({
   const [verbs, setVerbs] = useState("");
   const [nouns, setNouns] = useState("");
   const [pairs, setPairs] = useState([]);
+  const [focus, setFocus] = useState(false);
 
   const setEndsAt = (value) => {
     setEndsAtState(value);
@@ -100,9 +101,12 @@ export default function WriteDesk({
     return () => clearInterval(timer);
   }, [endsAt, onPlay]);
 
-  const progression = useMemo(() => deriveProgression(draft).progression, [draft]);
   const selectedSectionId = selection?.sectionId || draft.sections[0]?.id;
   const selectedSection = draft.sections.find((section) => section.id === selectedSectionId) || draft.sections[0];
+  const clock = endsAt ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : null;
+  const startTimer = () => { onPlay?.([], 0); setLeft(mins * 60); setEndsAt(Date.now() + mins * 60000); };
+  // Nothing written yet — used to lead with the invitation instead of a blank grid.
+  const blank = !draft.lyrics?.trim() && draft.sections.every((s) => !s.chords.length);
 
   const spark = () => {
     const seed = generateProgression({ tonic: draft.key.tonic, mode: draft.key.mode, style, seventhsBias: sevenths });
@@ -166,16 +170,40 @@ export default function WriteDesk({
     onReplaceDraft?.(createDraft({ ...draft, sections }), { historyMode: "push" });
   };
 
+  // Focus mode — Tweedy distilled: the desk gets out of the way and leaves the
+  // countdown and the words. Everything else waits until the ring.
+  if (focus) {
+    return (
+      <div className="write-desk write-focus">
+        <div className="write-focus-bar">
+          {endsAt
+            ? <b>{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</b>
+            : <span className="kl-meta">no clock — just the words</span>}
+          <button className="bench-btn" onClick={() => setFocus(false)}><Minimize2 size={13} /> Back to the desk</button>
+        </div>
+        <textarea className="write-focus-pad" autoFocus aria-label="Lyric pad"
+          value={draft.lyrics} onChange={(event) => onEdit?.({ type: "draft/lyrics", lyrics: event.target.value })}
+          placeholder="Lines, fragments, overheard things. Nothing here has to be good yet." />
+      </div>
+    );
+  }
+
   return (
     <div className="write-desk">
-      <div className="faceplate write-timer">
-        <Timer size={17} />
-        <div><strong>One song timer</strong><span>Whatever exists when it rings counts.</span></div>
+      {/* the ritual strip: one slim line — the clock on the left, the escape
+          hatch on the right. It starts the session; it doesn't headline it. */}
+      <div className="write-timer">
+        <Timer size={15} />
+        <strong>One song timer</strong>
+        <span className="write-timer-sub">whatever exists when it rings counts</span>
         {endsAt ? (
           <><b>{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</b><button className="bench-btn" onClick={() => setEndsAt(null)}>Stop</button></>
         ) : (
           <><div className="kl-seg">{[5, 10, 15].map((value) => <button key={value} aria-pressed={mins === value} onClick={() => setMins(value)}>{value}m</button>)}</div><button className="bench-btn primary" onClick={() => { onPlay?.([], 0); setLeft(mins * 60); setEndsAt(Date.now() + mins * 60000); }}>Write one song</button></>
         )}
+        <button className="bench-btn write-focus-btn" title="hide everything but the words" onClick={() => setFocus(true)}>
+          <Feather size={13} /> Focus
+        </button>
       </div>
 
       <div className="write-draft-bar">
@@ -183,7 +211,7 @@ export default function WriteDesk({
         <label>Key<select value={draft.key.tonic} onChange={(event) => onEdit?.({ type: "draft/key", key: { ...draft.key, tonic: Number(event.target.value) } })}>{SHARP_NAMES.map((name, tonic) => <option key={name} value={tonic}>{name}</option>)}</select></label>
         <label>Mode<select value={draft.key.mode} onChange={(event) => onEdit?.({ type: "draft/key", key: { ...draft.key, mode: event.target.value } })}><option value="major">major</option><option value="minor">minor</option></select></label>
         <button className="bench-btn" onClick={saveDraft}><Save size={13} /> Keep sketch</button>
-        <span>{notice}</span>
+        <span role="status">{notice}</span>
       </div>
 
       <ProgressionComposer
@@ -200,8 +228,10 @@ export default function WriteDesk({
         requestDeep={requestDeep}
       />
 
+      {/* a quiet toolbar under the composer, not a rival headline — the desk
+          has one voice and these are its footnotes. */}
       <div className="write-seed-bar">
-        <span className="kl-eyebrow">Need a starting point?</span>
+        <span className="write-seed-label">starting point</span>
         <select aria-label="Spark style" value={style} onChange={(event) => setStyle(event.target.value)}>{GEN_STYLES.map((name) => <option key={name}>{name}</option>)}</select>
         <label><input type="checkbox" checked={sevenths} onChange={(event) => setSevenths(event.target.checked)} /> 7ths</label>
         <button className="bench-btn" onClick={spark}><Wand2 size={13} /> Spark</button>
