@@ -106,6 +106,7 @@ const NAV = [
   { id: "learn", label: "Learn" },
   { id: "write", label: "Write" },
   { id: "practice", label: "Practice" },
+  { id: "setlists", label: "Setlists" },
   { id: "voice", label: "Voice" },
   { id: "chords", label: "Chordbook" },
   { id: "shed", label: "The Shed" },
@@ -114,14 +115,14 @@ const NAV = [
 const WINGS = [
   { id: "play", label: "Play", rooms: ["library", "song", "perform", "piano"] },
   { id: "study", label: "Study", rooms: ["theory", "learn", "chords"] },
-  { id: "make", label: "Make", rooms: ["write", "practice", "voice"] },
+  { id: "make", label: "Make", rooms: ["write", "practice", "setlists", "voice"] },
   { id: "shed", label: "Shed", rooms: ["shed"] },
 ];
 
 // One shuffle per login: every room draws a different borrowed line, and
 // tomorrow's login deals a different hand. Index by room, never re-pick.
 const QUOTE_DECK = shuffledQuotes();
-const ROOM_QUOTE = { library: 0, learn: 1, theory: 2, write: 3, practice: 4, chords: 5 };
+const ROOM_QUOTE = { library: 0, learn: 1, theory: 2, write: 3, practice: 4, chords: 5, setlists: 6 };
 const roomQuote = (id) => QUOTE_DECK[ROOM_QUOTE[id] % QUOTE_DECK.length];
 
 const GUITAR_TUNING_KEY = "keylit.guitar-tuning.v1";
@@ -1105,7 +1106,7 @@ export default function App() {
                 if (action === "hear") { auditionChords(potd.chords); return; }
                 sendChordsToWrite(potd.chords, `${potd.name} · ${potd.keyName}`);
               }}
-              onSetlist={() => { setPracticeTab("bench"); setSection("practice"); }}
+              onSetlist={() => setSection("setlists")}
               onPaste={() => { setSection("song"); setImportTarget("song"); setImportOpen(true); }}
               onDemo={() => { setLoaded(null); loadSheet(DEFAULT_SHEET); setSection("song"); }}
               onHeard={(sheetText, title) => {
@@ -1140,10 +1141,7 @@ export default function App() {
                 <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8, alignItems: "center" }}>
                   {/* Only songs with a source+id make live setlist entries;
                       pasted/shared/ear charts would leave dead rows. */}
-                  {loaded?.id != null && <AddToSetlist song={loaded} onOpenSetlists={() => {
-                    setPracticeTab("bench");
-                    setSection("practice");
-                  }} />}
+                  {loaded?.id != null && <AddToSetlist song={loaded} onOpenSetlists={() => setSection("setlists")} />}
                   {sheet.trim() && (!loaded || loaded.source === "user" || loaded.source === "shared" || loaded.source === "ear") && (
                     <ShareChart data={{
                       title: loaded?.title || "Untitled chart", artist: loaded?.artist || undefined,
@@ -1247,8 +1245,7 @@ export default function App() {
               onExitSet={() => {
                 performRunRef.current = null;
                 setPerformRun(null);
-                setPracticeTab("bench");
-                setSection("practice");
+                setSection("setlists");
               }}
               onPickSong={() => setSection("library")}
               onPlayPageChord={({ chord }) => {
@@ -1461,7 +1458,6 @@ export default function App() {
                 <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
                 <button role="tab" aria-selected={practiceTab === "session"} onClick={() => setPracticeTab("session")}>The Session</button>
                 <button role="tab" aria-selected={practiceTab === "time"} onClick={() => setPracticeTab("time")}>Metronome</button>
-                <button role="tab" aria-selected={practiceTab === "bench"} onClick={() => setPracticeTab("bench")}>Setlists</button>
                 <button role="tab" aria-selected={practiceTab === "mirror"} onClick={() => setPracticeTab("mirror")}>The Mirror</button>
               </div>
               {practiceTab === "drills" && (
@@ -1492,13 +1488,19 @@ export default function App() {
                   <Metronome />
                 </div>
               )}
-              {practiceTab === "bench" && <BenchBook onOpen={openSong}
-                onPerformSet={(setlist) => startPerformSet(setlist)}
-                onRunFrom={(setlist, entryId) => startPerformSet(setlist, entryId)} />}
               {practiceTab === "mirror" && (
                 <MirrorPanel onAudition={auditionChords}
                   onTakeToDesk={(chords) => sendChordsToWrite(chords, "Mirror idea")} />
               )}
+            </div>
+          )}
+
+          {section === "setlists" && (
+            <div className="kl-section">
+              <QuoteLine quote={roomQuote("setlists")} size={18} style={{ marginBottom: 16 }} />
+              <BenchBook onOpen={openSong}
+                onPerformSet={(setlist) => startPerformSet(setlist)}
+                onRunFrom={(setlist, entryId) => startPerformSet(setlist, entryId)} />
             </div>
           )}
 
