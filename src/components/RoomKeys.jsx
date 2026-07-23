@@ -10,7 +10,7 @@ const MAP = [
   ["1", "library", "Library"], ["2", "song", "Song"], ["3", "perform", "Perform"],
   ["4", "piano", "Piano"], ["5", "theory", "Theory"], ["6", "learn", "Learn"],
   ["7", "write", "Write"], ["8", "practice", "Practice"], ["9", "voice", "Voice"],
-  ["0", "chords", "Chordbook"], ["-", "shed", "The Shed"],
+  ["0", "chords", "Chordbook"], ["-", "shed", "The Shed"], ["=", "setlists", "Setlists"],
 ];
 
 export default function RoomKeys({ onGo }) {
