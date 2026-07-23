@@ -218,7 +218,7 @@ export default function Shed() {
                 <button className="bench-btn" style={{ padding: "4px 9px" }} onClick={() => setViewing(null)} aria-label="close book" title="close (Esc)"><X size={14} /></button>
               </div>
             </div>
-            <div style={{ maxHeight: "78vh", overflowY: "auto", borderRadius: 9, border: `1px solid ${C.line}`, background: "#fff" }}>
+            <div style={{ maxHeight: "78vh", overflowY: "auto", borderRadius: 9, border: `1px solid ${C.line}`, background: C.panel }}>
               <img src={pageSrc(viewing.item, viewing.page)} alt={`${viewing.item.title} — page ${viewing.page}`}
                 style={{ width: "100%", display: "block" }} />
             </div>

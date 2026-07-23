@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { MONO, DISPLAY } from "../ui/theme.js";
+import { C, MONO, DISPLAY } from "../ui/theme.js";
 
 // RoomKeys — number-row navigation for hands that live on instruments, not
 // mice: 1–9, 0 and - jump straight to a room; ? shows the map. Never fires
@@ -38,23 +38,23 @@ export default function RoomKeys({ onGo }) {
       style={{ position: "fixed", inset: 0, zIndex: 300, display: "grid", placeItems: "center",
         background: "rgba(13,12,9,.45)" }}>
       <div onClick={(e) => e.stopPropagation()}
-        style={{ background: "#171511", border: "1px solid rgba(251,247,236,.16)", borderRadius: 14,
-          padding: "22px 26px", minWidth: 320, boxShadow: "0 18px 60px rgba(0,0,0,.5)" }}>
-        <div style={{ fontFamily: DISPLAY, fontSize: 19, color: "#F0EADB", marginBottom: 14 }}>
+        style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 14,
+          padding: "22px 26px", minWidth: 320, boxShadow: `0 18px 60px ${C.shadow}` }}>
+        <div style={{ fontFamily: DISPLAY, fontSize: 19, color: C.ink, marginBottom: 14 }}>
           The rooms, by number
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "7px 26px" }}>
           {MAP.map(([k, , label]) => (
             <div key={k} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <kbd style={{ fontFamily: MONO, fontSize: 11, color: "#F0EADB", background: "rgba(251,247,236,.08)",
-                border: "1px solid rgba(251,247,236,.2)", borderRadius: 5, padding: "2px 7px", minWidth: 14, textAlign: "center" }}>
+              <kbd style={{ fontFamily: MONO, fontSize: 11, color: C.ink, background: C.panel2,
+                border: `1px solid ${C.line}`, borderRadius: 5, padding: "2px 7px", minWidth: 14, textAlign: "center" }}>
                 {k}
               </kbd>
-              <span style={{ fontFamily: "var(--kl-sans)", fontSize: 13, color: "rgba(240,234,219,.8)" }}>{label}</span>
+              <span style={{ fontFamily: "var(--kl-sans)", fontSize: 13, color: C.muted }}>{label}</span>
             </div>
           ))}
         </div>
-        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.07em", color: "rgba(240,234,219,.45)", marginTop: 16 }}>
+        <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: "0.07em", color: C.faint, marginTop: 16 }}>
           ? toggles this map · esc closes · keys sleep while you type
         </div>
       </div>

@@ -17,6 +17,7 @@ import { progressionOfTheDay } from "./lib/potd.js";
 import { isMidiSupported, requestMidi, listOutputs, sendChordToOutput, allNotesOff } from "./webmidi.js";
 import { useAudioEngine } from "./audio/useAudioEngine.js";
 import { C, MONO, DISPLAY, applyTheme, currentTheme } from "./ui/theme.js";
+import ThemePicker from "./components/ThemePicker.jsx";
 import { EngLabel, Readout, BenchButton, QuoteLine } from "./ui/Bench.jsx";
 import { shuffledQuotes } from "./lib/quotes.js";
 import { loadSong, SOURCE_LABEL } from "./corpus.js";
@@ -184,10 +185,10 @@ export default function App() {
   const [practiceTab, setPracticeTab] = useState("drills");
   const [theoryTab, setTheoryTab] = useState("circle");
   const [lessonHL, setLessonHL] = useState(null);
-  // Light "Fretboard Press" or dark "After Hours" — applyTheme mutates the
-  // live C palette + flips the CSS layer; this state change repaints the tree.
+  // One of the THEMES ids — applyTheme mutates the live C palette + writes the
+  // CSS var layer; this state change repaints the tree.
   const [theme, setTheme] = useState(() => applyTheme(currentTheme()));
-  const toggleTheme = () => setTheme((t) => applyTheme(t === "dark" ? "light" : "dark"));
+  const pickTheme = (id) => setTheme(applyTheme(id));
   const [tutorOpen, setTutorOpen] = useState(false);
   // "Cover it capo'd": null = read the chart as written; a number = re-render
   // the chart as the shapes you'd finger with a capo there (sound unchanged).
@@ -1071,15 +1072,7 @@ export default function App() {
             maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             Key of {keyNameFull}
           </span>
-          <button onClick={toggleTheme}
-            aria-label="theme"
-            title={theme === "dark" ? "Back to daylight" : "Lamps low"}
-            style={{ display: "inline-flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10,
-              letterSpacing: "0.1em", textTransform: "uppercase", color: C.muted, background: "transparent",
-              border: `1.5px solid ${C.line}`, borderRadius: 999, padding: "7px 14px", cursor: "pointer", whiteSpace: "nowrap" }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: theme === "dark" ? C.bass : C.root, transition: "background 300ms" }} />
-            {theme === "dark" ? "After hours" : "Daylight"}
-          </button>
+          <ThemePicker theme={theme} onPick={pickTheme} />
         </div>
       </header>
 

@@ -56,11 +56,11 @@ export default function CapoAdvisor({ prog, capo, setCapo, keyCtx }) {
 
         <div className="flex items-center" style={{ gap: 8, marginLeft: "auto", background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 10, padding: "6px 8px" }}>
           <span style={{ fontSize: 11, color: C.faint, textTransform: "uppercase", letterSpacing: "0.1em" }}>Capo</span>
-          <button onClick={() => setCapo(Math.max(0, capo - 1))} style={miniBtn} aria-label="Capo down"><Minus size={14} /></button>
+          <button onClick={() => setCapo(Math.max(0, capo - 1))} style={miniBtn()} aria-label="Capo down"><Minus size={14} /></button>
           <span style={{ fontFamily: MONO, fontSize: 14, minWidth: 44, textAlign: "center", color: capo ? C.root : C.muted }}>
             {capo === 0 ? "open" : `fret ${capo}`}
           </span>
-          <button onClick={() => setCapo(Math.min(11, capo + 1))} style={miniBtn} aria-label="Capo up"><Plus size={14} /></button>
+          <button onClick={() => setCapo(Math.min(11, capo + 1))} style={miniBtn()} aria-label="Capo up"><Plus size={14} /></button>
         </div>
       </div>
 
@@ -124,8 +124,10 @@ export default function CapoAdvisor({ prog, capo, setCapo, keyCtx }) {
   );
 }
 
-const miniBtn = {
+// A function (not a const) so it reads the live palette — module-level consts
+// freeze whatever theme was loaded at import and can't follow a theme swap.
+const miniBtn = () => ({
   display: "inline-flex", alignItems: "center", justifyContent: "center",
-  width: 26, height: 26, borderRadius: 7, background: "#2a241e",
-  color: "#ece6dd", border: "1px solid #3a322a", cursor: "pointer",
-};
+  width: 26, height: 26, borderRadius: 7, background: C.panel2,
+  color: C.ink, border: `1px solid ${C.line}`, cursor: "pointer",
+});

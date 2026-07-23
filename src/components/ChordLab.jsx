@@ -211,9 +211,9 @@ function SuggestionCard({ s, keyCtx, onAudition, onApply }) {
         <div className="flex items-center" style={{ gap: 4 }}>
           {isAi && <Wand2 size={12} color={C.ai} title="Claude suggestion" />}
           <button onClick={() => onAudition(s.chords)} title="Hear it"
-            style={iconBtn}><Play size={13} /></button>
+            style={iconBtn()}><Play size={13} /></button>
           <button onClick={() => onApply(s)} title="Apply"
-            style={{ ...iconBtn, color: accent, borderColor: `${accent}66` }}><Plus size={14} /></button>
+            style={{ ...iconBtn(), color: accent, borderColor: `${accent}66` }}><Plus size={14} /></button>
         </div>
       </div>
       <div style={{ fontSize: 11.5, color: C.muted, marginTop: 5, lineHeight: 1.4 }}>{s.why}</div>
@@ -221,8 +221,9 @@ function SuggestionCard({ s, keyCtx, onAudition, onApply }) {
   );
 }
 
-const iconBtn = {
+// A function so it reads the live palette (a frozen const can't follow a theme).
+const iconBtn = () => ({
   display: "inline-flex", alignItems: "center", justifyContent: "center",
   width: 24, height: 24, borderRadius: 6, background: "transparent",
-  color: "#ece6dd", border: "1px solid #3a322a", cursor: "pointer",
-};
+  color: C.ink, border: `1px solid ${C.line}`, cursor: "pointer",
+});
