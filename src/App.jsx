@@ -1,17 +1,17 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback, useDeferredValue, lazy, Suspense } from "react";
 import {
   Play, Pause, ChevronLeft, ChevronRight, Volume2, VolumeX,
-  RotateCcw, Upload, Minus, Plus, Loader2, Undo2, Lightbulb,
+  RotateCcw, Upload, Minus, Plus, Loader2, Undo2,
 } from "lucide-react";
 import {
   SHARP_NAMES, parseSheet, transposeChord, chordSymbol, displaySymbol,
-  nashville, romanNumeral, detectKey, CIRCLE_OF_FIFTHS, sameChordSound, detectCapo,
+  detectKey, CIRCLE_OF_FIFTHS, sameChordSound, detectCapo,
   suggestCapo,
 } from "./lib/theory.js";
 import { rootPositionFull, smoothUpper, addBass, clampVoicing } from "./lib/voicing.js";
 import { analyzeSheet, deepProgressionIdeas } from "./lib/llm.js";
 import { adaptLegacySketch, applyCompositionOp, createDraft, deriveProgression, replaceDraftInSession } from "./lib/composition.js";
-import { respell, spellChord, spellPc } from "./lib/spelling.js";
+import { respell, spellPc } from "./lib/spelling.js";
 import { wheelMoves } from "./lib/voice.js";
 import { progressionOfTheDay } from "./lib/potd.js";
 import { isMidiSupported, requestMidi, listOutputs, sendChordToOutput, allNotesOff } from "./webmidi.js";
@@ -21,53 +21,25 @@ import ThemePicker from "./components/ThemePicker.jsx";
 import RoomBoundary from "./components/RoomBoundary.jsx";
 import { EngLabel, Readout, BenchButton, QuoteLine } from "./ui/Bench.jsx";
 import { shuffledQuotes } from "./lib/quotes.js";
-import { loadSong, SOURCE_LABEL } from "./corpus.js";
-import Keyboard from "./components/Keyboard.jsx";
-import WaterfallLane from "./components/WaterfallLane.jsx";
+import { loadSong } from "./corpus.js";
 import RoomKeys from "./components/RoomKeys.jsx";
 import NumbersRail from "./components/NumbersRail.jsx";
-import ScaleBuilder from "./components/ScaleBuilder.jsx";
-import DegreeFinder from "./components/DegreeFinder.jsx";
-import MeterFeel from "./components/MeterFeel.jsx";
-import PedalLab from "./components/PedalLab.jsx";
 import ChordLab from "./components/ChordLab.jsx";
-import KeyWheel from "./components/KeyWheel.jsx";
-import WheelLesson from "./components/WheelLesson.jsx";
-import CapoTuning from "./components/CapoTuning.jsx";
 import WriteDesk, { TIMER_KEY } from "./components/WriteDesk.jsx";
 import OneSong from "./components/OneSong.jsx";
-import PracticeRail from "./components/PracticeRail.jsx";
 import ImportModal from "./components/ImportModal.jsx";
-import AddToSetlist from "./components/AddToSetlist.jsx";
-import ChartView from "./components/ChartView.jsx";
-import SongGrips from "./components/SongGrips.jsx";
-import Library from "./components/Library.jsx";
-import Practice from "./components/Practice.jsx";
 import TabKeys from "./components/TabKeys.jsx";
-import PlayAlong from "./components/PlayAlong.jsx";
 import BenchBook from "./components/BenchBook.jsx";
 import ChordBook from "./components/ChordBook.jsx";
 // Two leaf rooms carry weight the rest of the app never touches (the Shed's
 // image/PDF viewer, Voice's pitch tracker) and neither shares the audio engine
 // — split them out of the initial bundle behind Suspense.
 const Shed = lazy(() => import("./components/Shed.jsx"));
-import Arranger from "./components/Arranger.jsx";
-import Metronome from "./components/Metronome.jsx";
-import Perform from "./components/Perform.jsx";
-import Coverize from "./components/Coverize.jsx";
 import TutorPanel from "./components/TutorPanel.jsx";
-import TensionStrip from "./components/TensionStrip.jsx";
-import TheoryGuide from "./components/TheoryGuide.jsx";
 const VoiceRoom = lazy(() => import("./components/VoiceRoom.jsx"));
-import MirrorPanel from "./components/MirrorPanel.jsx";
-import RetabPanel, { retabForCurrentSheet } from "./components/RetabPanel.jsx";
-import TabHomes from "./components/TabHomes.jsx";
+import { retabForCurrentSheet } from "./components/RetabPanel.jsx";
 import { swapTabBlocks } from "./lib/retab.js";
-import { hasTab } from "./lib/tab.js";
-import EarTrainer from "./components/EarTrainer.jsx";
-import SessionRoom from "./components/SessionRoom.jsx";
 import { metronome } from "./audio/metronome.js";
-import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
 import { benchBook, onesongBook, userSongbook } from "./storage.js";
 import { slugSongKey } from "./lib/bench.js";
 import { decodeShare } from "./lib/sharelink.js";
@@ -80,7 +52,13 @@ import {
 } from "./lib/performpage.js";
 import { createLatestSongLoader, resolveSongData } from "./songloader.js";
 import { canonicalTuning, chartShiftForGuitar, STANDARD_TUNING, TUNINGS, uniformTuningOffset } from "./lib/tuning.js";
-import GuitarSetup from "./components/GuitarSetup.jsx";
+import LibraryRoom from "./components/rooms/LibraryRoom.jsx";
+import SongRoom from "./components/rooms/SongRoom.jsx";
+import PerformRoom from "./components/rooms/PerformRoom.jsx";
+import PianoRoom from "./components/rooms/PianoRoom.jsx";
+import TheoryRoom from "./components/rooms/TheoryRoom.jsx";
+import LearnRoom from "./components/rooms/LearnRoom.jsx";
+import PracticeRoom from "./components/rooms/PracticeRoom.jsx";
 
 const DEFAULT_SHEET = `[Intro]
 E       A       E
@@ -1156,342 +1134,75 @@ export default function App() {
           {/* keyed by section: walking to another room resets a tripped boundary */}
           <RoomBoundary key={section}>
           {section === "library" && (
-            <Library onOpen={openSong}
+            <LibraryRoom onOpen={openSong}
               quote={roomQuote("library")}
               potd={potd}
-              onPotd={(action) => {
-                arm();
-                if (action === "hear") { auditionChords(potd.chords); return; }
-                sendChordsToWrite(potd.chords, `${potd.name} · ${potd.keyName}`);
-              }}
-              onSetlist={() => setSection("setlists")}
-              onPaste={() => { setSection("song"); setImportTarget("song"); setImportOpen(true); }}
-              onDemo={() => { setLoaded(null); loadSheet(DEFAULT_SHEET); setSection("song"); }}
-              onHeard={(sheetText, title) => {
-                setLoaded({ title: title || "Heard from audio", artist: null, source: "ear" });
-                loadSheet(sheetText);
-                setSection("song");
-              }} />
+              arm={arm}
+              auditionChords={auditionChords}
+              sendChordsToWrite={sendChordsToWrite}
+              setSection={setSection}
+              setImportTarget={setImportTarget}
+              setImportOpen={setImportOpen}
+              setLoaded={setLoaded}
+              loadSheet={loadSheet}
+              defaultSheet={DEFAULT_SHEET} />
           )}
 
           {section === "song" && (
-            <div className="kl-section">
-              <HandedBanner handed={handed} kept={handedKept} onKeep={keepHanded} onDismiss={() => setHanded(null)} />
-              {setlistCtx && setlistCtx.rows?.length > 0 && (
-                <div className="flex items-center" style={{ gap: 10, marginBottom: 12, padding: "7px 12px", background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10 }}>
-                  <span className="kl-eyebrow" style={{ whiteSpace: "nowrap" }}>{setlistCtx.name}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 12, color: C.muted }}>{setlistCtx.idx + 1} / {setlistCtx.rows.length}</span>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.faint, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {setlistCtx.rows[setlistCtx.idx + 1] ? <>next: {setlistCtx.rows[setlistCtx.idx + 1].title}</> : "last one — bring it home"}
-                  </span>
-                  <button onClick={() => openSong(setlistCtx.rows[setlistCtx.idx - 1], { ...setlistCtx, idx: setlistCtx.idx - 1 })}
-                    disabled={setlistCtx.idx === 0} aria-label="previous song in setlist"
-                    style={{ ...navChip, opacity: setlistCtx.idx === 0 ? 0.35 : 1 }}><ChevronLeft size={14} /></button>
-                  <button onClick={() => openSong(setlistCtx.rows[setlistCtx.idx + 1], { ...setlistCtx, idx: setlistCtx.idx + 1 })}
-                    disabled={setlistCtx.idx >= setlistCtx.rows.length - 1} aria-label="next song in setlist"
-                    style={{ ...navChip, opacity: setlistCtx.idx >= setlistCtx.rows.length - 1 ? 0.35 : 1 }}><ChevronRight size={14} /></button>
-                </div>
-              )}
-              <SongHeader loaded={loaded} keyName={keyNameFull} />
-              <div className="flex items-center" style={{ gap: 12, flexWrap: "wrap", margin: "14px 0 4px" }}>
-                {transposeCtl}
-                {keyPicker}
-                <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8, alignItems: "center" }}>
-                  {/* Only songs with a source+id make live setlist entries;
-                      pasted/shared/ear charts would leave dead rows. */}
-                  {loaded?.id != null && <AddToSetlist song={loaded} onOpenSetlists={() => setSection("setlists")} />}
-                  {sheet.trim() && (!loaded || loaded.source === "user" || loaded.source === "shared" || loaded.source === "ear") && (
-                    <ShareChart data={{
-                      title: loaded?.title || "Untitled chart", artist: loaded?.artist || undefined,
-                      body: sheet, key: loaded?.key || undefined, capo: loaded?.capo || undefined,
-                      tuning: loaded?.tuningRaw || loaded?.tuning || undefined,
-                    }} />
-                  )}
-                  <BenchButton onClick={runAI} disabled={!view.prog.length || ai.loading}>
-                    {ai.loading ? <Loader2 size={15} className="kl-spin" /> : <Lightbulb size={15} />} Read the harmony
-                  </BenchButton>
-                </span>
-              </div>
-              <GuitarSetup
-                tuningId={guitarTuning}
-                onTuningChange={setGuitarTuning}
-                capo={effectiveCapo}
-                chartCapo={capoShift}
-                onCapoChange={setPlayCapo}
-                onResetCapo={() => setPlayCapo(null)}
-                bestCapo={capoBest}
-                spelling={chartSpelling}
-                onSpellingChange={setChartSpelling}
-                shapeChord={shapeCurrent}
-                soundingChord={soundingCurrent}
-                shapeKey={readingKey}
-                soundingKey={soundingKey}
-                transpose={transpose}
-                onUseDetunedSetup={useDetunedSetup}
-              />
-              <TabHomes sheet={sheet}
-                sourceTuning={loaded?.tuningRaw || loaded?.tuning} sourceCapo={capoShift}
-                currentTuningId={guitarTuning} currentCapo={effectiveCapo}
-                onApply={(tuningId, capo) => { setGuitarTuning(tuningId); setPlayCapo(capo); }} />
-              {songNumbersRailPanel}
-              {aiPanel}
-              {tabKeysPanel}
-              <SongGrips chords={readingView.unique} activeKey={readingKey}
-                shapeTuning={guitarLens.shapeTuning}
-                strumTuning={guitarLens.strumTuning} strumCapo={guitarLens.strumCapo}
-                onStrum={strumNotes} />
-              <section style={{ marginTop: 18 }}>
-                <RetabPanel retab={currentRetab} loaded={loaded}
-                  onKeep={(body, meta) => {
-                    const built = buildUserSong({
-                      artist: meta.artist || "", title: meta.title || "Untitled",
-                      album: "", key: "", capo: meta.capo ? String(meta.capo) : "",
-                      tuning: meta.tuning || "", body,
-                    }, Date.now());
-                    if (built.error) return;
-                    keepToSongbook(built);
-                  }} />
-                <ChartView text={displaySheet} activeKey={readingKey} transpose={readingShift}
-                  activeChord={readingView.prog[currentIdx] || null}
-                  onChordClick={hearReadingChord}
-                  guitar={guitarLens} />
-              </section>
-              <Coverize prog={view.prog} activeKey={activeKey} loaded={loaded}
-                sourceHasTab={hasTab(sheet)}
-                onAudition={auditionChords}
-                onApply={loadProgression}
-                onKeep={(body, meta) => {
-                  const built = buildUserSong({
-                    artist: meta.artist || "", title: meta.title || "Untitled",
-                    album: "", key: meta.key || "", capo: meta.capo ? String(meta.capo) : "",
-                    tuning: "", body,
-                  }, Date.now());
-                  if (built.error) return;
-                  if (!keepToSongbook(built)) return;
-                  setLoaded({ id: built.song.id, title: built.song.title, artist: built.song.artist || null, source: "user", key: built.row.key, capo: built.row.capo });
-                  loadSheet(body);
-                }} />
-              {chartInput}
-            </div>
+            <SongRoom
+              handed={handed} handedKept={handedKept} keepHanded={keepHanded} setHanded={setHanded}
+              setlistCtx={setlistCtx} openSong={openSong}
+              loaded={loaded} keyNameFull={keyNameFull} transposeCtl={transposeCtl} keyPicker={keyPicker}
+              setSection={setSection} sheet={sheet} view={view} activeKey={activeKey} ai={ai} runAI={runAI}
+              guitarTuning={guitarTuning} setGuitarTuning={setGuitarTuning} effectiveCapo={effectiveCapo}
+              capoShift={capoShift} setPlayCapo={setPlayCapo} capoBest={capoBest}
+              chartSpelling={chartSpelling} setChartSpelling={setChartSpelling}
+              shapeCurrent={shapeCurrent} soundingCurrent={soundingCurrent} readingKey={readingKey} soundingKey={soundingKey}
+              transpose={transpose} useDetunedSetup={useDetunedSetup}
+              songNumbersRailPanel={songNumbersRailPanel} aiPanel={aiPanel} tabKeysPanel={tabKeysPanel}
+              readingView={readingView} strumNotes={strumNotes} guitarLens={guitarLens} currentRetab={currentRetab}
+              keepToSongbook={keepToSongbook} displaySheet={displaySheet} readingShift={readingShift}
+              currentIdx={currentIdx} hearReadingChord={hearReadingChord} auditionChords={auditionChords}
+              loadProgression={loadProgression} setLoaded={setLoaded} chartInput={chartInput} loadSheet={loadSheet} />
           )}
 
           {section === "perform" && (
-            <Perform
-              run={performRun}
-              singleSong={performRun ? null : {
-                sheet: displaySheet,
-                retabTag,
-                loaded,
-                keyName: keyNameFull,
-                activeKey: readingKey,
-                transpose: readingShift,
-                prog: readingView.prog,
-                currentIdx,
-                onSelectIdx: selectIdx,
-                isPlaying,
-                onTogglePlay: togglePlay,
-                tempo,
-                onTempo: setTempo,
-                roleFor: roleForKeyboard,
-                flash,
-                onKeyPress: playSingleKey,
-                setlistCtx,
-                onOpenSetlistSong: openSong,
-                onPickSong: () => setSection("library"),
-              }}
-              onRequestPage={requestPerformSetPage}
-              onSetupChange={updatePerformSetPageSetup}
-              onExitSet={() => {
-                performRunRef.current = null;
-                setPerformRun(null);
-                setSection("setlists");
-              }}
-              onPickSong={() => setSection("library")}
-              onPlayPageChord={({ chord }) => {
-                arm();
-                ensureAndPlay(rootPositionFull(chord), Math.max(0.4, tempo / 1000 * 0.8));
-              }}
-              onStopPageWalk={() => {
-                try { allNotesOff(midiOutRef.current); } catch { /* output may have disconnected */ }
-              }}
-              tempo={tempo}
-            />
+            <PerformRoom
+              performRun={performRun} displaySheet={displaySheet} retabTag={retabTag} loaded={loaded}
+              keyNameFull={keyNameFull} readingKey={readingKey} readingShift={readingShift} readingView={readingView}
+              currentIdx={currentIdx} selectIdx={selectIdx} isPlaying={isPlaying} togglePlay={togglePlay}
+              tempo={tempo} setTempo={setTempo} roleForKeyboard={roleForKeyboard} flash={flash} playSingleKey={playSingleKey}
+              setlistCtx={setlistCtx} openSong={openSong} setSection={setSection}
+              requestPerformSetPage={requestPerformSetPage} updatePerformSetPageSetup={updatePerformSetPageSetup}
+              performRunRef={performRunRef} setPerformRun={setPerformRun} arm={arm} ensureAndPlay={ensureAndPlay}
+              midiOutRef={midiOutRef} />
           )}
 
           {section === "piano" && (
-            <div className="kl-section">
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 32, flexWrap: "wrap" }}>
-                <div style={{ flex: 1, minWidth: 320 }}>
-                  <div className="kl-eyebrow faint">The instrument</div>
-                  {soundingCurrent ? (
-                    <>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 22, marginTop: 14, flexWrap: "wrap" }}>
-                        <div key={currentIdx + chordSymbol(soundingCurrent)} className="kl-noteswap"
-                          style={{ fontFamily: MONO, fontSize: "clamp(44px, 8vw, 88px)", fontWeight: 600, lineHeight: 0.95, letterSpacing: "-0.02em", color: C.ink }}>
-                          {displaySymbol(soundingCurrent, pitchShift)}
-                        </div>
-                        <div>
-                          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-                            <span style={{ fontFamily: MONO, fontSize: 26, fontWeight: 600, color: C.root }}>{nashville(soundingCurrent, soundingKey.tonic)}</span>
-                            <span style={{ fontFamily: MONO, fontSize: 16, color: C.toneText }}>{romanNumeral(soundingCurrent, soundingKey.tonic, { next: soundingView.prog[currentIdx + 1], mode: soundingKey.mode })}</span>
-                          </div>
-                          <div className="kl-eyebrow faint" style={{ marginTop: 10 }}>
-                            {soundingCurrent.section || "now playing"} · {currentIdx + 1} / {view.prog.length}
-                            {capoShift > 0 && current && <> · written {displaySymbol(current, transpose)} (capo {capoShift})</>}
-                          </div>
-                        </div>
-                      </div>
-                      {soundingView.unique.length > 0 && (
-                        <div style={{ marginTop: 26, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          {soundingView.unique.map((ch, i) => {
-                            const active = soundingCurrent && chordSymbol(soundingCurrent) === chordSymbol(ch);
-                            const shown = displaySymbol(ch, pitchShift);
-                            const piano = spellChord(ch, soundingKey);
-                            return (
-                              <button key={i} onClick={() => selectUnique(ch, soundingView.prog)}
-                                title={piano !== shown ? `piano says ${piano}` : undefined}
-                                style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 2,
-                                  fontFamily: MONO, padding: "9px 15px", borderRadius: 12, cursor: "pointer",
-                                  transition: "background 150ms ease, color 150ms ease, border-color 150ms ease",
-                                  border: `1.5px solid ${active ? C.ink : C.lineStrong}`,
-                                  background: active ? C.ink : "transparent",
-                                  color: active ? "var(--kl-on-ink)" : C.ink }}>
-                                <span style={{ fontSize: 14, fontWeight: 600 }}>{shown}</span>
-                                <span style={{ fontSize: 10, opacity: 0.6 }}>{nashville(ch, soundingKey.tonic)}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div style={{ marginTop: 14 }}>
-                      <h1 className="kl-title">Nothing on the stand yet.</h1>
-                      <div className="flex items-center" style={{ gap: 8, marginTop: 16 }}>
-                        <BenchButton onClick={() => setSection("library")}>Pick from the Library</BenchButton>
-                        <BenchButton onClick={() => { setImportTarget("song"); setImportOpen(true); }}>Paste a chart or tab</BenchButton>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 18, alignItems: "flex-end" }}>
-                  <Segmented label="Keys" value={mode} onChange={(v) => { arm(); setMode(v); }}
-                    options={[{ v: "shape", t: "Shape" }, { v: "voicing", t: "Voicing" }, { v: "smooth", t: "Smooth" }]} />
-                  {transport}
-                </div>
-              </div>
-              <div className="deck" style={{ padding: "16px 18px", marginTop: 24 }}>
-                <WaterfallLane prog={soundingView.prog}
-                  voicings={mode === "smooth" ? soundingView.smoothFull : soundingView.rootFull}
-                  labels={soundingView.prog.map((ch) => displaySymbol(ch, pitchShift))}
-                  mode={mode}
-                  currentIdx={currentIdx} playing={isPlaying} msPerChord={tempo} />
-                <Keyboard height={210} roleFor={roleForKeyboard} onKey={playSingleKey} flash={flash}
-                  ariaLabel="piano keyboard — the current chord is lit" />
-              </div>
-              <p style={{ color: C.faint, fontSize: 12.5, marginTop: 18, maxWidth: 620 }}>
-                <b style={{ color: C.muted }}>Shape</b> lights every note of the chord across the deck. <b style={{ color: C.muted }}>Voicing</b> shows one close hand position. <b style={{ color: C.muted }}>Smooth</b> voice-leads from the chord before it — the least your hand can move.
-              </p>
-              <Arranger prog={soundingView.prog} title={loaded?.title || "your chart"}
-                onStart={startArrangement} onStepIdx={setCurrentIdx} />
-              {tabKeysPanel}
-            </div>
+            <PianoRoom
+              soundingCurrent={soundingCurrent} currentIdx={currentIdx} pitchShift={pitchShift}
+              soundingKey={soundingKey} soundingView={soundingView} view={view} capoShift={capoShift} current={current}
+              transpose={transpose} selectUnique={selectUnique} setSection={setSection}
+              setImportTarget={setImportTarget} setImportOpen={setImportOpen} mode={mode} arm={arm} setMode={setMode}
+              transport={transport} isPlaying={isPlaying} tempo={tempo} roleForKeyboard={roleForKeyboard}
+              playSingleKey={playSingleKey} flash={flash} loaded={loaded} startArrangement={startArrangement}
+              setCurrentIdx={setCurrentIdx} tabKeysPanel={tabKeysPanel} />
           )}
 
           {section === "theory" && (
-            <div className="kl-section">
-              <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 12 }}>
-                <div>
-                  <div className="kl-eyebrow">The map</div>
-                  <h1 className="kl-title" style={{ marginTop: 4 }}>Theory</h1>
-                  <QuoteLine quote={roomQuote("theory")} style={{ marginTop: 10 }} />
-                </div>
-                <div className="kl-seg" role="tablist" aria-label="Theory view">
-                  <button role="tab" aria-selected={theoryTab === "circle"} onClick={() => setTheoryTab("circle")}>Circle of Fifths</button>
-                  <button role="tab" aria-selected={theoryTab === "tension"} onClick={() => setTheoryTab("tension")}>Tension</button>
-                  <button role="tab" aria-selected={theoryTab === "capo"} onClick={() => setTheoryTab("capo")}>Capo &amp; Tunings</button>
-                </div>
-              </div>
-              {theoryTab === "circle" ? (
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 24, marginTop: 18, alignItems: "start" }} className="bench-cols">
-                  <div>
-                    <KeyWheel prog={view.prog} activeKey={activeKey} currentIdx={currentIdx}
-                      onPickTonic={pickTonic} onAudition={auditionChords} />
-                    <p style={{ color: C.faint, fontSize: 12, textAlign: "center", marginTop: 10 }}>
-                      C sits at noon, same as the printed chart. The dotted wedge wears your key — change key and watch it travel. Click any key to <b style={{ color: C.muted }}>hear it</b> and hand it the wedge; your song's chords stay lit by their job. The faint threads are the song's walk between them, worn deeper where it walks again.
-                    </p>
-                    <TheoryGuide activeKey={activeKey} onAudition={auditionChords} onGoWrite={sendSongToWrite} />
-                    <WheelLesson activeKey={activeKey} onAudition={auditionChords}
-                      onPickTonic={pickTonic}
-                      onDrill={() => { setPracticeTab("drills"); setSection("practice"); }} />
-                  </div>
-                  <div>
-                    <div className="kl-eyebrow">Key of {keyName} · {keyFacts.acc}</div>
-                    {Object.entries(moves).map(([k, mv]) => (
-                      <div key={k} style={{ borderTop: `1px solid ${C.line}`, marginTop: 12, paddingTop: 12 }}>
-                        <div className="flex items-center justify-between" style={{ gap: 8 }}>
-                          <span style={{ fontFamily: DISPLAY, fontSize: 17, color: C.ink }}>{mv.title}</span>
-                          {mv.chords ? (
-                            <button className="bench-btn" style={{ padding: "4px 11px", fontSize: 12 }}
-                              onClick={() => auditionChords(mv.chords)}>
-                              <Play size={12} /> hear it
-                            </button>
-                          ) : (
-                            <button className="bench-btn" style={{ padding: "4px 11px", fontSize: 12 }}
-                              onClick={() => { arm(); setKeyOverride({ tonic: mv.pivotTonic, mode: mv.pivotMode }); }}>
-                              go there
-                            </button>
-                          )}
-                        </div>
-                        <p style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.55, marginTop: 6 }}>{mv.line}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : theoryTab === "tension" ? (
-                <div style={{ marginTop: 18 }}>
-                  <TensionStrip prog={view.prog} activeKey={activeKey} currentIdx={currentIdx} onSelectIdx={selectIdx} />
-                </div>
-              ) : (
-                <div style={{ marginTop: 18 }}>
-                  <CapoTuning prog={view.prog} />
-                </div>
-              )}
-            </div>
+            <TheoryRoom
+              quote={roomQuote("theory")} theoryTab={theoryTab} setTheoryTab={setTheoryTab}
+              view={view} activeKey={activeKey} currentIdx={currentIdx} pickTonic={pickTonic}
+              auditionChords={auditionChords} sendSongToWrite={sendSongToWrite} setPracticeTab={setPracticeTab}
+              setSection={setSection} keyName={keyName} keyFacts={keyFacts} moves={moves}
+              arm={arm} setKeyOverride={setKeyOverride} selectIdx={selectIdx} />
           )}
 
           {section === "learn" && (
-            <div className="kl-section">
-              <div className="kl-eyebrow faint">The theory tutor</div>
-              <h1 className="kl-title" style={{ marginTop: 12, marginBottom: 0, maxWidth: 760,
-                fontSize: roomQuote("learn").q.length > 150 ? 26 : roomQuote("learn").q.length > 100 ? 32 : undefined }}>
-                {roomQuote("learn").q}
-              </h1>
-              <div style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.05em", color: C.muted, marginTop: 12 }}>— {roomQuote("learn").by}</div>
-              <div className="deck" style={{ padding: "14px 16px", margin: "24px 0 18px" }}>
-                <Keyboard height={150} roleFor={roleForKeyboard} onKey={playSingleKey} flash={flash}
-                  ariaLabel="piano keyboard — the lesson is lit" />
-              </div>
-              {/* One lesson at the keyboard at a time — five stacked widgets used
-                  to share (and fight over) the lit deck in a single long scroll. */}
-              <div className="kl-seg" role="tablist" aria-label="Learn area" style={{ marginBottom: 14 }}>
-                <button role="tab" aria-selected={learnTab === "scale"} onClick={() => setLearnTab("scale")}>Scale &amp; degrees</button>
-                <button role="tab" aria-selected={learnTab === "ear"} onClick={() => setLearnTab("ear")}>The ear</button>
-                <button role="tab" aria-selected={learnTab === "meter"} onClick={() => setLearnTab("meter")}>Meter</button>
-                <button role="tab" aria-selected={learnTab === "pedal"} onClick={() => setLearnTab("pedal")}>The pedal</button>
-              </div>
-              {learnTab === "scale" && (
-                <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 18 }}>
-                  <ScaleBuilder tutor={tutor} onIntent={onChipIntent} />
-                  <DegreeFinder tutor={tutor} onIntent={onChipIntent} />
-                </div>
-              )}
-              {learnTab === "ear" && (
-                <EarTrainer prog={view.prog} activeKey={activeKey} songTitle={loaded?.title} onPlaySeq={auditionChords} />
-              )}
-              {learnTab === "meter" && <MeterFeel tutor={tutor} />}
-              {learnTab === "pedal" && <PedalLab tutor={tutor} onIntent={onChipIntent} />}
-            </div>
+            <LearnRoom
+              quote={roomQuote("learn")} roleForKeyboard={roleForKeyboard} playSingleKey={playSingleKey}
+              flash={flash} learnTab={learnTab} setLearnTab={setLearnTab} tutor={tutor} onChipIntent={onChipIntent}
+              view={view} activeKey={activeKey} loaded={loaded} auditionChords={auditionChords} />
           )}
 
           {section === "onesong" && (
@@ -1533,53 +1244,13 @@ export default function App() {
           )}
 
           {section === "practice" && (
-            <div className="kl-section">
-              <QuoteLine quote={roomQuote("practice")} size={18} style={{ marginBottom: 16 }} />
-              <div className="kl-seg" role="tablist" aria-label="Practice area" style={{ marginBottom: 6 }}>
-                <button role="tab" aria-selected={practiceTab === "drills"} onClick={() => setPracticeTab("drills")}>Drills</button>
-                <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
-                <button role="tab" aria-selected={practiceTab === "session"} onClick={() => setPracticeTab("session")}>The Session</button>
-                <button role="tab" aria-selected={practiceTab === "time"} onClick={() => setPracticeTab("time")}>Metronome</button>
-                <button role="tab" aria-selected={practiceTab === "mirror"} onClick={() => setPracticeTab("mirror")}>The Mirror</button>
-              </div>
-              <div className="practice-grid">
-              <div>
-              {practiceTab === "drills" && (
-                <Practice onPlay={(midis) => { arm(); midis.forEach((m, i) => setTimeout(() => ensureAndPlay([m], 0.9), i * 460)); }} />
-              )}
-              {practiceTab === "song" && (
-                <PlayAlong
-                  title={loaded?.title || (sheet.trim() ? "Your chart" : null)}
-                  artist={loaded?.artist || null}
-                  songKey={songKey}
-                  prog={soundingView.prog}
-                  rootVoicings={soundingView.rootFull}
-                  smoothVoicings={soundingView.smoothFull}
-                  sheet={sheet} tuning={loaded?.tuning} tuningRaw={loaded?.tuningRaw}
-                  capo={capoShift} shift={transpose}
-                  labelFor={labelForSounding}
-                  onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }}
-                  onScore={logPractice}
-                  onPickSong={() => setSection("library")}
-                />
-              )}
-              {practiceTab === "session" && (
-                <SessionRoom prog={soundingView.prog} labelFor={labelForSounding}
-                  audio={audio} onClaimStage={stopArrangement} />
-              )}
-              {practiceTab === "time" && (
-                <div style={{ marginTop: 12 }}>
-                  <Metronome />
-                </div>
-              )}
-              {practiceTab === "mirror" && (
-                <MirrorPanel onAudition={auditionChords}
-                  onTakeToDesk={(chords) => sendChordsToWrite(chords, "Mirror idea")} />
-              )}
-              </div>
-              <PracticeRail refreshKey={practiceTab} onOpenClock={() => setPracticeTab("time")} />
-              </div>
-            </div>
+            <PracticeRoom
+              quote={roomQuote("practice")} practiceTab={practiceTab} setPracticeTab={setPracticeTab}
+              arm={arm} ensureAndPlay={ensureAndPlay} loaded={loaded} sheet={sheet} songKey={songKey}
+              soundingView={soundingView} capoShift={capoShift} transpose={transpose}
+              labelForSounding={labelForSounding} logPractice={logPractice} setSection={setSection}
+              audio={audio} stopArrangement={stopArrangement} auditionChords={auditionChords}
+              sendChordsToWrite={sendChordsToWrite} />
           )}
 
           {section === "setlists" && (
@@ -1642,40 +1313,10 @@ export default function App() {
 /* ================================================================== *
  * SMALL PIECES
  * ================================================================== */
-function SongHeader({ loaded, keyName }) {
-  if (!loaded) {
-    return (
-      <div>
-        <div className="kl-eyebrow">Untitled chart · key of {keyName}</div>
-        <h1 className="kl-title" style={{ marginTop: 4 }}>Your chart</h1>
-      </div>
-    );
-  }
-  const bits = [loaded.artist, `key of ${keyName}`].filter(Boolean);
-  if (loaded.tuning && loaded.tuning !== "standard") bits.push(loaded.tuning);
-  if (loaded.capo) bits.push(`capo ${loaded.capo}`);
-  return (
-    <div>
-      <div className="kl-eyebrow">{bits.join(" · ")}</div>
-      <h1 className="kl-title" style={{ marginTop: 4 }}>{loaded.title}</h1>
-      {loaded.sourceUrl && (
-        <a href={loaded.sourceUrl} target="_blank" rel="noreferrer" className="kl-meta" style={{ color: C.faint, textDecoration: "none", borderBottom: `1px solid ${C.line}` }}>
-          {SOURCE_LABEL[loaded.source] || loaded.source}
-        </a>
-      )}
-    </div>
-  );
-}
-
 const miniBtn = {
   display: "inline-flex", alignItems: "center", justifyContent: "center",
   width: 26, height: 26, borderRadius: "50%", background: "transparent",
   color: C.ink, border: `1.5px solid ${C.lineStrong}`, cursor: "pointer",
-};
-const navChip = {
-  display: "inline-flex", alignItems: "center", justifyContent: "center",
-  width: 28, height: 28, borderRadius: 8, background: C.panel2,
-  color: C.ink, border: `1px solid ${C.line}`, cursor: "pointer", flex: "0 0 auto",
 };
 const selStyle = {
   background: C.panel, color: C.ink, border: `1px solid ${C.line}`,
@@ -1721,17 +1362,6 @@ function EnginePill({ engine, loading }) {
       {loading && <Loader2 size={11} className="kl-spin" />}
       {label}
     </span>
-  );
-}
-
-function Segmented({ label, value, onChange, options, dark }) {
-  return (
-    <div className="kl-seg" role="tablist" aria-label={label} style={dark ? { background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" } : undefined}>
-      {options.map((o) => (
-        <button key={o.v} role="tab" aria-selected={value === o.v} onClick={() => onChange(o.v)}
-          style={dark && value !== o.v ? { color: "#b8b0a4" } : undefined}>{o.t}</button>
-      ))}
-    </div>
   );
 }
 
