@@ -36,10 +36,14 @@ tools/__pycache__
 CLAUDE.md
 AGENTS.md
 codex.md
-HANDOFF.md
+*HANDOFF*.md
+ROADMAP.md
+ULTRAPLAN.md
+BRAINSTORM.md
 .claude/
 .codex/
 .agents/
 notes/
 todos/
-docs/superpowers/
+docs/
+tools/_*
