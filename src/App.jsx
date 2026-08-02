@@ -36,6 +36,7 @@ import WheelLesson from "./components/WheelLesson.jsx";
 import CapoTuning from "./components/CapoTuning.jsx";
 import WriteDesk, { TIMER_KEY } from "./components/WriteDesk.jsx";
 import OneSong from "./components/OneSong.jsx";
+import PracticeRail from "./components/PracticeRail.jsx";
 import ImportModal from "./components/ImportModal.jsx";
 import AddToSetlist from "./components/AddToSetlist.jsx";
 import ChartView from "./components/ChartView.jsx";
@@ -1541,6 +1542,8 @@ export default function App() {
                 <button role="tab" aria-selected={practiceTab === "time"} onClick={() => setPracticeTab("time")}>Metronome</button>
                 <button role="tab" aria-selected={practiceTab === "mirror"} onClick={() => setPracticeTab("mirror")}>The Mirror</button>
               </div>
+              <div className="practice-grid">
+              <div>
               {practiceTab === "drills" && (
                 <Practice onPlay={(midis) => { arm(); midis.forEach((m, i) => setTimeout(() => ensureAndPlay([m], 0.9), i * 460)); }} />
               )}
@@ -1573,6 +1576,9 @@ export default function App() {
                 <MirrorPanel onAudition={auditionChords}
                   onTakeToDesk={(chords) => sendChordsToWrite(chords, "Mirror idea")} />
               )}
+              </div>
+              <PracticeRail refreshKey={practiceTab} onOpenClock={() => setPracticeTab("time")} />
+              </div>
             </div>
           )}
 
@@ -1677,20 +1683,33 @@ const selStyle = {
 };
 
 // Lives in the top bar only while the click runs: the metronome kept ticking
-// when you left the room, and this is the string tied around your finger.
+// when you left the room. Now a mini transport, not just a string around the
+// finger — nudge the tempo or stop the click from any room (the ULTRAPLAN
+// one-clock slice: the singleton only; no other scheduler is touched).
 function MetronomeGlance({ onGo }) {
   const [st, setSt] = useState(() => metronome.getState());
   useEffect(() => metronome.subscribe(setSt), []);
   if (!st.running) return null;
+  const tiny = { background: "transparent", border: 0, color: C.rootText, cursor: "pointer",
+    fontFamily: MONO, fontSize: 12, lineHeight: 1, padding: "6px 5px" };
   return (
-    <button onClick={onGo} title="the click is running — go to it"
-      aria-label={`metronome running at ${st.bpm} beats per minute — go to it`}
-      style={{ display: "inline-flex", alignItems: "center", gap: 7, fontFamily: MONO, fontSize: 10.5,
-        letterSpacing: "0.08em", color: C.rootText, background: "transparent",
-        border: `1.5px solid ${C.rootText}66`, borderRadius: 999, padding: "6px 12px", cursor: "pointer", whiteSpace: "nowrap" }}>
-      <span className="kl-pulse" style={{ width: 7, height: 7, borderRadius: "50%", background: C.root }} />
-      {st.bpm}
-    </button>
+    <span role="group" aria-label="metronome transport"
+      style={{ display: "inline-flex", alignItems: "center", gap: 2, fontFamily: MONO, fontSize: 10.5,
+        letterSpacing: "0.08em", color: C.rootText, whiteSpace: "nowrap",
+        border: `1.5px solid ${C.rootText}66`, borderRadius: 999, padding: "0 6px" }}>
+      <button onClick={onGo} title="the click is running — go to it"
+        aria-label={`metronome running at ${st.bpm} beats per minute — go to it`}
+        style={{ ...tiny, display: "inline-flex", alignItems: "center", gap: 7, letterSpacing: "0.08em", fontSize: 10.5 }}>
+        <span className="kl-pulse" style={{ width: 7, height: 7, borderRadius: "50%", background: C.root }} />
+        {st.bpm}
+      </button>
+      <button style={tiny} aria-label="slower" title="slower"
+        onClick={() => metronome.set({ bpm: Math.max(30, Math.min(260, st.bpm - 2)) })}>−</button>
+      <button style={tiny} aria-label="faster" title="faster"
+        onClick={() => metronome.set({ bpm: Math.max(30, Math.min(260, st.bpm + 2)) })}>+</button>
+      <button style={{ ...tiny, fontSize: 9 }} aria-label="stop the metronome" title="stop the click"
+        onClick={() => metronome.stop()}>■</button>
+    </span>
   );
 }
 
