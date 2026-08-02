@@ -246,9 +246,47 @@ export function parseSheet(text) {
     const prev = collapsed[collapsed.length - 1];
     if (!prev || prev.raw !== ch.raw || prev.section !== ch.section) collapsed.push(ch);
   }
+  // Some transcribers write the chord inline, inside the lyric: "(G) She walks
+  // around the block". No line is a chord line, so the pass above finds
+  // nothing and the song opens as a dead page. Only reach for this when the
+  // sheet is otherwise empty — a chart that already parses must never gain
+  // chords from an "(x2)" or a "(C) 1998" credit.
+  if (!collapsed.length) {
+    const inline = parseInlineChords(lines);
+    if (inline.length) {
+      const uniqInline = new Map();
+      for (const ch of inline) if (!uniqInline.has(ch.raw)) uniqInline.set(ch.raw, ch);
+      return { progression: inline, unique: [...uniqInline.values()] };
+    }
+  }
   const uniq = new Map();
   for (const ch of collapsed) if (!uniq.has(ch.raw)) uniq.set(ch.raw, ch);
   return { progression: collapsed, unique: [...uniq.values()] };
+}
+
+// Chords bracketed inside prose, read in order. Demands real weight before it
+// believes the pattern — four or more hits AND two or more distinct symbols —
+// so a lone "(C)" copyright mark or a repeated "(A)" cue stays lyrics.
+function parseInlineChords(lines) {
+  const hits = [];
+  let section = "";
+  for (const line of lines) {
+    if (isSectionLine(line)) {
+      section = line.trim().replace(/^\[|\]$/g, "").replace(/:$/, "");
+      continue;
+    }
+    for (const m of line.matchAll(/\(([^()\s]{1,12})\)/g)) {
+      const ch = parseChord(m[1]);
+      if (ch) hits.push({ ...ch, section });
+    }
+  }
+  if (hits.length < 4 || new Set(hits.map((c) => c.raw)).size < 2) return [];
+  const out = [];
+  for (const ch of hits) {
+    const prev = out[out.length - 1];
+    if (!prev || prev.raw !== ch.raw || prev.section !== ch.section) out.push(ch);
+  }
+  return out;
 }
 
 /* ---- transposition + naming ---- */
@@ -331,7 +369,52 @@ export function nashville(ch, tonic) {
   return s;
 }
 
-export function romanNumeral(ch, tonic) {
+// The bare roman degree of a chord's root (no extension), case from its
+// quality — used as the "<target>" half of a secondary-dominant label.
+function romanDegree(ch, tonic) {
+  const d = ((ch.rootSemitone - tonic) % 12 + 12) % 12;
+  const cls = qualClass(ch.quality);
+  const r = ROMAN[d];
+  return cls === "min" || cls === "dim" ? r.toLowerCase() : r;
+}
+
+// Secondary-dominant / tritone-sub analysis: given the chord that FOLLOWS this
+// one, decide whether this chord is an applied dominant and, if so, return its
+// contextual label ("V7/V", "V/ii", "SubV7/I", …). Returns null when the
+// resolution isn't there, so the caller keeps the plain diatonic numeral.
+//   - an applied dominant is a dominant-7-family chord or a plain major triad
+//   - its target is the next chord's root, a perfect fifth below (a tritone
+//     sub resolves down a half step instead, dominants only)
+//   - the target must be a diatonic scale degree of the key — scale degrees
+//     2..6 (ii/iii/IV/V/vi in major, the corresponding degrees in minor).
+//     Tonic is excluded for the plain secondary (V7→I is just V7) but allowed
+//     for the tritone sub (SubV7/I); the 7th degree is never tonicized.
+function secondaryDominant(ch, next, tonic, mode) {
+  if (!next || qualClass(ch.quality) !== "maj") return null;
+  const dominant = isDominantQuality(ch.quality);
+  if (!dominant && ch.quality !== "maj") return null;
+  const rel = ((ch.rootSemitone - next.rootSemitone) % 12 + 12) % 12;
+  const scale = mode === "minor" ? MINOR_SCALE : MAJOR_SCALE;
+  const targetIdx = scale.indexOf(((next.rootSemitone - tonic) % 12 + 12) % 12);
+  if (targetIdx < 0) return null; // target not a diatonic degree of the key
+  const target = romanDegree(next, tonic);
+  if (rel === 7 && targetIdx >= 1 && targetIdx <= 5) {
+    return `V${dominant ? symFromName(ch.quality) : ""}/${target}`;
+  }
+  if (dominant && rel === 1 && targetIdx <= 5) {
+    return `SubV${symFromName(ch.quality)}/${target}`;
+  }
+  return null;
+}
+
+export function romanNumeral(ch, tonic, ctx = null) {
+  // Optional look-ahead context: { next, mode }. A dominant-function chord that
+  // resolves to a diatonic target is labelled as the secondary dominant (or
+  // tritone sub) OF that target instead of a bare chromatic degree.
+  if (ctx) {
+    const applied = secondaryDominant(ch, ctx.next, tonic, ctx.mode);
+    if (applied) return applied;
+  }
   const d = ((ch.rootSemitone - tonic) % 12 + 12) % 12;
   const cls = qualClass(ch.quality);
   let r = ROMAN[d];

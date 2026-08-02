@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   acceptPerformPage, buildPerformPage, createPerformRun, performancePageKey, requestPerformPage,
+  updatePerformSlotSetup,
 } from "./performpage.js";
 
 const entry = { entryId: "e1", source: "user", id: "a", title: "A" };
@@ -49,5 +50,47 @@ describe("performance pages", () => {
     run = requestPerformPage(run, { runId: "run", index: 0, requestId: "request" });
     const wrongSetupPage = buildPerformPage({ entry, loaded: { title: "Wrong" }, sheet: "C", outline: [], progression: [], anchors: [], activeKey: { tonic: 0, mode: "major" }, keyName: "C major", retab: { text: "wrong retab" }, tuning: "dropD", capo: 0, transpose: 0 });
     expect(acceptPerformPage(run, { runId: "run", index: 0, requestId: "request", page: wrongSetupPage })).toBe(run);
+  });
+
+  it("resets a ready slot to idle when its setup changes", () => {
+    const setlist = { id: "sl", name: "Set", entries: [entry] };
+    let run = createPerformRun(setlist, { tuning: "standard", capo: 0, transpose: 0, runId: "run" });
+    run = requestPerformPage(run, { runId: "run", index: 0, requestId: "request" });
+    const page = buildPerformPage({ entry, loaded: { title: "A" }, sheet: "C", outline: [], progression: [], anchors: [], activeKey: { tonic: 0, mode: "major" }, keyName: "C major", retab: null, tuning: "standard", capo: 0, transpose: 0 });
+    run = acceptPerformPage(run, { runId: "run", index: 0, requestId: "request", page });
+    expect(run.pages[0].status).toBe("ready");
+    const updated = updatePerformSlotSetup(run, { runId: "run", index: 0, setup: { tuning: "ebStandard", capo: 2, transpose: 1 } });
+    expect(updated.pages[0].status).toBe("idle");
+    expect(updated.pages[0].page).toBeNull();
+    expect(updated.pages[0].requestId).toBeNull();
+    expect(updated.pages[0].setup).toEqual({ tuning: "ebStandard", capo: 2, transpose: 1 });
+    // a completion for the OLD setup must now be rejected as stale
+    const accepted = acceptPerformPage(updated, { runId: "run", index: 0, requestId: "request", page });
+    expect(accepted.pages[0].status).toBe("idle");
+  });
+
+  it("leaves the run untouched when the setup is unchanged or the slot is invalid", () => {
+    const run = createPerformRun({ id: "sl", name: "Set", entries: [entry] }, { tuning: "standard", capo: 0, transpose: 0, runId: "run" });
+    expect(updatePerformSlotSetup(run, { runId: "run", index: 0, setup: { tuning: "standard", capo: 0, transpose: 0 } })).toBe(run);
+    expect(updatePerformSlotSetup(run, { runId: "run", index: 4, setup: { tuning: "dropD", capo: 0, transpose: 0 } })).toBe(run);
+    expect(updatePerformSlotSetup(run, { runId: "other", index: 0, setup: { tuning: "dropD", capo: 0, transpose: 0 } })).toBe(run);
+  });
+
+  it("clamps capo and transpose into their playable ranges", () => {
+    const run = createPerformRun({ id: "sl", name: "Set", entries: [entry] }, { tuning: "standard", capo: 0, transpose: 0, runId: "run" });
+    const updated = updatePerformSlotSetup(run, { runId: "run", index: 0, setup: { tuning: "standard", capo: 19, transpose: -40 } });
+    expect(updated.pages[0].setup).toEqual({ tuning: "standard", capo: 11, transpose: -12 });
+  });
+
+  it("seeds each slot from its entry's own tuning/capo, falling back to the run setup", () => {
+    const entries = [
+      { ...entry, entryId: "e1", tuning: "openD", capo: 2 },
+      { ...entry, entryId: "e2", tuning: null, capo: null },
+      { ...entry, entryId: "e3", tuning: "ebStandard" }, // tuning only: capo still falls back
+    ];
+    const run = createPerformRun({ id: "sl", name: "Set", entries }, { tuning: "standard", capo: 4, transpose: 1, runId: "run" });
+    expect(run.pages[0].setup).toEqual({ tuning: "openD", capo: 2, transpose: 1 });
+    expect(run.pages[1].setup).toEqual({ tuning: "standard", capo: 4, transpose: 1 });
+    expect(run.pages[2].setup).toEqual({ tuning: "ebStandard", capo: 4, transpose: 1 });
   });
 });

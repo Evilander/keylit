@@ -378,7 +378,12 @@
 .perform-song-page[aria-current="true"] { border-left: 3px solid var(--kl-root); }
 .perform-song-page h2 { margin: 4px 0; color: #f0eadb; font: 400 clamp(25px, 4vw, 42px)/1 var(--kl-display); }
 .perform-song-page__head { margin-bottom: 20px; }
-.perform-song-page__setup { color: #a89f8b; font: 11px var(--kl-mono); }
+.perform-song-page__setup { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: #a89f8b; font: 11px var(--kl-mono); }
+.perform-song-page__setup select, .perform-song-page__setup button { background: rgba(255,255,255,.07); color: #e8e1cf; border: 1px solid rgba(255,255,255,.22); border-radius: 6px; font: 11px var(--kl-mono); padding: 3px 7px; cursor: pointer; }
+.perform-song-page__setup select:focus-visible, .perform-song-page__setup button:focus-visible { outline: 2px solid var(--kl-root); outline-offset: 1px; }
+.perform-song-page__setup button:disabled { opacity: .35; cursor: default; }
+.perform-song-page__stepper { display: inline-flex; align-items: center; gap: 6px; }
+.perform-song-page__stepper > span { min-width: 74px; text-align: center; }
 .perform-song-page--loading, .perform-song-page--skipped { display: grid; align-content: center; gap: 10px; }
 .perform-song-page--skipped { min-height: 32vh; color: #d9d1be; }
 .perform-song-page__skipped { color: #f08a5a; font: 700 17px var(--kl-sans); }

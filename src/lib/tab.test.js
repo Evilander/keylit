@@ -51,6 +51,49 @@ describe("hasTab / detection", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0].lines).toHaveLength(6);
   });
+
+  // Transcribers write instructions in the margin, past the closing bar
+  // ("| X as many times as needed"). The row is still a tab row — judging it
+  // on the prose sank the whole system and opened the song as a dead page.
+  it("detects a system whose rows carry a trailing prose comment", () => {
+    const commented = `All variations of sounds similar to:
+ E|----------------------|
+ B|--1----1----1----1----|
+ G|--0----0----0----0----| X any many times needed in the song
+ D|--0----0----0----0----|
+ A|--3----3----3----3----|
+ E|--3----3----3----3----|`;
+    expect(hasTab(commented)).toBe(true);
+    const blocks = findTabBlocks(commented);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].lines).toHaveLength(6);
+    // the commented row still resolves its frets
+    const parsed = parseTabBlock(blocks[0].lines);
+    expect(tabEventsToMidi(parsed).flat().length).toBeGreaterThan(0);
+  });
+
+  it("reads frets from a row commented past the bar", () => {
+    const withProse = `e|--0-------------------|
+B|--1----1----1----1----| let this ring out
+G|--0----0----0----0----|
+D|--2----2----2----2----|
+A|--3----3----3----3----|
+E|----------------------|`;
+    const block = parseTabBlock(withProse.split("\n"));
+    // first column is an open C chord: C3 E3 G3 C4 E4 — the B string's fret 1
+    // (MIDI 60) is only there if the commented row was read
+    expect(block.events[0].notes.map((n) => n.midi).sort((a, b) => a - b))
+      .toEqual([48, 52, 55, 60, 64]);
+  });
+
+  it("still rejects prose that merely contains dashes and a pipe", () => {
+    const prose = `Verse:
+--- and then the bridge --- play it soft | twice
+--- watch the timing here --- it drags a little
+--- the last line rings out --- let it decay
+--- then straight into the chorus --- no pause`;
+    expect(hasTab(prose)).toBe(false);
+  });
 });
 
 describe("parseTabBlock — note resolution", () => {

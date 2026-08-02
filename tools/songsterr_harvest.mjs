@@ -99,10 +99,19 @@ const normArtist = (s) =>
 // Strip performance qualifiers so "East Coast (accurate)" and "N64 (Ver 2)"
 // group with their canonical titles.
 const TITLE_NOISE = /\((?:accurate|full|ver\.?\s*\d+|version\s*\d+|live|acoustic|demo|instrumental|solo|intro|cover|fingerstyle|simplified|easy)[^)]*\)/gi;
+// Songsterr now carries machine-made transcriptions, self-labelled in the
+// title ("The Plan (AI)", "Temporarily Blind (AI Generated for a Bro)").
+// Stripped for GROUPING only — so they compete with the human transcription
+// of the same song instead of landing as a separate "song" — and ranked last
+// below. A kept AI chart keeps the marker in its displayed title.
+const AI_MARK = /\(\s*ai\s*\)|\(\s*ai[- ]generated[^)]*\)|\bai[- ]generated\b/i;
+const AI_MARK_G = new RegExp(AI_MARK.source, "gi");
+const isAiTranscription = (title) => AI_MARK.test(String(title || ""));
 const normTitle = (s) =>
   String(s || "")
     .toLowerCase()
     .replace(TITLE_NOISE, " ")
+    .replace(AI_MARK_G, " ")
     .replace(/['‘’"“”().,!?:;]/g, "")
     .replace(/&/g, "and")
     .replace(/[^a-z0-9]+/g, " ")
@@ -156,8 +165,9 @@ const isGuitarTrack = (t) =>
 const bestGuitarViews = (rec) =>
   Math.max(0, ...(rec.tracks || []).filter(isGuitarTrack).map((t) => t.views || 0));
 
-// One transcription per song: community "(accurate)" forks outrank raw
-// popularity (they exist because the popular one was wrong); then views.
+// One transcription per song: a human transcription always beats a machine
+// one; community "(accurate)" forks outrank raw popularity (they exist
+// because the popular one was wrong); then views.
 function pickTranscriptions(records) {
   const byTitle = new Map();
   for (const rec of records) {
@@ -171,6 +181,9 @@ function pickTranscriptions(records) {
   const picks = new Map();
   for (const [key, recs] of byTitle) {
     recs.sort((a, b) => {
+      const aiA = isAiTranscription(a.title) ? 1 : 0;
+      const aiB = isAiTranscription(b.title) ? 1 : 0;
+      if (aiA !== aiB) return aiA - aiB;
       const accA = /\(accurate\)/i.test(a.title) ? 1 : 0;
       const accB = /\(accurate\)/i.test(b.title) ? 1 : 0;
       if (accA !== accB) return accB - accA;

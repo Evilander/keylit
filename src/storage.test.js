@@ -247,6 +247,19 @@ describe("bench book — setlists", () => {
     expect(bb.setlists()[0].entries.map((s) => s.title)).toEqual(["Harvest"]);
   });
 
+  it("persists an occurrence's playing setup and rejects junk", () => {
+    const bb = createBenchBook(fakeBackend(), { makeId: sequenceIds(), now: () => 100 });
+    const sl = bb.createSetlist("Tonight", 100);
+    const candle = bb.addToSetlist(sl.id, song("Candle"));
+    bb.setEntrySetup(sl.id, candle.entryId, { tuning: "openD", capo: 2 });
+    expect(bb.setlists()[0].entries[0]).toMatchObject({ tuning: "openD", capo: 2 });
+    bb.setEntrySetup(sl.id, candle.entryId, { capo: 0 });
+    expect(bb.setlists()[0].entries[0]).toMatchObject({ tuning: "openD", capo: 0 });
+    expect(bb.setEntrySetup(sl.id, candle.entryId, {})).toBeNull();
+    expect(bb.setEntrySetup(sl.id, candle.entryId, { capo: "third" })).toBeNull();
+    expect(bb.setlists()[0].entries[0].capo).toBe(0);
+  });
+
   it("keeps per-setlist notes", () => {
     const bb = createBenchBook(fakeBackend());
     const sl = bb.createSetlist("Tonight", 100);

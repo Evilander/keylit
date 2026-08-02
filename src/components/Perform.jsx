@@ -301,7 +301,7 @@ function isTerminal(slot) {
   return slot?.status === "ready" || slot?.status === "error";
 }
 
-function PerformSet({ run, onRequestPage, onExitSet, onPickSong, onPlayPageChord, onStopPageWalk, tempo = 1500 }) {
+function PerformSet({ run, onRequestPage, onSetupChange, onExitSet, onPickSong, onPlayPageChord, onStopPageWalk, tempo = 1500 }) {
   const [prefs, setPrefs] = useState(loadPrefs);
   const [mode, setMode] = useState("roll");
   const [rolling, setRolling] = useState(false);
@@ -402,7 +402,7 @@ function PerformSet({ run, onRequestPage, onExitSet, onPickSong, onPlayPageChord
     else stage?.requestFullscreen?.().catch(() => {});
   };
   const onKeys = (event) => {
-    if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
+    if (["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(event.target.tagName)) return;
     if (event.key === " ") { event.preventDefault(); mode === "roll" ? setRolling((value) => !value) : startWalk(); }
     if (event.key === "ArrowRight") { event.preventDefault(); mode === "roll" ? scrollPage(Math.min(pages.length - 1, visibleIndex + 1)) : moveWalk(1); }
     if (event.key === "ArrowLeft") { event.preventDefault(); mode === "roll" ? scrollPage(Math.max(0, visibleIndex - 1)) : moveWalk(-1); }
@@ -429,6 +429,7 @@ function PerformSet({ run, onRequestPage, onExitSet, onPickSong, onPlayPageChord
       {pages.map((slot, index) => <PerformSongPage key={slot.entry.entryId} slot={slot} index={index}
         active={visibleIndex === index} activeChordIndex={mode === "walk" && walk.pageIndex === index ? walk.chordIndex : null}
         onRetry={() => onRequestPage?.(index)}
+        onSetupChange={onSetupChange ? (patch) => onSetupChange(index, patch) : undefined}
         registerPage={(node) => { if (node) { node.dataset.performIndex = index; pageNodes.current.set(index, node); } else pageNodes.current.delete(index); }}
         registerSentinel={(node) => { if (node) sentinelNodes.current.set(index, node); else sentinelNodes.current.delete(index); }} />)}
       <div className="perform-set-end">End of set</div>

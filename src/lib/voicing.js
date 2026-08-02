@@ -88,6 +88,26 @@ function voicingCandidates(chord) {
   return out.length ? out : [rootPositionUpper(chord)];
 }
 
+// Two voices that formed a perfect fifth or octave in the previous voicing and
+// move by the same signed interval sound hollow and un-pianistic (parallel
+// perfects). Voice i = index i, low→high; each such pair fines the candidate.
+// Heavy but finite: a small-motion candidate still beats a wild leap.
+const PARALLEL_PENALTY = 6;
+
+function parallelCost(cand, prev) {
+  const n = Math.min(cand.length, prev.length); // pair only over the shared prefix
+  let c = 0;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const iv = prev[j] - prev[i];
+      if (iv !== 7 && iv !== 12) continue;
+      const move = cand[i] - prev[i];
+      if (move !== 0 && move === cand[j] - prev[j]) c += PARALLEL_PENALTY;
+    }
+  }
+  return c;
+}
+
 function voiceCost(cand, prev) {
   let c = 0;
   for (const n of cand) {
@@ -96,16 +116,17 @@ function voiceCost(cand, prev) {
     c += best;
   }
   const avg = cand.reduce((s, n) => s + n, 0) / cand.length;
-  return c + 0.15 * Math.abs(avg - VOICE_CENTER);
+  return c + 0.15 * Math.abs(avg - VOICE_CENTER) + parallelCost(cand, prev);
 }
 
 // Pick the inversion/octave nearest to the previous voicing (least hand movement).
 export function smoothUpper(chord, prev) {
   if (!prev || !prev.length) return rootPositionUpper(chord);
   const cands = voicingCandidates(chord);
+  const prevSorted = [...prev].sort((a, b) => a - b); // voice i = index i, low→high
   let best = cands[0], bc = Infinity;
   for (const cand of cands) {
-    const cost = voiceCost(cand, prev);
+    const cost = voiceCost(cand, prevSorted);
     if (cost < bc) { bc = cost; best = cand; }
   }
   return best;
