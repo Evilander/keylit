@@ -153,23 +153,84 @@ function composeContext(value) {
   return out;
 }
 
+const MAX_BODY_BYTES = 64 * 1024; // the biggest legal payload is a 12KB sheet
+
 function readBody(req) {
   if (req.body) return Promise.resolve(typeof req.body === "string" ? JSON.parse(req.body) : req.body);
   return new Promise((resolve, reject) => {
     let data = "";
-    req.on("data", (c) => { data += c; });
+    req.on("data", (c) => {
+      data += c;
+      if (data.length > MAX_BODY_BYTES) { reject(Object.assign(new Error("too large"), { tooLarge: true })); req.destroy(); }
+    });
     req.on("end", () => { try { resolve(data ? JSON.parse(data) : {}); } catch (e) { reject(e); } });
     req.on("error", reject);
   });
 }
 
+// The proxy spends the owner's API budget, so it answers only its own UI.
+// KEYLIT_ALLOW_ORIGIN: comma-separated origins, or "*" to deliberately open up.
+const DEFAULT_ORIGINS = [
+  "https://tylereveland.com", "https://www.tylereveland.com",
+  "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173",
+];
+
+export function allowedOrigins() {
+  const env = (process.env.KEYLIT_ALLOW_ORIGIN || "").trim();
+  if (!env) return DEFAULT_ORIGINS;
+  return env.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+export function originAllowed(origin, list = allowedOrigins()) {
+  if (list.includes("*")) return true;
+  return typeof origin === "string" && list.includes(origin);
+}
+
+/** Sliding-window per-IP limiter. In-memory: each serverless instance counts
+ *  alone, which still stops the only abuse a browser or a loop can mount. */
+export function createRateLimiter({ limit = 20, windowMs = 60_000, maxIps = 2000 } = {}) {
+  const hits = new Map(); // ip -> [timestamps]
+  return function allow(ip, now = Date.now()) {
+    if (hits.size > maxIps) {
+      for (const [k, v] of hits) if (!v.length || now - v[v.length - 1] > windowMs) hits.delete(k);
+    }
+    const list = (hits.get(ip) || []).filter((t) => now - t < windowMs);
+    if (list.length >= limit) { hits.set(ip, list); return false; }
+    list.push(now);
+    hits.set(ip, list);
+    return true;
+  };
+}
+
+const rateAllow = createRateLimiter();
+
+function clientIp(req) {
+  const fwd = req.headers["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd) return fwd.split(",")[0].trim();
+  return req.socket?.remoteAddress || "unknown";
+}
+
 export default async function handler(req, res) {
-  // CORS so a statically-hosted UI can call a separately-deployed proxy.
-  res.setHeader("Access-Control-Allow-Origin", process.env.KEYLIT_ALLOW_ORIGIN || "*");
+  // CORS: reflect the origin only when it's on the list; everyone else gets
+  // no ACAO header and the browser refuses them the response.
+  const origin = req.headers.origin;
+  if (originAllowed(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
   if (req.method !== "POST") { res.statusCode = 405; return res.end(JSON.stringify({ error: "POST only" })); }
+  if (origin && !originAllowed(origin)) {
+    res.statusCode = 403;
+    return res.end(JSON.stringify({ error: "origin not allowed" }));
+  }
+  if (!rateAllow(clientIp(req))) {
+    res.statusCode = 429;
+    res.setHeader("Retry-After", "60");
+    return res.end(JSON.stringify({ error: "slow down — try again in a minute" }));
+  }
 
   if (!process.env.ANTHROPIC_API_KEY) {
     res.statusCode = 500;
@@ -177,7 +238,11 @@ export default async function handler(req, res) {
   }
 
   let body;
-  try { body = await readBody(req); } catch { res.statusCode = 400; return res.end(JSON.stringify({ error: "bad JSON" })); }
+  try { body = await readBody(req); }
+  catch (e) {
+    res.statusCode = e?.tooLarge ? 413 : 400;
+    return res.end(JSON.stringify({ error: e?.tooLarge ? "body too large" : "bad JSON" }));
+  }
 
   const client = new Anthropic();
   const task = body.task || "analyze";

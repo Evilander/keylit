@@ -24,7 +24,8 @@ export default function AddSong({ onSaved, onClose }) {
   const save = () => {
     const built = buildUserSong(f, Date.now());
     if (built.error) { setError(built.error); return; }
-    userSongbook.save(built.song, built.row);
+    try { userSongbook.save(built.song, built.row); }
+    catch { setError("Storage is full — the song wasn't saved. Export a backup, clear space, and try again."); return; }
     onSaved?.(built.song);
   };
 

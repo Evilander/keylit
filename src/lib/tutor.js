@@ -256,21 +256,13 @@ export async function sendChat({ provider, apiKey, model, baseUrl, system, messa
   return full;
 }
 
-/* ---- settings persistence (browser-local, never transmitted to us) ---- */
-export function loadTutorSettings() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(TUTOR_STORE_KEY) || "{}");
-    return {
-      provider: PROVIDERS[raw.provider] ? raw.provider : "anthropic",
-      models: raw.models && typeof raw.models === "object" ? raw.models : {},
-      keys: raw.keys && typeof raw.keys === "object" ? raw.keys : {},
-      ollamaUrl: typeof raw.ollamaUrl === "string" ? raw.ollamaUrl : "http://localhost:11434",
-    };
-  } catch {
-    return { provider: "anthropic", models: {}, keys: {}, ollamaUrl: "http://localhost:11434" };
-  }
-}
-
-export function saveTutorSettings(s) {
-  try { localStorage.setItem(TUTOR_STORE_KEY, JSON.stringify(s)); } catch { /* storage optional */ }
+/* ---- settings shape (persistence lives in TutorPanel — lib stays pure) ---- */
+export function normalizeTutorSettings(raw) {
+  const r = raw && typeof raw === "object" ? raw : {};
+  return {
+    provider: PROVIDERS[r.provider] ? r.provider : "anthropic",
+    models: r.models && typeof r.models === "object" ? r.models : {},
+    keys: r.keys && typeof r.keys === "object" ? r.keys : {},
+    ollamaUrl: typeof r.ollamaUrl === "string" ? r.ollamaUrl : "http://localhost:11434",
+  };
 }

@@ -8,8 +8,10 @@
 
 import { normalizeSetlist } from "./setlists.js";
 
-/** The only preference keys a backup may carry — nothing else crosses machines. */
+/** The only preference keys a backup may carry — nothing else crosses machines.
+ *  theme.v1 stays listed so pre-migration backup files still restore. */
 export const PREF_KEYS = [
+  "keylit.theme.v2",
   "keylit.theme.v1",
   "keylit.guitar-tuning.v1",
   "keylit.chart-spelling.v2",
