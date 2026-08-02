@@ -7,8 +7,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Settings2, Send, Square, GraduationCap } from "lucide-react";
-import { PROVIDERS, buildSystemPrompt, buildContext, sendChat, loadTutorSettings, saveTutorSettings } from "../lib/tutor.js";
+import { PROVIDERS, buildSystemPrompt, buildContext, sendChat, normalizeTutorSettings, TUTOR_STORE_KEY } from "../lib/tutor.js";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
+
+// Settings persistence lives here, not in lib/ — the key never leaves this
+// browser, and lib/tutor.js stays free of storage.
+const loadTutorSettings = () => {
+  try { return normalizeTutorSettings(JSON.parse(localStorage.getItem(TUTOR_STORE_KEY) || "{}")); }
+  catch { return normalizeTutorSettings(null); }
+};
+const saveTutorSettings = (s) => {
+  try { localStorage.setItem(TUTOR_STORE_KEY, JSON.stringify(s)); } catch { /* storage optional */ }
+};
 
 const STARTERS = [
   "Why does this progression sound good?",

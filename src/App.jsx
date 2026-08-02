@@ -18,6 +18,7 @@ import { isMidiSupported, requestMidi, listOutputs, sendChordToOutput, allNotesO
 import { useAudioEngine } from "./audio/useAudioEngine.js";
 import { C, MONO, DISPLAY, applyTheme, currentTheme } from "./ui/theme.js";
 import ThemePicker from "./components/ThemePicker.jsx";
+import RoomBoundary from "./components/RoomBoundary.jsx";
 import { EngLabel, Readout, BenchButton, QuoteLine } from "./ui/Bench.jsx";
 import { shuffledQuotes } from "./lib/quotes.js";
 import { loadSong, SOURCE_LABEL } from "./corpus.js";
@@ -228,6 +229,15 @@ export default function App() {
   const [importTarget, setImportTarget] = useState("song");
   const [handed, setHanded] = useState(null);
   const [handedKept, setHandedKept] = useState(false);
+  // localStorage quota is finite and a failed keep must never be silent.
+  const [storageNote, setStorageNote] = useState(null);
+  const keepToSongbook = (built) => {
+    try { userSongbook.save(built.song, built.row); setStorageNote(null); return true; }
+    catch {
+      setStorageNote("Storage is full — that song wasn't kept. Export a backup from the Library, clear space, and try again.");
+      return false;
+    }
+  };
   const [midiOutputs, setMidiOutputs] = useState([]);
   const [midiOutId, setMidiOutId] = useState("");
   const midiOutRef = useRef(null);
@@ -320,7 +330,7 @@ export default function App() {
       tuning: handed.tuning || "", body: handed.body,
     }, Date.now());
     if (built.error) return;
-    userSongbook.save(built.song, built.row);
+    if (!keepToSongbook(built)) return;
     setHandedKept(true);
   };
 
@@ -1118,7 +1128,15 @@ export default function App() {
 
       {/* ---- THE ROOM ---- */}
       <main className="kl-main">
+        {storageNote && (
+          <div role="alert" className="kl-content" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", color: C.rootText }}>
+            <span style={{ fontSize: 13 }}>{storageNote}</span>
+            <button className="kl-pill" style={{ fontSize: 11, padding: "2px 10px" }} onClick={() => setStorageNote(null)}>dismiss</button>
+          </div>
+        )}
         <div className={`kl-content${section === "library" || section === "song" ? "" : " wide"}`}>
+          {/* keyed by section: walking to another room resets a tripped boundary */}
+          <RoomBoundary key={section}>
           {section === "library" && (
             <Library onOpen={openSong}
               quote={roomQuote("library")}
@@ -1213,7 +1231,7 @@ export default function App() {
                       tuning: meta.tuning || "", body,
                     }, Date.now());
                     if (built.error) return;
-                    userSongbook.save(built.song, built.row);
+                    keepToSongbook(built);
                   }} />
                 <ChartView text={displaySheet} activeKey={readingKey} transpose={readingShift}
                   activeChord={readingView.prog[currentIdx] || null}
@@ -1231,7 +1249,7 @@ export default function App() {
                     tuning: "", body,
                   }, Date.now());
                   if (built.error) return;
-                  userSongbook.save(built.song, built.row);
+                  if (!keepToSongbook(built)) return;
                   setLoaded({ id: built.song.id, title: built.song.title, artist: built.song.artist || null, source: "user", key: built.row.key, capo: built.row.capo });
                   loadSheet(body);
                 }} />
@@ -1558,6 +1576,7 @@ export default function App() {
               <Shed />
             </Suspense>
           )}
+          </RoomBoundary>
         </div>
       </main>
 

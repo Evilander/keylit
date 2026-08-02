@@ -171,6 +171,7 @@ describe("reportLine", () => {
 });
 
 it("PREF_KEYS carries exactly the cross-machine settings", () => {
-  expect(PREF_KEYS).toContain("keylit.theme.v1");
+  expect(PREF_KEYS).toContain("keylit.theme.v2"); // the LIVE theme key — v2, not the retired v1
+  expect(PREF_KEYS).toContain("keylit.theme.v1"); // old backup files must still restore
   expect(PREF_KEYS).toContain("keylit.chart-spelling.v2");
 });
