@@ -633,3 +633,42 @@
   .write-draft-bar label:first-child { width: 100%; }
   .write-draft-bar label:first-child input { width: 100%; }
 }
+
+/* ---- One Song: the front porch of the Write desk ------------------------ */
+.onesong { display: flex; flex-direction: column; gap: 20px; }
+.onesong-hero { display: grid; grid-template-columns: 1fr 300px; gap: 28px; align-items: end; }
+.onesong-quote { font-size: clamp(24px, 3vw, 38px); line-height: 1.18; }
+.onesong-bench { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.onesong-tally { display: flex; gap: 6px; align-items: flex-end; height: 34px; }
+/* tally marks carved on the bench edge: thin, slightly canted, taller when lit */
+.onesong-mark { width: 3px; height: 18px; background: var(--kl-line); border-radius: 1px; transform: rotate(7deg); transition: height .25s ease, background .25s ease; }
+.onesong-mark.lit { background: var(--kl-root); height: 32px; }
+.onesong-runline { font-size: 13px; }
+.onesong-ritual { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 20px 24px; }
+.onesong-ritual-copy { display: flex; flex-direction: column; gap: 4px; max-width: 520px; }
+.onesong-ritual-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.onesong-start { font-size: 15px; padding: 10px 18px; }
+.onesong-doors-head, .onesong-shelf-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 4px; }
+.onesong-doors { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.onesong-door { position: relative; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--kl-hair); border-left: 3px solid var(--kl-line); border-radius: 10px; padding: 12px 14px; background: var(--kl-sunken); }
+.onesong-door.suggested { border-left-color: var(--kl-root); }
+.onesong-door-tag { position: absolute; top: -9px; right: 12px; padding: 0 7px; background: var(--kl-raised); font-family: var(--kl-mono); font-size: 10.5px; letter-spacing: .04em; }
+.onesong-door p { margin: 0; color: var(--kl-muted); font-size: 12.5px; line-height: 1.45; }
+.onesong-door footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: auto; font-size: 12px; }
+/* the shelf: a real edge underneath, spines standing on it */
+.onesong-shelf { display: flex; align-items: stretch; gap: 8px; min-height: 138px; padding: 8px 6px 0; border-bottom: 2px solid var(--kl-ink); overflow-x: auto; }
+.onesong-spine { writing-mode: vertical-rl; display: inline-flex; align-items: center; gap: 8px; padding: 10px 4px; border: 1px solid var(--kl-line); border-bottom: 0; border-radius: 6px 6px 0 0; background: var(--kl-raised); max-height: 130px; }
+.onesong-spine-no { font-size: 10.5px; color: var(--kl-muted); letter-spacing: .04em; }
+.onesong-spine-title { font-size: 13px; color: var(--kl-ink); max-height: 84px; overflow: hidden; text-overflow: ellipsis; }
+.onesong-spine button { writing-mode: horizontal-tb; border: 0; background: transparent; color: var(--kl-faint); cursor: pointer; padding: 2px; line-height: 0; }
+.onesong-spine button:hover { color: var(--kl-root); }
+.onesong-finish { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; align-self: flex-end; margin-left: auto; padding-bottom: 8px; }
+.onesong-finish select, .onesong-finish input { padding: 7px 10px; font-size: 13px; color: var(--kl-ink); background: var(--kl-raised); border: 1px solid var(--kl-line); border-radius: 8px; }
+@media (max-width: 920px) {
+  .onesong-hero { grid-template-columns: 1fr; }
+  .onesong-bench { align-items: flex-start; }
+  .onesong-doors { grid-template-columns: repeat(2, 1fr); }
+  .onesong-ritual { flex-direction: column; align-items: flex-start; }
+}
+@media (max-width: 560px) { .onesong-doors { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .onesong-mark { transition: none; } }

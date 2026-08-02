@@ -11,6 +11,7 @@ const MAP = [
   ["4", "piano", "Piano"], ["5", "theory", "Theory"], ["6", "learn", "Learn"],
   ["7", "write", "Write"], ["8", "practice", "Practice"], ["9", "voice", "Voice"],
   ["0", "chords", "Chordbook"], ["-", "shed", "The Shed"], ["=", "setlists", "Setlists"],
+  ["`", "onesong", "One Song"],
 ];
 
 export default function RoomKeys({ onGo }) {
