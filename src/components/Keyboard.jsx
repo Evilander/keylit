@@ -5,8 +5,13 @@
 // DOM keys (not SVG) so the instrument stretches to ANY container height —
 // the dock's 76px↔220px morph is a plain CSS height transition on the parent
 // and the keys simply fill it. Same public API as the old SVG version.
+import { useRef } from "react";
 import { KEYS, midiOctave } from "../lib/voicing.js";
 import { C } from "../ui/theme.js";
+
+// Spelled out for screen readers ("C sharp 4" reads; "C#4" doesn't).
+const SPOKEN = ["C", "C sharp", "D", "D sharp", "E", "F", "F sharp", "G", "G sharp", "A", "A sharp", "B"];
+const spokenName = (midi) => `${SPOKEN[midi % 12]} ${midiOctave(midi)}`;
 
 // role -> [fill, glow], read at render time so applyTheme's live palette applies
 const roleColors = (role) => {
@@ -44,6 +49,32 @@ export default function Keyboard({ roleFor, onKey, flash, height = 190, ariaLabe
   const whiteW = 100 / whites.length;
   const isFlash = (m) => flash && flash.has(m);
 
+  // A playable keyboard is playable from the keyboard: every key is a real
+  // button (Enter/Space strikes it), arrows walk the instrument chromatically,
+  // Home/End jump to its ends. Display-only boards stay plain divs.
+  const keyRefs = useRef(new Map());
+  const chromatic = [...KEYS.whiteKeys, ...KEYS.blackKeys].map((k) => k.midi).sort((a, b) => a - b);
+  const moveFocus = (midi, delta) => {
+    const at = chromatic.indexOf(midi);
+    const next = delta === -Infinity ? chromatic[0]
+      : delta === Infinity ? chromatic[chromatic.length - 1]
+      : chromatic[at + delta];
+    if (next !== undefined) keyRefs.current.get(next)?.focus();
+  };
+  const keyA11y = (midi) => (onKey ? {
+    role: "button",
+    tabIndex: 0,
+    "aria-label": spokenName(midi),
+    ref: (el) => { el ? keyRefs.current.set(midi, el) : keyRefs.current.delete(midi); },
+    onKeyDown: (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onKey(midi); }
+      else if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); moveFocus(midi, 1); }
+      else if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); moveFocus(midi, -1); }
+      else if (e.key === "Home") { e.preventDefault(); moveFocus(midi, -Infinity); }
+      else if (e.key === "End") { e.preventDefault(); moveFocus(midi, Infinity); }
+    },
+  } : {});
+
   const whiteInfo = whites.map((k) => (roleFor ? roleFor(k.midi) : null));
 
   const blacks = KEYS.blackKeys.map((k) => {
@@ -70,7 +101,7 @@ export default function Keyboard({ roleFor, onKey, flash, height = 190, ariaLabe
           const [fill, glow] = role ? roleColors(role) : [null, null];
           const isC = k.midi % 12 === 0;
           return (
-            <div key={k.midi} onClick={() => onKey?.(k.midi)}
+            <div key={k.midi} onClick={() => onKey?.(k.midi)} {...keyA11y(k.midi)}
               style={{
                 flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end",
                 alignItems: "center", minWidth: 0,
@@ -105,7 +136,7 @@ export default function Keyboard({ roleFor, onKey, flash, height = 190, ariaLabe
         const lit = (!!role && !ghost) || flashed;
         const [fill, glow] = role ? roleColors(role) : [null, null];
         return (
-          <div key={b.midi} onClick={() => onKey?.(b.midi)}
+          <div key={b.midi} onClick={() => onKey?.(b.midi)} {...keyA11y(b.midi)}
             style={{
               position: "absolute", top: 0, left: `${b.left.toFixed(3)}%`, width: `${b.width.toFixed(3)}%`,
               height: "63%", zIndex: 2,
