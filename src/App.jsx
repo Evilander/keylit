@@ -73,6 +73,7 @@ import { chartOutline, progressionAnchors } from "./lib/chartlines.js";
 import {
   acceptPerformPage, buildPerformPage, createPerformRun,
   failPerformPage, requestPerformPage as markPerformPageRequested,
+  updatePerformSlotSetup,
 } from "./lib/performpage.js";
 import { createLatestSongLoader, resolveSongData } from "./songloader.js";
 import { canonicalTuning, chartShiftForGuitar, STANDARD_TUNING, TUNINGS, uniformTuningOffset } from "./lib/tuning.js";
@@ -566,6 +567,26 @@ export default function App() {
     performRunRef.current = accepted;
     setPerformRun(accepted);
   }, []);
+
+  // The set's pages are not frozen: the player can re-tune / re-capo /
+  // transpose any single page mid-set, exactly like the Song room. The slot
+  // goes back to idle and rebuilds through the same race-safe request path.
+  const updatePerformSetPageSetup = useCallback((index, patch) => {
+    const current = performRunRef.current;
+    const slot = current?.pages?.[index];
+    if (!slot) return;
+    const setup = { ...slot.setup, ...patch };
+    const updated = updatePerformSlotSetup(current, { runId: current.runId, index, setup });
+    if (updated === current) return;
+    performRunRef.current = updated;
+    setPerformRun(updated);
+    // Remember the occurrence's tuning/capo on the setlist itself — next run
+    // of this set starts with this setup already on the page.
+    if (current.setlistId) {
+      try { benchBook.setEntrySetup(current.setlistId, slot.entry.entryId, { tuning: updated.pages[index].setup.tuning, capo: updated.pages[index].setup.capo }); } catch { /* storage optional */ }
+    }
+    requestPerformSetPage(index);
+  }, [requestPerformSetPage]);
   // The piano PLAYS sounding pitch (shapes + capo + transpose).
   const audioVoicings = mode === "smooth" ? soundingView.smoothFull : soundingView.rootFull;
   audioVoicingRef.current = audioVoicings;
@@ -1243,6 +1264,7 @@ export default function App() {
                 onPickSong: () => setSection("library"),
               }}
               onRequestPage={requestPerformSetPage}
+              onSetupChange={updatePerformSetPageSetup}
               onExitSet={() => {
                 performRunRef.current = null;
                 setPerformRun(null);
@@ -1275,7 +1297,7 @@ export default function App() {
                         <div>
                           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
                             <span style={{ fontFamily: MONO, fontSize: 26, fontWeight: 600, color: C.root }}>{nashville(soundingCurrent, soundingKey.tonic)}</span>
-                            <span style={{ fontFamily: MONO, fontSize: 16, color: C.toneText }}>{romanNumeral(soundingCurrent, soundingKey.tonic)}</span>
+                            <span style={{ fontFamily: MONO, fontSize: 16, color: C.toneText }}>{romanNumeral(soundingCurrent, soundingKey.tonic, { next: soundingView.prog[currentIdx + 1], mode: soundingKey.mode })}</span>
                           </div>
                           <div className="kl-eyebrow faint" style={{ marginTop: 10 }}>
                             {soundingCurrent.section || "now playing"} · {currentIdx + 1} / {view.prog.length}

@@ -57,6 +57,50 @@ And then I guess we tried again`;
     const { progression } = parseSheet("[X]\nF#   F#   F#   B");
     expect(progression.map((c) => c.raw)).toEqual(["F#", "B"]);
   });
+
+  // Some transcribers write the chord inline, in the lyric, in parentheses.
+  // Nothing sits on its own line, so the normal pass finds no chords and the
+  // song opens dead. This runs ONLY when the sheet is otherwise empty.
+  describe("inline parenthesized chords (fallback only)", () => {
+    const inline = `[Verse]
+(G) She walks around the block with a silver plated cutter
+(Cadd9) to chase the wolves off when they come. She'd rather
+fight (C) than run, so just be aware. (G) Everybody thinks so.`;
+
+    it("reads chords written inline when nothing else parses", () => {
+      const { progression } = parseSheet(inline);
+      expect(progression.map((c) => c.raw)).toEqual(["G", "Cadd9", "C", "G"]);
+    });
+
+    it("keeps the section tag", () => {
+      const { progression } = parseSheet(inline);
+      expect(progression[0].section).toBe("Verse");
+    });
+
+    it("does not turn a copyright mark into a C chord", () => {
+      const lyricsOnly = `Just a page of words
+nothing playable here at all
+(C) 1998 Some Publishing Co.`;
+      expect(parseSheet(lyricsOnly).progression).toEqual([]);
+    });
+
+    it("needs more than one distinct chord to trust the pattern", () => {
+      const thin = `Some lyrics here (A) and more
+and a repeat mark (A) later on`;
+      expect(parseSheet(thin).progression).toEqual([]);
+    });
+
+    it("leaves a normal chart alone even when it has parentheses", () => {
+      const normal = `[Verse]
+C          G
+Here come old flat top (x2)
+Am         F
+He come groovin' up slowly
+(C) 1969 Northern Songs`;
+      const { progression } = parseSheet(normal);
+      expect(progression.map((c) => c.raw)).toEqual(["C", "G", "Am", "F"]);
+    });
+  });
 });
 
 describe("transposeChord", () => {
@@ -570,6 +614,52 @@ describe("romanNumeral", () => {
   });
   it("renders augmented with +", () => {
     expect(romanNumeral(parseChord("Caug"), 0)).toBe("I+");
+  });
+});
+
+describe("romanNumeral — contextual secondary dominants", () => {
+  const C = 0;
+  it("labels a dominant 7th resolving down a fifth as V7/<target>", () => {
+    expect(romanNumeral(parseChord("D7"), C, { next: parseChord("G") })).toBe("V7/V");
+    expect(romanNumeral(parseChord("A7"), C, { next: parseChord("Dm") })).toBe("V7/ii");
+    expect(romanNumeral(parseChord("E7"), C, { next: parseChord("Am") })).toBe("V7/vi");
+    expect(romanNumeral(parseChord("C7"), C, { next: parseChord("F") })).toBe("V7/IV");
+  });
+  it("labels a major triad the same way, without the 7", () => {
+    expect(romanNumeral(parseChord("D"), C, { next: parseChord("G") })).toBe("V/V");
+    expect(romanNumeral(parseChord("A"), C, { next: parseChord("Dm") })).toBe("V/ii");
+  });
+  it("ignores the target's quality when naming its degree", () => {
+    expect(romanNumeral(parseChord("D7"), C, { next: parseChord("G7") })).toBe("V7/V");
+    expect(romanNumeral(parseChord("D7"), C, { next: parseChord("Gmaj7") })).toBe("V7/V");
+  });
+  it("stays diatonic without the resolution — no false positives", () => {
+    expect(romanNumeral(parseChord("D7"), C)).toBe("II7");                        // no context: unchanged
+    expect(romanNumeral(parseChord("D7"), C, {})).toBe("II7");                    // loop ends
+    expect(romanNumeral(parseChord("D7"), C, { next: parseChord("F") })).toBe("II7"); // no fifth below
+    expect(romanNumeral(parseChord("E7"), C, { next: parseChord("Bbm") })).toBe("III7"); // target not diatonic
+  });
+  it("keeps the diatonic V7→I as plain V7, not V7/I", () => {
+    expect(romanNumeral(parseChord("G7"), C, { next: parseChord("C") })).toBe("V7");
+  });
+  it("only treats dominant-7 family and plain major triads as applied dominants", () => {
+    expect(romanNumeral(parseChord("Dm7"), C, { next: parseChord("G") })).toBe("ii7");
+    expect(romanNumeral(parseChord("Dmaj7"), C, { next: parseChord("G") })).toBe("IIM7");
+  });
+  it("labels a dominant 7th resolving down a half step as SubV7/<target>", () => {
+    expect(romanNumeral(parseChord("Db7"), C, { next: parseChord("C") })).toBe("SubV7/I");
+    expect(romanNumeral(parseChord("Ab7"), C, { next: parseChord("G") })).toBe("SubV7/V"); // tritone sub of D7→G
+  });
+  it("does not read a half-step-resolving major triad as a tritone sub", () => {
+    expect(romanNumeral(parseChord("Db"), C, { next: parseChord("C") })).toBe("♭II"); // Neapolitan triad
+  });
+  it("works in minor keys", () => {
+    const A = 9;
+    expect(romanNumeral(parseChord("B7"), A, { next: parseChord("Em"), mode: "minor" })).toBe("V7/v");
+    expect(romanNumeral(parseChord("C7"), A, { next: parseChord("F"), mode: "minor" })).toBe("V7/♭VI");
+  });
+  it("keeps the diatonic V7→i in minor as plain V7", () => {
+    expect(romanNumeral(parseChord("E7"), 9, { next: parseChord("Am"), mode: "minor" })).toBe("V7");
   });
 });
 

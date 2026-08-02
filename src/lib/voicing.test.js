@@ -162,6 +162,68 @@ describe("voicing — voice leading reduces movement", () => {
   });
 });
 
+describe("voicing — parallel fifths/octaves", () => {
+  // index-aligned movement over the shared prefix (voice i = index i, low→high)
+  const alignedMotion = (a, b) => {
+    const n = Math.min(a.length, b.length);
+    let d = 0;
+    for (let i = 0; i < n; i++) d += Math.abs(b[i] - a[i]);
+    return d;
+  };
+
+  // pairs of voices that sat on a perfect 5th/octave in `prev` and move by the
+  // same non-zero signed interval into `cand` — i.e. parallel perfect motion
+  const parallelPerfects = (prev, cand) => {
+    const n = Math.min(prev.length, cand.length);
+    let hits = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const iv = prev[j] - prev[i];
+        if (iv !== 7 && iv !== 12) continue;
+        const mi = cand[i] - prev[i];
+        if (mi !== 0 && mi === cand[j] - prev[j]) hits++;
+      }
+    }
+    return hits;
+  };
+
+  it.each([
+    ["C", "D"],
+    ["F", "G"],
+    ["G", "A"],
+  ])("%s → %s: no parallel slide when a near alternative exists", (from, to) => {
+    const prev = rootPositionUpper(parseChord(from));
+    const v = smoothUpper(parseChord(to), prev);
+    expect(parallelPerfects(prev, v)).toBe(0);
+    // the naive whole-step slide is exactly what we must NOT pick
+    expect(v).not.toEqual(prev.map((m) => m + 2));
+  });
+
+  it.each([
+    ["C", "D"],
+    ["F", "G"],
+    ["G", "A"],
+  ])("%s → %s: avoiding parallels doesn't leap wildly", (from, to) => {
+    const prev = rootPositionUpper(parseChord(from));
+    const slide = prev.map((m) => m + 2);
+    const v = smoothUpper(parseChord(to), prev);
+    expect(alignedMotion(prev, v)).toBeLessThanOrEqual(alignedMotion(prev, slide) + 2);
+  });
+
+  it("guards index pairing when prev and candidate differ in size", () => {
+    const prev4 = rootPositionUpper(parseChord("Cmaj7")); // 4 voices
+    const tri = smoothUpper(parseChord("D"), prev4); // 3 voices — must not crash
+    expect(tri).toHaveLength(3);
+    for (const m of tri) expect([2, 6, 9]).toContain(pc(m)); // D major tones only
+    const back4 = smoothUpper(parseChord("G7"), tri); // back to 4 voices
+    expect(back4).toHaveLength(4);
+    for (const m of back4) expect([7, 11, 2, 5]).toContain(pc(m)); // G7 tones only
+    // the penalty only pairs voices over the shared prefix, and still applies there
+    expect(parallelPerfects(prev4, tri)).toBe(0);
+    expect(parallelPerfects(tri, back4)).toBe(0);
+  });
+});
+
 describe("voicing — keyboard geometry", () => {
   it("spans C2–C5 with the right number of white keys", () => {
     // 36..72 inclusive = 3 octaves + 1; white keys per octave = 7, plus the top C

@@ -226,6 +226,19 @@ export function createBenchBook(backend, { makeId = defaultId, now = Date.now } 
       write(next);
       return next.setlists.find((setlist) => setlist.id === id)?.entries.find((entry) => entry.entryId === entryId) || null;
     },
+    /** Persist an occurrence's playing setup ({ tuning?, capo? }) — e.g. a
+     *  mid-set adjustment on the perform stage, remembered for next time. */
+    setEntrySetup(id, entryId, patch) {
+      const st = read();
+      const clean = {};
+      if (patch && "tuning" in patch) clean.tuning = patch.tuning;
+      if (patch && "capo" in patch) clean.capo = patch.capo;
+      if (!Object.keys(clean).length) return null;
+      const next = updateEntry(st, id, entryId, clean);
+      if (next === st) return null;
+      write(next);
+      return next.setlists.find((setlist) => setlist.id === id)?.entries.find((entry) => entry.entryId === entryId) || null;
+    },
     moveInSetlist(id, entryId, toIndex) {
       update((st) => moveEntry(st, id, entryId, toIndex));
     },

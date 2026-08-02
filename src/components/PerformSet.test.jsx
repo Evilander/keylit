@@ -68,6 +68,17 @@ it("Walk stops silently at a page boundary until the next explicit Play", () => 
   vi.useRealTimers();
 });
 
+it("lets each page adjust tuning, capo, and transpose through onSetupChange", () => {
+  const onSetupChange = vi.fn();
+  render(<Perform run={readyRun} onRequestPage={() => {}} onSetupChange={onSetupChange} onExitSet={() => {}} onPickSong={() => {}} onPlayPageChord={() => {}} onStopPageWalk={() => {}} />);
+  fireEvent.change(screen.getByRole("combobox", { name: /tuning for Second/i }), { target: { value: "ebStandard" } });
+  expect(onSetupChange).toHaveBeenLastCalledWith(1, { tuning: "ebStandard" });
+  fireEvent.click(screen.getByRole("button", { name: /capo up for First/i }));
+  expect(onSetupChange).toHaveBeenLastCalledWith(0, { capo: 1 });
+  fireEvent.click(screen.getByRole("button", { name: /transpose down for First/i }));
+  expect(onSetupChange).toHaveBeenLastCalledWith(0, { transpose: -1 });
+});
+
 it("continues loading after an unresolved first or middle song", () => {
   const onRequestPage = vi.fn();
   render(<Perform run={runWithFirstErrorAndIdleSuccessor} onRequestPage={onRequestPage} onExitSet={() => {}} onPickSong={() => {}} onPlayPageChord={() => {}} onStopPageWalk={() => {}} />);

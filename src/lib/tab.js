@@ -22,15 +22,31 @@ function normCapo(v) {
 // Case-insensitive: real tabs mute strings with X as often as x, and write
 // H/P/B technique marks uppercase — a lowercase-only class split six-string
 // blocks at the first X-muted line.
+// Does this run of text read as tab on its own?
+function readsAsTab(seg) {
+  if ((seg.match(/-/g) || []).length < 3) return false;
+  const tabChars = (seg.match(/[-0-9|:hpbsrxt\/\\~^.()* ]/gi) || []).length;
+  return tabChars / seg.length >= 0.85;
+}
+
 function isTabLine(line) {
   if (!line) return false;
   const dashes = (line.match(/-/g) || []).length;
   if (dashes < 3) return false;
   const body = line.replace(/^\s*[A-Ga-g][#b]?\s*[|:]?\s?/, "");
   if (!body) return false;
-  const tabChars = (body.match(/[-0-9|:hpbsrxt\/\\~^.()* ]/gi) || []).length;
-  const frac = tabChars / body.length;
-  return frac >= 0.85 && /[-0-9|]/.test(body[0]);
+  // The row must still OPEN like tab — this is what keeps prose out.
+  if (!/[-0-9|]/.test(body[0])) return false;
+  if (readsAsTab(body)) return true;
+  // Transcribers annotate in the margin, past the closing bar:
+  //   G|--0----0----0----0----| X any many times needed in the song
+  // Judging the whole line on that prose rejected the row and, with it, the
+  // entire system. Accept the longest prefix ending at a "|" that reads as
+  // tab by itself; the comment beyond it is not the row's business.
+  for (let i = body.lastIndexOf("|"); i > 0; i = body.lastIndexOf("|", i - 1)) {
+    if (readsAsTab(body.slice(0, i + 1))) return true;
+  }
+  return false;
 }
 
 /**

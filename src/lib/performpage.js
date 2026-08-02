@@ -53,14 +53,36 @@ export function buildPerformPage({
   return freeze(page);
 }
 
+const clampInt = (value, min, max, fallback) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
+};
+
+/** Coerce a player-facing setup patch into the exact shape slots carry. */
+export function normalizePerformSetup(setup) {
+  return freeze({
+    tuning: typeof setup?.tuning === "string" && setup.tuning ? setup.tuning : "standard",
+    capo: clampInt(setup?.capo, 0, 11, 0),
+    transpose: clampInt(setup?.transpose, -12, 12, 0),
+  });
+}
+
 export function createPerformRun(setlist, { tuning, capo, transpose, startEntryId = null, runId }) {
   if (typeof runId !== "string" || !runId) throw new Error("A performance run requires a runtime-minted runId");
   const entries = Array.isArray(setlist?.entries) ? setlist.entries : [];
   const requested = startEntryId == null ? 0 : entries.findIndex((entry) => entry.entryId === startEntryId);
   const start = requested >= 0 ? requested : 0;
-  const setup = freeze({ tuning, capo, transpose });
+  // A setlist occurrence may carry its own tuning/capo (charted values at add
+  // time, or the player's mid-set adjustments saved back): those win over the
+  // run's global setup for that slot.
+  const slotSetup = (entry) => normalizePerformSetup({
+    tuning: entry?.tuning || tuning,
+    capo: entry?.capo ?? capo,
+    transpose,
+  });
   const pages = entries.slice(start).map((entry) => freeze({
-    entry: freeze(copy(entry)), setup, status: "idle", requestId: null, page: null, error: null,
+    entry: freeze(copy(entry)), setup: slotSetup(entry), status: "idle", requestId: null, page: null, error: null,
   }));
   return freeze({ runId, setlistId: setlist?.id || null, name: setlist?.name || "Setlist", pages });
 }
@@ -91,6 +113,17 @@ export function acceptPerformPage(run, { runId, index, requestId, page }) {
   });
   if (slot.status !== "loading" || page.entry?.entryId !== slot.entry.entryId || !sameSetup(slot.setup, pageSetup) || page.key !== expectedKey) return run;
   return replaceSlot(run, index, { ...slot, status: "ready", page: freeze(copy(page)), error: null });
+}
+
+/** Change one slot's tuning/capo/transpose and send it back to idle so the
+ *  page is rebuilt. A no-op unless the normalized setup actually differs, so
+ *  in-flight requests for the unchanged setup are never disturbed. */
+export function updatePerformSlotSetup(run, { runId, index, setup }) {
+  const slot = run?.pages?.[index];
+  if (!slot || run.runId !== runId) return run;
+  const next = normalizePerformSetup(setup);
+  if (sameSetup(slot.setup, next)) return run;
+  return replaceSlot(run, index, { ...slot, setup: next, status: "idle", requestId: null, page: null, error: null });
 }
 
 export function failPerformPage(run, { runId, index, requestId, message }) {

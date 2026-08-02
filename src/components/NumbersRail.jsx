@@ -8,7 +8,7 @@ import { C, FUNCTION_COLOR, FUNCTION_LABEL, MONO } from "../ui/theme.js";
 
 const ROWS = [
   { key: "nash", eng: "nashville", get: (ch, k) => nashville(ch, k.tonic) },
-  { key: "roman", eng: "roman", get: (ch, k) => romanNumeral(ch, k.tonic) },
+  { key: "roman", eng: "roman", get: (ch, k, t, next) => romanNumeral(ch, k.tonic, { next, mode: k.mode }) },
   { key: "notes", eng: "notes", get: (ch, k, t) => displaySymbol(ch, t) },
 ];
 
@@ -61,7 +61,7 @@ export default function NumbersRail({ prog, activeKey, currentIdx, transpose = 0
                     </div>
                     {ROWS.map((r) => {
                       const hidden = hideRow === r.key;
-                      const val = r.get(ch, activeKey, transpose);
+                      const val = r.get(ch, activeKey, transpose, prog[i + 1]);
                       const isNotes = r.key === "notes";
                       return (
                         <div key={r.key} style={{
