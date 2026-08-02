@@ -6,6 +6,9 @@ import { createDraft, validateDraft } from "./lib/composition.js";
 import {
   addEntry, moveEntry, normalizeBenchState, removeEntry, restoreEntry, updateEntry,
 } from "./lib/setlists.js";
+import {
+  normalizeOneSongState, markDay as onesongMarkDay, finishSong, removeFinished, exerciseDone,
+} from "./lib/onesong.js";
 
 const KEY = "keylit.songs.v1";
 
@@ -269,3 +272,31 @@ export function createBenchBook(backend, { makeId = defaultId, now = Date.now } 
 }
 
 export const benchBook = createBenchBook();
+
+/* ---- the One Song book: bench days, the streak, the finished shelf ------ */
+// Tweedy's assignment as memory: which days you showed up, which doors you
+// worked, what you finished. The pure brains live in lib/onesong.js.
+const ONESONG_KEY = "keylit.onesong.v1";
+
+export function createOneSongBook(backend) {
+  const be = selectBackend(backend);
+  const read = () => normalizeOneSongState(parseJson(be, ONESONG_KEY));
+  const write = (state) => be.setItem(ONESONG_KEY, JSON.stringify(state));
+  const apply = (transform) => {
+    const st = read();
+    const next = transform(st);
+    if (next !== st) write(next);
+    return next;
+  };
+
+  return {
+    state: read,
+    /** what: "timer" | "kept" | "door" | "finished" — the day lights either way. */
+    markDay(what, at = Date.now()) { return apply((st) => onesongMarkDay(st, { at, what })); },
+    finish({ title, draftId, at = Date.now() }) { return apply((st) => finishSong(st, { title, at, draftId })); },
+    removeFinished(index) { return apply((st) => removeFinished(st, index)); },
+    doorDone(name, at = Date.now()) { return apply((st) => exerciseDone(st, name, at)); },
+  };
+}
+
+export const onesongBook = createOneSongBook();

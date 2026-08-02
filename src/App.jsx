@@ -34,7 +34,8 @@ import ChordLab from "./components/ChordLab.jsx";
 import KeyWheel from "./components/KeyWheel.jsx";
 import WheelLesson from "./components/WheelLesson.jsx";
 import CapoTuning from "./components/CapoTuning.jsx";
-import WriteDesk from "./components/WriteDesk.jsx";
+import WriteDesk, { TIMER_KEY } from "./components/WriteDesk.jsx";
+import OneSong from "./components/OneSong.jsx";
 import ImportModal from "./components/ImportModal.jsx";
 import AddToSetlist from "./components/AddToSetlist.jsx";
 import ChartView from "./components/ChartView.jsx";
@@ -66,7 +67,7 @@ import EarTrainer from "./components/EarTrainer.jsx";
 import SessionRoom from "./components/SessionRoom.jsx";
 import { metronome } from "./audio/metronome.js";
 import { ShareChart, HandedBanner } from "./components/ShareChart.jsx";
-import { benchBook, userSongbook } from "./storage.js";
+import { benchBook, onesongBook, userSongbook } from "./storage.js";
 import { slugSongKey } from "./lib/bench.js";
 import { decodeShare } from "./lib/sharelink.js";
 import { buildUserSong } from "./lib/usersong.js";
@@ -106,6 +107,7 @@ const NAV = [
   { id: "piano", label: "Piano" },
   { id: "theory", label: "Theory" },
   { id: "learn", label: "Learn" },
+  { id: "onesong", label: "One Song" },
   { id: "write", label: "Write" },
   { id: "practice", label: "Practice" },
   { id: "setlists", label: "Setlists" },
@@ -117,7 +119,7 @@ const NAV = [
 const WINGS = [
   { id: "play", label: "Play", rooms: ["library", "song", "perform", "piano"] },
   { id: "study", label: "Study", rooms: ["theory", "learn", "chords"] },
-  { id: "make", label: "Make", rooms: ["write", "practice", "setlists", "voice"] },
+  { id: "make", label: "Make", rooms: ["onesong", "write", "practice", "setlists", "voice"] },
   { id: "shed", label: "Shed", rooms: ["shed"] },
 ];
 
@@ -1069,6 +1071,21 @@ export default function App() {
     setSection(id);
   }, []);
 
+  // One Song → the desk: light the shared clock, mark the bench day, and land
+  // in Focus with only the countdown and the words. The cue is one-shot —
+  // consumed at WriteDesk mount, cleared right after so a later visit to
+  // Write opens the full desk.
+  const [writeFocusCue, setWriteFocusCue] = useState(false);
+  useEffect(() => {
+    if (writeFocusCue && section === "write") setWriteFocusCue(false);
+  }, [writeFocusCue, section]);
+  const startOneSong = useCallback((minutes) => {
+    try { onesongBook.markDay("timer"); } catch { /* the tally is optional, the writing isn't */ }
+    try { localStorage.setItem(TIMER_KEY, String(Date.now() + minutes * 60000)); } catch { /* clock optional */ }
+    setWriteFocusCue(true);
+    goRoom("write");
+  }, [goRoom]);
+
   return (
     <div className="kl-app">
       <RoomKeys onGo={goRoom} />
@@ -1476,6 +1493,16 @@ export default function App() {
             </div>
           )}
 
+          {section === "onesong" && (
+            <div className="kl-section">
+              <OneSong
+                onStart={startOneSong}
+                goWrite={() => goRoom("write")}
+                onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }}
+              />
+            </div>
+          )}
+
           {section === "write" && (
             <div className="kl-section">
               <div className="kl-eyebrow">The desk</div>
@@ -1499,7 +1526,8 @@ export default function App() {
                 onAudition={auditionChords}
                 requestDeep={deepProgressionIdeas}
                 nowStamp={() => Date.now()} midiSupported={isMidiSupported()} midiOutputs={midiOutputs} midiOutId={midiOutId}
-                onPickMidiOut={pickMidiOut} onRefreshMidi={refreshMidiOutputs} />
+                onPickMidiOut={pickMidiOut} onRefreshMidi={refreshMidiOutputs}
+                initialFocus={writeFocusCue} />
             </div>
           )}
 

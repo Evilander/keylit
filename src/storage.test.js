@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { createDraftBook, createLibrary, createBenchBook } from "./storage.js";
+import { createDraftBook, createLibrary, createBenchBook, createOneSongBook } from "./storage.js";
 import { adaptLegacySketch, createDraft } from "./lib/composition.js";
+import { dayKey } from "./lib/onesong.js";
 
 function fakeBackend(seed = {}) {
   const data = new Map(Object.entries(seed));
@@ -291,5 +292,46 @@ describe("bench book — practice log", () => {
     const bb = createBenchBook(be);
     expect(bb.setlists()).toEqual([]);
     expect(bb.log()).toEqual([]);
+  });
+});
+
+describe("one song book", () => {
+  const NOON = new Date(2026, 7, 5, 12, 0, 0).getTime();
+
+  it("marks bench days, finishes songs, and reads back one clean state", () => {
+    const be = fakeBackend();
+    const book = createOneSongBook(be);
+    book.markDay("timer", NOON);
+    book.finish({ title: "Coyote Time", draftId: "d1", at: NOON });
+    const st = book.state();
+    expect(st.days[dayKey(NOON)]).toEqual(["timer", "finished"]);
+    expect(st.finished).toEqual([{ title: "Coyote Time", at: NOON, draftId: "d1" }]);
+  });
+
+  it("no-op transforms never touch the backend", () => {
+    let writes = 0;
+    const data = new Map();
+    const be = { getItem: (k) => data.get(k) ?? "", setItem: (k, v) => { writes++; data.set(k, v); } };
+    const book = createOneSongBook(be);
+    book.markDay("timer", NOON);
+    expect(writes).toBe(1);
+    book.markDay("timer", NOON + 1000); // same day, same reason — pure no-op
+    expect(writes).toBe(1);
+  });
+
+  it("doors stamp and the shelf can take a song back", () => {
+    const be = fakeBackend();
+    const book = createOneSongBook(be);
+    book.doorDone("Cut-ups", NOON);
+    book.finish({ title: "Oops", at: NOON });
+    book.removeFinished(0);
+    const st = book.state();
+    expect(st.doors["Cut-ups"]).toBe(NOON);
+    expect(st.finished).toEqual([]);
+  });
+
+  it("survives a corrupt backend value", () => {
+    const be = { getItem: () => "{broken", setItem: () => {} };
+    expect(createOneSongBook(be).state()).toEqual({ days: {}, finished: [], doors: {} });
   });
 });

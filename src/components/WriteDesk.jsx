@@ -4,23 +4,20 @@ import { createDraft, adaptLegacySketch } from "../lib/composition.js";
 import { generateProgression, GEN_STYLES } from "../lib/generate.js";
 import { chordSymbol, SHARP_NAMES } from "../lib/theory.js";
 import { midiBlob } from "../lib/midi.js";
-import { draftBook } from "../storage.js";
+import { EXERCISES } from "../lib/onesong.js";
+import { draftBook, onesongBook } from "../storage.js";
 import ProgressionComposer from "./ProgressionComposer.jsx";
 import HumHarmony from "./HumHarmony.jsx";
 import PocketRecorder from "./PocketRecorder.jsx";
 
-const TIMER_KEY = "keylit.write.timer.v1";
+// Exported so the One Song room can light this clock and walk the player in.
+export const TIMER_KEY = "keylit.write.timer.v1";
 let writeId = 0;
 const freshId = (prefix) => `${prefix}-${Date.now().toString(36)}-${(++writeId).toString(36)}`;
 
-const EXERCISES = [
-  ["Word ladder", "List ten verbs and ten visible nouns. Pair the combinations that should not work; keep the lines that surprise you."],
-  ["Cut-ups", "Break an existing lyric into lines. Move the last line first, then rebuild by sound instead of story."],
-  ["Wrong instrument", "Play the section on the instrument you know least. Keep the accident you would never choose on purpose."],
-  ["Mumble translation", "Sing vowel shapes over the movement. Transcribe what the sounds almost say before polishing grammar."],
-  ["Change the narrator", "Write the verse as a different person, object, or place. Distance often produces the honest line."],
-  ["Start with the weak part", "Reverse the section, begin on its least convincing chord, or make the quiet part loud."],
-];
+// The One Song bench day lights for real work, and a tally failure must
+// never interrupt the work itself.
+const markBenchDay = (what) => { try { onesongBook.markDay(what); } catch { /* tally optional */ } };
 
 function makeProgressionDraft(current, chords, name, nowStamp) {
   return createDraft({
@@ -62,6 +59,7 @@ export default function WriteDesk({
   midiOutId = "",
   onPickMidiOut,
   onRefreshMidi,
+  initialFocus = false,
 }) {
   const [notice, setNotice] = useState("");
   const [saved, setSaved] = useState(() => book.list());
@@ -79,7 +77,7 @@ export default function WriteDesk({
   const [verbs, setVerbs] = useState("");
   const [nouns, setNouns] = useState("");
   const [pairs, setPairs] = useState([]);
-  const [focus, setFocus] = useState(false);
+  const [focus, setFocus] = useState(initialFocus);
 
   const setEndsAt = (value) => {
     setEndsAtState(value);
@@ -104,7 +102,7 @@ export default function WriteDesk({
   const selectedSectionId = selection?.sectionId || draft.sections[0]?.id;
   const selectedSection = draft.sections.find((section) => section.id === selectedSectionId) || draft.sections[0];
   const clock = endsAt ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : null;
-  const startTimer = () => { onPlay?.([], 0); setLeft(mins * 60); setEndsAt(Date.now() + mins * 60000); };
+  const startTimer = () => { markBenchDay("timer"); onPlay?.([], 0); setLeft(mins * 60); setEndsAt(Date.now() + mins * 60000); };
   // Nothing written yet — used to lead with the invitation instead of a blank grid.
   const blank = !draft.lyrics?.trim() && draft.sections.every((s) => !s.chords.length);
 
@@ -116,7 +114,9 @@ export default function WriteDesk({
 
   const saveDraft = () => {
     const next = { ...draft, savedAt: nowStamp() };
-    book.save(next);
+    try { book.save(next); }
+    catch { setNotice("Storage is full — the sketch wasn't kept. Export a backup, clear space, and try again."); return; }
+    markBenchDay("kept");
     setSaved(book.list());
     setNotice(`Kept “${next.name}” with its exact sections, repeats, and words.`);
   };
@@ -199,7 +199,7 @@ export default function WriteDesk({
         {endsAt ? (
           <><b>{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</b><button className="bench-btn" onClick={() => setEndsAt(null)}>Stop</button></>
         ) : (
-          <><div className="kl-seg">{[5, 10, 15].map((value) => <button key={value} aria-pressed={mins === value} onClick={() => setMins(value)}>{value}m</button>)}</div><button className="bench-btn primary" onClick={() => { onPlay?.([], 0); setLeft(mins * 60); setEndsAt(Date.now() + mins * 60000); }}>Write one song</button></>
+          <><div className="kl-seg">{[5, 10, 15].map((value) => <button key={value} aria-pressed={mins === value} onClick={() => setMins(value)}>{value}m</button>)}</div><button className="bench-btn primary" onClick={startTimer}>Write one song</button></>
         )}
         <button className="bench-btn write-focus-btn" title="hide everything but the words" onClick={() => setFocus(true)}>
           <Feather size={13} /> Focus
