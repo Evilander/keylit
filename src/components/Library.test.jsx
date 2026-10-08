@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "../test/render.js";
+import { fireEvent, render, screen, waitFor, within } from "../test/render.js";
 import Library from "./Library.jsx";
 import { loadManifest, loadSong } from "../corpus.js";
 import { makeZip } from "../lib/zip.js";
@@ -119,17 +119,30 @@ it("cancels a pending picker save when entering an album session", async () => {
 it("pages a broad search while retaining picks across pages", async () => {
   loadManifest.mockResolvedValue(Array.from({ length: 250 }, (_, i) => ({ id: String(i), source: "test", artist: "Coldplay", title: `A song ${i}` })));
   render(<Library />);
-  fireEvent.change(await screen.findByRole("textbox", { name: "Search the library" }), { target: { value: "A song" } });
+  const search = await screen.findByRole("textbox", { name: "Search the library" });
   fireEvent.click(screen.getByRole("button", { name: "Artists", exact: true }));
   fireEvent.click(screen.getByRole("button", { name: "Setlist", exact: true }));
-  expect(screen.getAllByRole("button", { name: /^A song / })).toHaveLength(100);
-  fireEvent.click(screen.getByRole("button", { name: /^A song 0chords/ }));
-  fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-  expect(screen.getAllByRole("button", { name: /^A song / })).toHaveLength(100);
+  fireEvent.change(search, { target: { value: "A song" } });
+  // Count visible titles without recomputing every row's accessible name and
+  // computed visibility on each page. Keep role queries scoped to pagination.
+  const pages = within(screen.getByRole("navigation", { name: "Library result pages" }));
+  const next = pages.getByRole("button", { name: "Next page" });
+  const previous = pages.getByRole("button", { name: "Previous page" });
+  const titles = () => screen.getAllByText(/^A song \d+$/);
+  expect(titles()).toHaveLength(100);
+  fireEvent.click(screen.getByText("A song 0").closest("button"));
+  fireEvent.click(next);
+  expect(titles()).toHaveLength(100);
+  expect(screen.queryByText("A song 0")).toBeNull();
   expect(screen.getByText("1 picked")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-  expect(screen.getAllByRole("button", { name: /^A song / })).toHaveLength(50);
-  fireEvent.change(screen.getByRole("textbox", { name: "Search the library" }), { target: { value: "" } });
+  fireEvent.click(next);
+  expect(titles()).toHaveLength(50);
+  expect(next).toBeDisabled();
+  fireEvent.click(previous);
+  fireEvent.click(previous);
+  fireEvent.click(screen.getByText("A song 0").closest("button"));
+  expect(screen.queryByText("1 picked")).toBeNull();
+  fireEvent.change(search, { target: { value: "" } });
 });
 
 it("cancels export workers on unmount and bypasses the cache", async () => {
