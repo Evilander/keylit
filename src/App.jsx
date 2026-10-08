@@ -5,12 +5,12 @@ import {
 } from "lucide-react";
 import {
   SHARP_NAMES, parseSheet, transposeChord, chordSymbol, displaySymbol,
-  detectKey, CIRCLE_OF_FIFTHS, sameChordSound, detectCapo,
+  detectKey, CIRCLE_OF_FIFTHS, sameChordSound, resolveCapo,
   suggestCapo,
 } from "./lib/theory.js";
 import { rootPositionFull, smoothUpper, addBass, clampVoicing } from "./lib/voicing.js";
 import { analyzeSheet, deepProgressionIdeas } from "./lib/llm.js";
-import { adaptLegacySketch, applyCompositionOp, createDraft, deriveProgression, replaceDraftInSession } from "./lib/composition.js";
+import { adaptLegacySketch, applyCompositionOp, createDraft, deriveProgression, validateDraft, replaceDraftInSession } from "./lib/composition.js";
 import { respell, spellPc } from "./lib/spelling.js";
 import { wheelMoves } from "./lib/voice.js";
 import { progressionOfTheDay } from "./lib/potd.js";
@@ -38,7 +38,7 @@ const Shed = lazy(() => import("./components/Shed.jsx"));
 import TutorPanel from "./components/TutorPanel.jsx";
 const VoiceRoom = lazy(() => import("./components/VoiceRoom.jsx"));
 import { retabForCurrentSheet } from "./components/RetabPanel.jsx";
-import { swapTabBlocks } from "./lib/retab.js";
+import { retabForSetup } from "./lib/retab.js";
 import { metronome } from "./audio/metronome.js";
 import { benchBook, onesongBook, userSongbook } from "./storage.js";
 import { slugSongKey } from "./lib/bench.js";
@@ -51,7 +51,7 @@ import {
   updatePerformSlotSetup,
 } from "./lib/performpage.js";
 import { createLatestSongLoader, resolveSongData } from "./songloader.js";
-import { canonicalTuning, chartShiftForGuitar, STANDARD_TUNING, TUNINGS, uniformTuningOffset } from "./lib/tuning.js";
+import { canonicalTuning, chartShiftForGuitar, getTuning, STANDARD_TUNING, TUNINGS, uniformTuningOffset } from "./lib/tuning.js";
 import LibraryRoom from "./components/rooms/LibraryRoom.jsx";
 import SongRoom from "./components/rooms/SongRoom.jsx";
 import PerformRoom from "./components/rooms/PerformRoom.jsx";
@@ -111,7 +111,7 @@ const roomQuote = (id) => QUOTE_DECK[ROOM_QUOTE[id] % QUOTE_DECK.length];
 const GUITAR_TUNING_KEY = "keylit.guitar-tuning.v1";
 const CHART_SPELLING_KEY = "keylit.chart-spelling.v2";
 const LEGACY_SPELLING_KEY = "keylit.chart-spelling.v1";
-const GUITAR_TUNINGS = new Set(["standard", "ebStandard", "dStandard"]);
+const GUITAR_TUNINGS = new Set(Object.keys(TUNINGS));
 const CHART_SPELLINGS = new Set(["guitar", "key", "flats", "sharps"]);
 
 function savedChoice(key, allowed, fallback) {
@@ -149,8 +149,11 @@ function validWriteSelection(draft, selection) {
   return { sectionId: section.id, chordId: section.chords[0]?.id || null, gapIndex: section.chords.length ? null : 0 };
 }
 
+const WRITE_RECOVERY_KEY = "keylit.write.recovery.v1";
+const freshDraftId = () => `write-${globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
+
 export default function App() {
-  const [sheet, setSheet] = useState(DEFAULT_SHEET);
+  const [sheet, setSheetState] = useState(DEFAULT_SHEET);
   const [loaded, setLoaded] = useState(null); // corpus song metadata, or null for a custom chart
   const [currentIdx, setCurrentIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -165,7 +168,7 @@ export default function App() {
   const [ai, setAi] = useState({ open: false, loading: false, data: null, error: null, raw: null });
   const [labProg, setLabProg] = useState(null);
   const [labHistory, setLabHistory] = useState([]);
-  const [section, setSection] = useState("library");
+  const [section, setSectionState] = useState("library");
   const [practiceTab, setPracticeTab] = useState("drills");
   const [learnTab, setLearnTab] = useState("scale");
   const [theoryTab, setTheoryTab] = useState("circle");
@@ -184,21 +187,81 @@ export default function App() {
   const [chartSpelling, setChartSpelling] = useState(savedSpelling);
   // Opened from a setlist: { name, rows, idx } drives the gig strip (prev/next).
   const [setlistCtx, setSetlistCtx] = useState(null);
+  const [activeSetlistId, setActiveSetlistId] = useState(null);
   const [performRun, setPerformRun] = useState(null);
   const performRunRef = useRef(null);
   const performIdRef = useRef(0);
   const songLoaderRef = useRef(null);
+  const fileRequestRef = useRef(0);
+  const analysisRequestRef = useRef(0);
+  const stageRequestRef = useRef(0);
+  const arrangementRef = useRef(null);
+  const arrangingRef = useRef(false);
+  const [songLoadNote, setSongLoadNote] = useState(null);
+  const stopArrangement = useCallback(() => {
+    stageRequestRef.current++;
+    const prev = arrangementRef.current;
+    arrangementRef.current = null;
+    arrangingRef.current = false;
+    if (prev) { prev.stop(); prev.onCancel?.(); }
+  }, []);
+  const setSection = useCallback((id) => {
+    songLoaderRef.current?.invalidate();
+    fileRequestRef.current++;
+    stopArrangement();
+    setIsPlaying(false);
+    if (id !== "perform" && performRunRef.current) { performRunRef.current = null; setPerformRun(null); }
+    setSectionState(id);
+  }, [stopArrangement]);
+  const setSheet = useCallback((text) => {
+    songLoaderRef.current?.invalidate();
+    fileRequestRef.current++;
+    analysisRequestRef.current++;
+    setAi({ open: false, loading: false, data: null, error: null, raw: null });
+    setSongLoadNote(null);
+    stopArrangement();
+    setIsPlaying(false);
+    setSheetState(text);
+  }, [stopArrangement]);
+  useEffect(() => () => {
+    songLoaderRef.current?.invalidate();
+    fileRequestRef.current++;
+    analysisRequestRef.current++;
+    stopArrangement();
+  }, [stopArrangement]);
+  useEffect(() => () => stopArrangement(), [learnTab, practiceTab, stopArrangement]);
+  useEffect(() => { audio.setMuted(!soundOn); }, [audio, soundOn]);
   // Write is deliberately isolated from Song and Theory. Cross-room movement
   // happens only through explicit snapshot actions such as "take it to the desk".
   const [writeSession, setWriteSession] = useState(() => {
+    let recoveryError = null;
+    try {
+      const raw = localStorage.getItem(WRITE_RECOVERY_KEY);
+      if (raw) {
+        const recovery = JSON.parse(raw);
+        if (recovery.version !== 1 || !validateDraft(recovery.draft).ok) throw new Error("Invalid recovery");
+        const draft = createDraft(recovery.draft);
+        return { draft, selection: validWriteSelection(draft, recovery.selection), history: [], revision: 0 };
+      }
+    } catch { recoveryError = "The working draft could not be recovered. Its saved copy has not been changed."; }
     const draft = createDraft({
-      id: "write-draft",
+      id: freshDraftId(),
       name: "Untitled",
       key: { tonic: 0, mode: "major" },
       sections: [{ id: "write-section", name: "Verse", chords: [] }],
     });
-    return { draft, selection: firstWriteSelection(draft), history: [], revision: 0 };
+    return { draft, selection: firstWriteSelection(draft), history: [], revision: 0, recoveryError };
   });
+  const [recoveryNote, setRecoveryNote] = useState(writeSession.recoveryError || null);
+  useEffect(() => {
+    if (writeSession.recoveryError && writeSession.revision === 0) return;
+    try {
+      localStorage.setItem(WRITE_RECOVERY_KEY, JSON.stringify({ version: 1, draft: writeSession.draft, selection: writeSession.selection }));
+      setRecoveryNote(null);
+    } catch {
+      setRecoveryNote("The working draft could not be autosaved. Copy your words before closing this page.");
+    }
+  }, [writeSession.draft, writeSession.selection, writeSession.revision, writeSession.recoveryError]);
   const writeIdRef = useRef(0);
   const nextWriteId = useCallback((prefix) => `${prefix}-${Date.now().toString(36)}-${(++writeIdRef.current).toString(36)}`, []);
 
@@ -213,9 +276,15 @@ export default function App() {
   // localStorage quota is finite and a failed keep must never be silent.
   const [storageNote, setStorageNote] = useState(null);
   const keepToSongbook = (built) => {
-    try { userSongbook.save(built.song, built.row); setStorageNote(null); return true; }
-    catch {
-      setStorageNote("Storage is full — that song wasn't kept. Export a backup from the Library, clear space, and try again.");
+    try {
+      const saved = userSongbook.save(built.song, built.row);
+      built.song = saved;
+      built.row = { ...built.row, id: saved.id };
+      setStorageNote(null);
+      return true;
+    } catch (error) {
+      const reason = String(error?.message || "Storage refused the save").replace(/[.!?]+$/, "");
+      setStorageNote(`The song wasn't kept: ${reason}. Copy the chart before closing this page.`);
       return false;
     }
   };
@@ -280,6 +349,7 @@ export default function App() {
   if (!songLoaderRef.current) {
     songLoaderRef.current = createLatestSongLoader({
       resolveSong: (entry) => resolveSongData(entry, { loadSong }),
+      onMissing: (entry) => setSongLoadNote(`Could not load ${entry.title || "this chart"}. Try opening it again.`),
       onAccept: (song, entry, ctx) => {
         setPerformRun(null);
         performRunRef.current = null;
@@ -290,7 +360,11 @@ export default function App() {
       },
     });
   }
-  const openSong = useCallback((entry, ctx = null) => songLoaderRef.current.open(entry, ctx), []);
+  const openSong = useCallback((entry, ctx = null) => {
+    fileRequestRef.current++;
+    setSongLoadNote(null);
+    return songLoaderRef.current.open(entry, ctx);
+  }, []);
 
   // A chart handed over in the URL fragment (#s=…) — it never touched a server.
   useEffect(() => {
@@ -312,6 +386,7 @@ export default function App() {
     }, Date.now());
     if (built.error) return;
     if (!keepToSongbook(built)) return;
+    if (loaded?.source === "shared" && sheet === handed.body) setLoaded(built.song);
     setHandedKept(true);
   };
 
@@ -337,11 +412,7 @@ export default function App() {
   // rail, key picker) stay as written, while the PLAYING surfaces (piano
   // lights, playback, tab→piano) speak sounding pitch. "Change the key from
   // there" = the transpose/key controls move the written document itself.
-  const capoShift = useMemo(() => {
-    const meta = Number(loaded?.capo);
-    if (Number.isFinite(meta) && meta > 0) return Math.min(11, Math.round(meta));
-    return detectCapo(sheet);
-  }, [loaded, sheet]);
+  const capoShift = useMemo(() => resolveCapo(sheet, loaded?.capo), [loaded, sheet]);
   const pitchShift = transpose + capoShift;
 
   const computeView = (shift, spelling = "key") => {
@@ -388,7 +459,7 @@ export default function App() {
     sourceCapo: capoShift,
     capo: effectiveCapo,
     tuning: guitarTuning,
-  }) ?? transpose;
+  }) ?? (pitchShift - effectiveCapo);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const readingView = useMemo(
     () => (readingShift === transpose ? view : computeView(readingShift, chartSpelling)),
@@ -410,15 +481,10 @@ export default function App() {
   // Deferred: the beam search must not run synchronously per keystroke while
   // someone edits a pasted tab — React catches the memo up when typing rests.
   const retabSheet = useDeferredValue(sheet);
-  const retab = useMemo(() => {
-    const src = canonicalTuning(loaded?.tuningRaw || loaded?.tuning || "standard");
-    const dst = canonicalTuning(guitarTuning);
-    const srcCapo = capoShift || 0;
-    const dstCapo = effectiveCapo || 0;
-    if (src.id === dst.id && srcCapo === dstCapo) return null; // your guitar already matches
-    const r = swapTabBlocks(retabSheet, { from: { tuning: src.id, capo: srcCapo }, to: { tuning: dst.id, capo: dstCapo } });
-    return r ? { ...r, src, dst, srcCapo, dstCapo } : null; // null when the sheet has no tab
-  }, [retabSheet, loaded, guitarTuning, capoShift, effectiveCapo]);
+  const retab = useMemo(() => retabForSetup(retabSheet, {
+    from: { tuning: loaded?.tuningRaw || loaded?.tuning, capo: capoShift },
+    to: { tuning: guitarTuning, capo: effectiveCapo }, transpose,
+  }), [retabSheet, loaded, guitarTuning, capoShift, effectiveCapo, transpose]);
   // While the deferred value lags a fresh edit, show the live sheet — never a
   // re-fret of TEXT the user has already changed.
   const currentRetab = retabForCurrentSheet(retab, retabSheet, sheet);
@@ -481,11 +547,12 @@ export default function App() {
     setSection("write");
   }, [view.prog, activeKey, loaded?.title, nextWriteId, replaceWriteDraft]);
 
-  const startPerformSet = useCallback((setlist, startEntryId = null) => {
+  const startPerformSet = useCallback((setlist, startEntryId = null, options = {}) => {
+    songLoaderRef.current?.invalidate();
     const run = createPerformRun(setlist, {
       tuning: guitarTuning,
       capo: effectiveCapo || 0,
-      transpose,
+      transpose: options.transpose ?? transpose,
       startEntryId,
       runId: `perform-${Date.now().toString(36)}-${(++performIdRef.current).toString(36)}`,
     });
@@ -516,28 +583,27 @@ export default function App() {
     }
 
     const sourceSheet = String(song.body || "");
-    const sourceTuning = canonicalTuning(song.tuningRaw || song.tuning || "standard");
     const targetTuning = canonicalTuning(capture.setup.tuning || "standard");
-    const hasDeclaredCapo = song.capo !== null && song.capo !== undefined && song.capo !== "";
-    const sourceCapoValue = Number(song.capo);
-    const sourceCapo = hasDeclaredCapo && Number.isFinite(sourceCapoValue)
-      ? Math.max(0, Math.round(sourceCapoValue))
-      : detectCapo(sourceSheet);
+    const sourceCapo = resolveCapo(sourceSheet, song.capo);
     const targetCapo = Number.isFinite(Number(capture.setup.capo)) ? Math.max(0, Math.round(Number(capture.setup.capo))) : sourceCapo;
     let pageSheet = sourceSheet;
     let pageRetab = null;
-    if (sourceTuning.id !== targetTuning.id || sourceCapo !== targetCapo) {
-      const changed = swapTabBlocks(sourceSheet, {
-        from: { tuning: sourceTuning.id, capo: sourceCapo },
-        to: { tuning: targetTuning.id, capo: targetCapo },
+    const shift = Number(capture.setup.transpose) || 0;
+    {
+      const changed = retabForSetup(sourceSheet, {
+        from: { tuning: song.tuningRaw || song.tuning, capo: sourceCapo },
+        to: { tuning: targetTuning.id, capo: targetCapo }, transpose: shift,
       });
       if (changed) {
         pageSheet = changed.text;
         pageRetab = { ...changed, tag: `re-fretted for ${targetTuning.name}${targetCapo ? ` · capo ${targetCapo}` : ""}` };
       }
     }
-    const shift = Number(capture.setup.transpose) || 0;
-    const progression = parseSheet(pageSheet).progression.map((chord) => transposeChord(chord, shift));
+    const sourceProgression = parseSheet(sourceSheet).progression;
+    const pageReadingShift = chartShiftForGuitar({ transpose: shift, sourceCapo, capo: targetCapo, tuning: targetTuning.id })
+      ?? (shift + sourceCapo - targetCapo);
+    const progression = sourceProgression.map((chord) => transposeChord(chord, pageReadingShift));
+    const soundingProgression = sourceProgression.map((chord) => transposeChord(chord, shift + sourceCapo));
     const pageKey = detectKey(progression);
     const outline = chartOutline(pageSheet);
     const page = buildPerformPage({
@@ -546,6 +612,8 @@ export default function App() {
       sheet: pageSheet,
       outline,
       progression,
+      soundingProgression,
+      readingShift: pageReadingShift,
       anchors: progressionAnchors(outline),
       activeKey: pageKey,
       keyName: `${spellPc(pageKey.tonic, pageKey)} ${pageKey.mode}`,
@@ -603,10 +671,14 @@ export default function App() {
     if (soundOn) audio.play(midis, dur);
   }, [soundOn, audio]);
 
-  const ensureAndPlay = useCallback(async (midis, dur) => { await audio.init(); playVoiced(midis, dur); }, [audio, playVoiced]);
+  const ensureAndPlay = useCallback(async (midis, dur) => {
+    const request = stageRequestRef.current;
+    try { await audio.init(); } catch { return; }
+    if (request === stageRequestRef.current) playVoiced(midis, dur);
+  }, [audio, playVoiced]);
 
   // While the Arranger drives the lights, the pad walker keeps quiet.
-  const arrangingRef = useRef(false);
+
   useEffect(() => {
     if (armedRef.current && !arrangingRef.current) ensureAndPlay(audioVoicingRef.current[currentIdx]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -619,31 +691,22 @@ export default function App() {
     [chartSpelling]
   );
 
-  const arrangementRef = useRef(null);
-  // One stage, one act: whoever starts timed playback displaces whoever held
-  // it. The displaced owner's `onCancel` fires so its UI resets (an Arranger
-  // stuck on "Stop", a tap run that will never score) instead of going stale.
-  const stopArrangement = useCallback(() => {
-    const prev = arrangementRef.current;
-    arrangementRef.current = null;
-    arrangingRef.current = false;
-    if (prev) { prev.stop(); prev.onCancel?.(); }
-  }, []);
   const startArrangement = useCallback(async (payload, opts = {}) => {
     armedRef.current = true;
-    await audio.init();
-    setIsPlaying(false);
     stopArrangement();
+    setIsPlaying(false);
+    const request = stageRequestRef.current;
+    try { await audio.init(); } catch { opts.onCancel?.(); return { stop() {} }; }
+    if (request !== stageRequestRef.current || opts.signal?.aborted) { opts.onCancel?.(); return { stop() {} }; }
     arrangingRef.current = true;
     let wrapped;
     const h = audio.playEvents(payload, {
       ...opts,
       onDone: () => {
-        arrangingRef.current = false;
         // A finished run vacates the stage — otherwise the next surface to
         // start would fire this owner's onCancel and wipe its finished UI
         // (a Meter Feel score, for one).
-        if (arrangementRef.current === wrapped) arrangementRef.current = null;
+        if (arrangementRef.current === wrapped) { arrangementRef.current = null; arrangingRef.current = false; }
         opts.onDone?.();
       },
     });
@@ -654,9 +717,8 @@ export default function App() {
       onCancel: opts.onCancel,
       stop: () => {
         h.stop();
-        arrangingRef.current = false;
         // A self-stop is not a takeover — clear the slot without onCancel.
-        if (arrangementRef.current === wrapped) arrangementRef.current = null;
+        if (arrangementRef.current === wrapped) { arrangementRef.current = null; arrangingRef.current = false; }
       },
     };
     arrangementRef.current = wrapped;
@@ -664,8 +726,15 @@ export default function App() {
   }, [audio, stopArrangement]);
 
   useEffect(() => {
-    const el = stripRef.current?.querySelector('[data-active="true"]');
-    if (el) el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    // NumbersRail marks the playhead with aria-current, not a data
+    // attribute — the old selector matched nothing, so a long rail never
+    // followed the playhead at all.
+    const el = stripRef.current?.querySelector('[aria-current="true"]');
+    if (!el) return;
+    // A JS smooth scroll ignores the stylesheet's reduced-motion override,
+    // so the preference has to be read here.
+    const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", inline: "center", block: "nearest" });
   }, [currentIdx]);
 
   useEffect(() => {
@@ -705,16 +774,24 @@ export default function App() {
   }, []);
 
   /* ---------- handlers ---------- */
-  const arm = () => { armedRef.current = true; audio.init(); };
-  const selectIdx = (i) => { arm(); setIsPlaying(false); setCurrentIdx(i); };
+  const arm = () => { armedRef.current = true; audio.init().catch(() => {}); };
+  const selectIdx = (i) => { arm(); stopArrangement(); setIsPlaying(false); if (i === currentIdx) ensureAndPlay(audioVoicingRef.current[i]); else setCurrentIdx(i); };
   const selectUnique = (ch, progList = view.prog) => {
-    arm(); setIsPlaying(false);
+    arm(); stopArrangement(); setIsPlaying(false);
     // Match by SOUND, not by symbol string — respelling (A# vs B♭) must not break it.
     const i = progList.findIndex((c) => sameChordSound(c, ch));
-    if (i >= 0) setCurrentIdx(i); else ensureAndPlay(rootPositionFull(ch));
+    if (i >= 0) { if (i === currentIdx) ensureAndPlay(audioVoicingRef.current[i]); else setCurrentIdx(i); } else ensureAndPlay(rootPositionFull(ch));
   };
   const step = (d) => { arm(); setIsPlaying(false); setCurrentIdx((i) => Math.max(0, Math.min(view.prog.length - 1, i + d))); };
-  const togglePlay = () => { arm(); stopArrangement(); if (!isPlaying && currentIdx >= view.prog.length - 1) setCurrentIdx(0); setIsPlaying((p) => !p); };
+  const togglePlay = () => {
+    arm(); stopArrangement();
+    if (!isPlaying) {
+      const next = currentIdx >= view.prog.length - 1 ? 0 : currentIdx;
+      if (next !== currentIdx) setCurrentIdx(next);
+      else ensureAndPlay(audioVoicingRef.current[next]);
+    }
+    setIsPlaying((p) => !p);
+  };
   const playSingleKey = (midi) => { arm(); ensureAndPlay([midi], 1.0); setFlash(new Set([midi])); setTimeout(() => setFlash(new Set()), 260); };
 
   // A chord clicked (or heard from the hover card) in the chart: land the
@@ -738,14 +815,16 @@ export default function App() {
   // through whatever instrument is loaded. 58ms per string ≈ a relaxed strum.
   const strumNotes = useCallback((midis) => {
     arm();
-    midis.forEach((m, i) => setTimeout(() => ensureAndPlay([m], 1.9 - i * 0.08), i * 58));
+    const request = stageRequestRef.current;
+    midis.forEach((m, i) => setTimeout(() => { if (request === stageRequestRef.current) ensureAndPlay([m], 1.9 - i * 0.08); }, i * 58));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ensureAndPlay]);
 
   const auditionChords = useCallback((chords) => {
     arm();
     const seq = Array.isArray(chords) ? chords : [chords];
-    seq.forEach((ch, i) => { const midis = rootPositionFull(ch); setTimeout(() => ensureAndPlay(midis, seq.length > 1 ? 0.7 : 1.2), i * 360); });
+    const request = stageRequestRef.current;
+    seq.forEach((ch, i) => { const midis = rootPositionFull(ch); setTimeout(() => { if (request === stageRequestRef.current) ensureAndPlay(midis, seq.length > 1 ? 0.7 : 1.2); }, i * 360); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ensureAndPlay]);
 
@@ -779,15 +858,23 @@ export default function App() {
 
   const readFile = (file) => {
     if (!file) return;
+    songLoaderRef.current?.invalidate();
+    const request = ++fileRequestRef.current;
     const r = new FileReader();
-    r.onload = (e) => { setLoaded(null); setSheet(String(e.target.result || "")); setCurrentIdx(0); setIsPlaying(false); setTranspose(0); setKeyOverride(null); };
+    r.onload = (e) => {
+      if (request !== fileRequestRef.current) return;
+      setLoaded(null); loadSheet(String(e.target.result || ""));
+    };
     r.readAsText(file);
   };
   const onDrop = (e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer?.files?.[0]; if (f) readFile(f); };
 
   const runAI = async () => {
+    const request = ++analysisRequestRef.current;
     setAi((s) => ({ ...s, open: true, loading: true, error: null, data: null, raw: null }));
-    const res = await analyzeSheet(sheet);
+    let res;
+    try { res = await analyzeSheet(sheet); } catch { res = { ok: false, error: "Could not read the harmony. Try again." }; }
+    if (request !== analysisRequestRef.current) return;
     if (res.ok) setAi((s) => ({ ...s, loading: false, data: res.data }));
     else setAi((s) => ({ ...s, loading: false, error: res.error }));
   };
@@ -908,13 +995,20 @@ export default function App() {
     </Readout>
   );
 
+  const shiftSong = (delta) => {
+    const next = Math.max(-11, Math.min(11, transpose + delta));
+    const applied = next - transpose;
+    if (!applied) return;
+    if (keyOverride) setKeyOverride({ ...keyOverride, tonic: ((keyOverride.tonic + applied) % 12 + 12) % 12 });
+    setTranspose(next);
+  };
   const transposeCtl = (
     <div style={{ border: `1.5px solid ${C.lineStrong}`, borderRadius: 999, padding: "6px 8px 6px 16px", display: "inline-flex", alignItems: "center", gap: 10 }}
       title="Moves the song's concert pitch. To compensate for a down-tuned guitar without moving the song, use Guitar setup below.">
       <span className="kl-eyebrow">Transpose</span>
-      <button onClick={() => setTranspose((t) => Math.max(-11, t - 1))} style={miniBtn} aria-label="Transpose down"><Minus size={14} /></button>
+      <button onClick={() => shiftSong(-1)} style={miniBtn} aria-label="Transpose down"><Minus size={14} /></button>
       <span style={{ fontFamily: MONO, fontSize: 13, minWidth: 30, textAlign: "center", color: transpose ? C.rootText : C.muted }}>{transpose > 0 ? "+" : ""}{transpose}</span>
-      <button onClick={() => setTranspose((t) => Math.min(11, t + 1))} style={miniBtn} aria-label="Transpose up"><Plus size={14} /></button>
+      <button onClick={() => shiftSong(1)} style={miniBtn} aria-label="Transpose up"><Plus size={14} /></button>
     </div>
   );
 
@@ -938,12 +1032,12 @@ export default function App() {
     </div>
   );
 
-  // Tab → piano is tuning-, capo- and key-aware: the loaded song's metadata
-  // feeds the parser, and transpose moves the lit keys with the rest of the app.
-  // (The parser applies capo to fret numbers itself, so shift stays user-only.)
+  // Play the visible frets, including any explicitly reported octave rescue.
+  // A re-fretted tab already includes transpose; apply it only to the source.
   const tabKeysPanel = (
-    <TabKeys sheet={sheet} tuning={loaded?.tuning} tuningRaw={loaded?.tuningRaw}
-      capo={capoShift} shift={transpose}
+    <TabKeys sheet={displaySheet} tuning={currentRetab ? guitarTuning : loaded?.tuning}
+      tuningRaw={currentRetab ? currentRetab.dst.spelling : loaded?.tuningRaw}
+      capo={currentRetab ? effectiveCapo : capoShift} shift={currentRetab ? 0 : transpose}
       onPlay={(midis) => { arm(); ensureAndPlay(midis, 1.2); }}
       onHear={startArrangement} />
   );
@@ -955,8 +1049,8 @@ export default function App() {
   const guitarLens = useMemo(() => ({
     shapeTuning: uniformTuningOffset(guitarTuning) != null
       ? STANDARD_TUNING
-      : (TUNINGS[guitarTuning] || TUNINGS.standard).notes,
-    strumTuning: (TUNINGS[guitarTuning] || TUNINGS.standard).notes,
+      : getTuning(guitarTuning).notes,
+    strumTuning: getTuning(guitarTuning).notes,
     strumCapo: effectiveCapo,
     onStrum: strumNotes,
   }), [guitarTuning, effectiveCapo, strumNotes]);
@@ -972,7 +1066,6 @@ export default function App() {
       </div>
     </section>
   );
-  const numbersRailPanel = makeNumbersRail(view, activeKey, transpose, keyName, "the numbers stay · the key moves");
   const songNumbersRailPanel = makeNumbersRail(readingView, readingKey, readingShift, shapeKeyName, "the numbers stay · shapes follow your setup");
 
   const aiPanel = ai.open && (
@@ -1124,6 +1217,8 @@ export default function App() {
 
       {/* ---- THE ROOM ---- */}
       <main className="kl-main">
+        {songLoadNote && <div role="alert" className="kl-content">{songLoadNote}</div>}
+        {recoveryNote && <div role="alert" className="kl-content">{recoveryNote}</div>}
         {storageNote && (
           <div role="alert" className="kl-content" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", color: C.rootText }}>
             <span style={{ fontSize: 13 }}>{storageNote}</span>
@@ -1135,6 +1230,8 @@ export default function App() {
           <RoomBoundary key={section}>
           {section === "library" && (
             <LibraryRoom onOpen={openSong}
+              onSetlist={(setlist) => { setActiveSetlistId(setlist.id); setSection("setlists"); }}
+              onPerform={(setlist) => { setActiveSetlistId(setlist.id); startPerformSet(setlist, null, { transpose: 0 }); }}
               quote={roomQuote("library")}
               potd={potd}
               arm={arm}
@@ -1256,7 +1353,7 @@ export default function App() {
           {section === "setlists" && (
             <div className="kl-section">
               <QuoteLine quote={roomQuote("setlists")} size={18} style={{ marginBottom: 16 }} />
-              <BenchBook onOpen={openSong}
+              <BenchBook onOpen={openSong} initialSetlistId={activeSetlistId}
                 onPerformSet={(setlist) => startPerformSet(setlist)}
                 onRunFrom={(setlist, entryId) => startPerformSet(setlist, entryId)} />
             </div>
@@ -1266,7 +1363,7 @@ export default function App() {
             <Suspense fallback={<div className="kl-skeleton" style={{ height: 260, borderRadius: 12, marginTop: 18 }} />}>
               <VoiceRoom loadedTitle={loaded?.title || (sheet.trim() ? "your chart" : null)}
                 onPlay={(midis, dur) => { arm(); ensureAndPlay(midis, dur); }}
-                onTranspose={(d) => { arm(); setTranspose((t) => Math.max(-11, Math.min(11, t + d))); }} />
+                onTranspose={(d) => { arm(); shiftSong(d); }} />
             </Suspense>
           )}
 

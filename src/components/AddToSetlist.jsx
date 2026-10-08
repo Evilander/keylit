@@ -17,6 +17,11 @@ export default function AddToSetlist({ song, onOpenSetlists }) {
 
   const songKey = slugSongKey(song.artist, song.title);
 
+  // The confirmation is about ONE add. The button stays mounted when the
+  // Song room loads a different song, so without this it kept claiming the
+  // new song had been added to a list it was never on.
+  useEffect(() => { setFlash(null); }, [songKey]);
+
   useEffect(() => {
     if (!open) return;
     const away = (e) => { if (!wrapRef.current?.contains(e.target)) setOpen(false); };

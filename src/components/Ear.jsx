@@ -2,7 +2,7 @@
 // DSP brain is lib/ear.js (pure, tested); this file is decode + progress +
 // the confidence timeline. HARD PROMISE: the audio is decoded and analyzed
 // in this tab and never leaves the machine — there is no upload path here.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Disc3, FileAudio, RotateCcw, ScrollText, X } from "lucide-react";
 import { frameChroma, finishDetection, summarizeSegments } from "../lib/ear.js";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
@@ -20,21 +20,26 @@ export default function Ear({ onLoadSheet, onClose }) {
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);   // { segments, key, sheet, symbolFor }
   const [dragOver, setDragOver] = useState(false);
-  const cancelRef = useRef(false);
+  const generationRef = useRef(0);
+  useEffect(() => () => { generationRef.current++; }, []);
 
   const analyze = async (file) => {
     if (!file) return;
-    cancelRef.current = false;
+    const generation = ++generationRef.current;
+    const current = () => generation === generationRef.current;
     setFileName(file.name.replace(/\.[a-z0-9]+$/i, ""));
     setError(null);
     setResult(null);
+    setProgress(0);
     setPhase("decoding");
+    let ac;
     try {
       const buf = await file.arrayBuffer();
+      if (!current()) return;
       const AC = window.AudioContext || window.webkitAudioContext;
-      const ac = new AC();
+      ac = new AC();
       const decoded = await ac.decodeAudioData(buf);
-      ac.close?.();
+      if (!current()) return;
       if (decoded.duration > 15 * 60) throw new Error("That's a long record — try something under 15 minutes.");
       const oac = new OfflineAudioContext(1, Math.ceil(decoded.duration * TARGET_SR), TARGET_SR);
       const src = oac.createBufferSource();
@@ -42,24 +47,29 @@ export default function Ear({ onLoadSheet, onClose }) {
       src.connect(oac.destination);
       src.start();
       const mono = (await oac.startRendering()).getChannelData(0);
+      if (!current()) return;
 
       setPhase("listening");
       const count = Math.max(0, Math.floor((mono.length - SIZE) / HOP) + 1);
       if (count < 4) throw new Error("Too short to hear a progression in.");
       const frames = [];
       for (let i = 0; i < count; i++) {
-        if (cancelRef.current) return;
+        if (!current()) return;
         frames.push(frameChroma(mono, i * HOP, SIZE, TARGET_SR));
         if (i % 24 === 0) {
           setProgress(i / count);
           await new Promise((r) => setTimeout(r, 0));   // keep the bench responsive
         }
       }
+      if (!current()) return;
       setResult(finishDetection(frames, HOP / TARGET_SR));
       setPhase("done");
     } catch (e) {
+      if (!current()) return;
       setError(e?.message || "Couldn't decode that file — is it audio?");
       setPhase("error");
+    } finally {
+      try { await ac?.close?.(); } catch { /* context already closed */ }
     }
   };
 
@@ -82,12 +92,12 @@ export default function Ear({ onLoadSheet, onClose }) {
     <div className="faceplate kl-rise" style={{ margin: "14px 0 18px", padding: 18 }}>
       <div className="flex items-center justify-between" style={{ marginBottom: 10 }}>
         <span className="kl-eyebrow">Hear a record · audio → chords</span>
-        <button onClick={onClose} aria-label="close"
+        <button onClick={() => { generationRef.current++; onClose?.(); }} aria-label="close"
           style={{ background: "transparent", border: 0, color: C.faint, cursor: "pointer" }}><X size={16} /></button>
       </div>
 
       {(phase === "idle" || phase === "error") && (
-        <label
+        <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={(e) => { e.preventDefault(); setDragOver(false); analyze(e.dataTransfer?.files?.[0]); }}
@@ -102,9 +112,13 @@ export default function Ear({ onLoadSheet, onClose }) {
             Keylit listens for the harmony and writes the chart. Solo guitar and piano come out cleanest; dense mixes get rougher.
           </span>
           {error && <span style={{ color: C.bassText, fontSize: 13 }}>{error}</span>}
-          <input type="file" accept="audio/*" style={{ display: "none" }}
-            onChange={(e) => analyze(e.target.files?.[0])} />
-        </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: "100%", color: C.ink }}>
+            Choose an audio file
+            <input type="file" accept="audio/*" aria-label="Choose an audio file"
+              style={{ maxWidth: "100%" }}
+              onChange={(e) => analyze(e.target.files?.[0])} />
+          </label>
+        </div>
       )}
 
       {(phase === "decoding" || phase === "listening") && (
@@ -116,7 +130,7 @@ export default function Ear({ onLoadSheet, onClose }) {
           <div style={{ maxWidth: 320, height: 5, borderRadius: 3, background: C.panel2, margin: "14px auto 0", overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${phase === "decoding" ? 6 : Math.round(progress * 100)}%`, background: C.tone, borderRadius: 3, transition: "width 200ms ease" }} />
           </div>
-          <button className="bench-btn" style={{ marginTop: 16 }} onClick={() => { cancelRef.current = true; setPhase("idle"); }}>cancel</button>
+          <button className="bench-btn" style={{ marginTop: 16 }} onClick={() => { generationRef.current++; setPhase("idle"); }}>cancel</button>
         </div>
       )}
 
@@ -148,8 +162,8 @@ export default function Ear({ onLoadSheet, onClose }) {
             })}
           </div>
           <p style={{ fontSize: 11.5, color: C.faint, marginTop: 8 }}>
-            <b style={{ color: C.toneText }}>teal</b> = confident · <b style={{ color: C.rootText }}>amber</b> = probable ·
-            <b style={{ color: C.bassText }}> coral</b> = squint — tap any chord to try its next-best reading.
+            <b style={{ color: C.toneText }}>teal</b> = confident · <b style={{ color: C.rootText }}>tangerine</b> = probable ·
+            <b style={{ color: C.bassText }}> gold</b> = uncertain — tap any chord to try its next-best reading.
           </p>
 
           <div className="flex items-center" style={{ gap: 10, marginTop: 14, flexWrap: "wrap" }}>

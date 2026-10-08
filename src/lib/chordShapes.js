@@ -167,8 +167,12 @@ export function chordShapes(chord, { tuning = STANDARD_TUNING, limit = 6, maxFre
   if (!chord || !Array.isArray(chord.intervals)) return [];
   const rootPc = pcOf(chord.rootSemitone);
   const bassPc = chord.bassSemitone != null ? pcOf(chord.bassSemitone) : rootPc;
-  const key = `${rootPc}|${chord.intervals.join(".")}|${bassPc}|${tuning.join(",")}|${maxFret}`;
+  const key = `${rootPc}|${chord.intervals.join(".")}|${chord.bassSemitone == null ? "implicit" : "explicit"}|${bassPc}|${tuning.join(",")}|${maxFret}`;
   let ranked = cache.get(key);
+  if (ranked) {
+    cache.delete(key);
+    cache.set(key, ranked); // Refresh recency without discarding other warm entries.
+  }
 
   if (!ranked) {
     const chordPcsAll = new Set(chord.intervals.map((i) => pcOf(chord.rootSemitone + i)));
@@ -278,7 +282,7 @@ export function chordShapes(chord, { tuning = STANDARD_TUNING, limit = 6, maxFre
       (a, b) => b.score - a.score || a.baseFret - b.baseFret ||
         shapeFingerString(a).localeCompare(shapeFingerString(b))
     );
-    if (cache.size >= CACHE_MAX) cache.clear();
+    if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
     cache.set(key, ranked);
   }
 

@@ -9,9 +9,31 @@
 // and it hates leaping. Honesty is structural: a pitch that can't exist in
 // the target tuning gets octave-rescued and FLAGGED, or dropped and FLAGGED
 // — never silently wrong (a wrong note is worse than a missing feature).
-import { getTuning, tuningSpelling } from "./tuning.js";
+import { canonicalTuning, detectDeclaredTuning, getTuning, tuningSpelling } from "./tuning.js";
 import { parseTab, parseTabBlock, findTabBlocks, unwrapTab } from "./tab.js";
-import { detectCapo } from "./theory.js";
+import { chordSymbol, detectCapo, resolveCapo, transposeChord } from "./theory.js";
+import { chartOutline } from "./chartlines.js";
+
+export function retabForSetup(text, { from = {}, to = {}, transpose = 0 } = {}) {
+  const sourceTuning = from.tuning || detectDeclaredTuning(text) || "standard";
+  const dst = canonicalTuning(to.tuning || "standard");
+  const srcCapo = resolveCapo(text, from.capo);
+  const dstCapo = resolveCapo("", to.capo);
+  const parsed = parseTab(text, { defaultTuning: sourceTuning, capo: srcCapo });
+  const src = parsed.tuning;
+  if (!transpose && srcCapo === dstCapo && parsed.blocks.every((block) =>
+    block.tuning.notes.length === dst.notes.length && block.tuning.notes.every((note, i) => note === dst.notes[i])
+  )) return null;
+  const result = swapTabBlocks(text, { from: { tuning: sourceTuning, capo: srcCapo }, to: { tuning: dst.id, capo: dstCapo }, transpose });
+  if (!result) return null;
+  // Saved chord symbols name pitches before the capo, just like source
+  // charts. The UI's familiar-shape lens is applied when the song is opened.
+  const chordShift = transpose + srcCapo - dstCapo;
+  const exportText = chartOutline(result.text).map((line) => line.kind === "chords"
+    ? line.tokens.map((token) => token.parsed ? chordSymbol(transposeChord(token.parsed, chordShift)) : token.text).join("")
+    : line.line).join("\n");
+  return { ...result, exportText, src, dst, srcCapo, dstCapo, transpose };
+}
 
 const SPAN = 4;      // frets a normal hand covers (excluding opens)
 const BEAM = 8;
@@ -112,7 +134,7 @@ function playableSubset(notes, opens, capo, maxFret) {
  * notes { midi, string, fret, tech, octaveShifted? } plus dropped[] pitches,
  * and summary counts every compromise out loud.
  */
-export function assignColumns(columns, { tuningId, capo = 0, maxFret = 22 } = {}) {
+export function assignColumns(columns, { tuningId, capo = 0, maxFret = 22, transpose = 0 } = {}) {
   const tuning = getTuning(tuningId);
   const opens = tuning.notes;
   const summary = { shifted: 0, dropped: 0, columns: columns.length };
@@ -121,7 +143,7 @@ export function assignColumns(columns, { tuningId, capo = 0, maxFret = 22 } = {}
   const prepared = columns.map((c) => {
     const ok = [];
     const dropped = [];
-    for (const n of [...c.notes].sort((a, b) => a.midi - b.midi)) {
+    for (const n of c.notes.map((note) => ({ ...note, midi: note.midi + transpose })).sort((a, b) => a.midi - b.midi)) {
       if (spotsFor(n.midi, opens, capo, maxFret).length) { ok.push({ ...n }); continue; }
       const up = n.midi + 12, down = n.midi - 12;
       if (n.midi < opens[0] + capo && spotsFor(up, opens, capo, maxFret).length) {
@@ -214,25 +236,25 @@ export function renderAscii({ columns, tuning, capo }, { perSystem = 20 } = {}) 
   const systems = [];
   for (let start = 0; start < columns.length; start += perSystem) {
     const chunk = columns.slice(start, start + perSystem);
-    // Floor of 2 keeps even a one-column block wide enough that its lines
-    // still READ as tab (isTabLine wants ≥3 dashes) — a 1-dash `E|-3-|`
-    // silently stopped being a tab block on re-parse. A single column whose
-    // cell is FULL (`E|-10-|`, `D|-6B-|`) still only carries two dashes, so
-    // one-column chunks pad one extra.
-    // ACTUAL cell length — tech can be two chars ("~~", marks both sides of
-    // the fret); undercounting let cells overflow cellW and misalign columns.
+    // Technique marks can occupy more than one character; leave enough
+    // room for the whole cell and at least three grid dashes on every row.
     const maxCell = Math.max(1, ...chunk.map((cc) => cc.notes.reduce((w, n) => Math.max(w, String(n.fret).length + (n.tech || "").length), 1)));
-    const cellW = Math.max(2, maxCell + (chunk.length < 2 ? 1 : 0));
+    // Scale the original column gaps uniformly so wider fret numbers fit
+    // without turning long holds into eighth notes when the tab is replayed.
+    const gaps = chunk.slice(1).map((c, i) => c.col - chunk[i].col).filter((gap) => gap > 0);
+    const scale = Math.ceil((maxCell + 3) / (gaps.length ? Math.min(...gaps) : 1));
+    const positions = chunk.map((c) => 1 + (c.col - chunk[0].col) * scale);
+    const bodyWidth = positions[positions.length - 1] + maxCell + 3;
     const rows = [];
     for (let row = 0; row < nStrings; row++) {
       const stringLowIdx = nStrings - 1 - row; // top row = highest string
-      let line = `${labels[stringLowIdx].padEnd(width)}|`;
-      for (const c of chunk) {
+      const body = Array(bodyWidth).fill("-");
+      for (const [i, c] of chunk.entries()) {
         const hit = c.notes.find((n) => n.string === stringLowIdx);
         const cell = hit ? `${hit.fret}${hit.tech || ""}` : "";
-        line += `-${cell.padEnd(cellW, "-")}-`;
+        for (let j = 0; j < cell.length; j++) body[positions[i] + j] = cell[j];
       }
-      rows.push(`${line}|`);
+      rows.push(`${labels[stringLowIdx].padEnd(width)}|${body.join("")}|`);
     }
     systems.push(rows.join("\n"));
   }
@@ -244,7 +266,7 @@ export function renderAscii({ columns, tuning, capo }, { perSystem = 20 } = {}) 
  * The whole move: tab text in its source tuning/capo → new text in the
  * target. Returns { text, summary } or null when the input has no tab.
  */
-export function retabText(text, { from = {}, to } = {}) {
+export function retabText(text, { from = {}, to, transpose = 0 } = {}) {
   // from.tuning is the SONG's declared tuning — a default, not an override:
   // the tuning-resolution law says in-block string labels beat declared meta.
   const parsed = parseTab(text, { defaultTuning: from.tuning, capo: from.capo });
@@ -253,7 +275,7 @@ export function retabText(text, { from = {}, to } = {}) {
   const summary = { shifted: 0, dropped: 0, blocks: 0 };
   for (const block of parsed.blocks) {
     if (!block.events.length) continue; // pure-dash block: no pitches to move
-    const assigned = assignColumns(block.events, { tuningId: to.tuning, capo: to.capo || 0 });
+    const assigned = assignColumns(block.events, { tuningId: to.tuning, capo: to.capo || 0, transpose });
     summary.blocks++;
     summary.shifted += assigned.summary.shifted;
     summary.dropped += assigned.summary.dropped;
@@ -296,7 +318,7 @@ export function restampCapo(text, capo) {
  * The result is written FOR the target tuning — a copy saved from it must
  * declare that tuning or every player downstream will misread the frets.
  */
-export function swapTabBlocks(text, { from = {}, to } = {}) {
+export function swapTabBlocks(text, { from = {}, to, transpose = 0 } = {}) {
   // Work in UNWRAPPED space throughout. findTabBlocks/parseTab already unwrap
   // scraper-hard-wrapped lines, so their block lines never matched the RAW
   // text's lines — the old exact-match splice silently no-opped on wrapped
@@ -316,7 +338,7 @@ export function swapTabBlocks(text, { from = {}, to } = {}) {
     // (the tuning-resolution law), so pass it as the default, not a lock.
     const block = parseTabBlock(b.lines, { defaultTuning: from.tuning, capo: from.capo });
     if (!block.events.length) continue; // pure-dash block: nothing to move, leave it
-    const assigned = assignColumns(block.events, { tuningId: to.tuning, capo: to.capo || 0 });
+    const assigned = assignColumns(block.events, { tuningId: to.tuning, capo: to.capo || 0, transpose });
     summary.blocks++;
     summary.shifted += assigned.summary.shifted;
     summary.dropped += assigned.summary.dropped;
@@ -324,5 +346,10 @@ export function swapTabBlocks(text, { from = {}, to } = {}) {
     out.splice(b.startLine, b.lines.length, ...rendered);
   }
   if (!summary.blocks) return null; // only pitch-less blocks: an honest "nothing to re-fret"
-  return { text: restampCapo(out.join("\n"), to.capo || 0), summary };
+  const target = getTuning(to.tuning);
+  const stamped = restampCapo(out.join("\n"), to.capo || 0).split("\n");
+  const header = stamped.findIndex((line, i) => i < 40 && /^\s*tuning\s*[:=]/i.test(line));
+  if (header >= 0) stamped[header] = `Tuning: ${target.spelling}`;
+  else stamped.unshift(`Tuning: ${target.spelling}`);
+  return { text: stamped.join("\n"), summary };
 }

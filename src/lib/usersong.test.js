@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { buildUserSong } from "./usersong.js";
+import { resolveCapo } from "./theory.js";
+
+it("persists an explicit no-capo override over stale prose", () => {
+  const { song } = buildUserSong({ artist: "Test", title: "Test", body: "Capo 3\nC G", capo: "0" });
+  expect(song.capo).toBe(0);
+  expect(resolveCapo(song.body, song.capo)).toBe(0);
+});
+
+it("falls back to a capo declaration only when metadata is absent or invalid", () => {
+  for (const declared of [null, undefined, "", "invalid", -1]) expect(resolveCapo("Capo 3\nC G", declared)).toBe(3);
+});
 
 const NOW = 1780444800000; // fixed date for determinism
 
@@ -7,7 +18,7 @@ describe("buildUserSong — the Add-a-song record builder", () => {
   it("builds a corpus-shaped record with a stable id", () => {
     const { song, row } = buildUserSong(
       { artist: "Buck Meek", title: "Candle", body: "[Verse]\nG   C   G   D\nla la la" }, NOW);
-    expect(song.id).toBe("user--buck-meek--candle");
+    expect(song.id).toBe("user--u~42-75-63-6b-20-4d-65-65-6b--u~43-61-6e-64-6c-65");
     expect(song.source).toBe("user");
     expect(song.format).toBe("chords");
     expect(row.tuningId).toBe("standard");
@@ -38,11 +49,26 @@ describe("buildUserSong — the Add-a-song record builder", () => {
     expect(buildUserSong({ artist: "A", title: "B", body: "Capo 5th fret\nC G" }, NOW).song.capo).toBe(5);
     expect(buildUserSong({ artist: "A", title: "B", body: "C G" }, NOW).song.capo).toBeNull();
     // explicit ZERO wins over stale body prose — the re-fret keep path
-    expect(buildUserSong({ artist: "A", title: "B", body: "Capo 5th fret\nC G", capo: "0" }, NOW).song.capo).toBeNull();
+    expect(buildUserSong({ artist: "A", title: "B", body: "Capo 5th fret\nC G", capo: "0" }, NOW).song.capo).toBe(0);
   });
 
   it("marks tab format when the body carries a real tab", () => {
     const tab = ["e|--0--|", "B|--1--|", "G|--0--|", "D|--2--|", "A|--3--|", "E|-----|"].join("\n");
     expect(buildUserSong({ artist: "A", title: "B", body: tab }, NOW).song.format).toBe("tab");
   });
+});
+
+it("keeps distinct Unicode and symbol names and stable same-name edit identities", () => {
+  const names = ["東京", "北京", "Москва", "Київ", "🎵", "🎹", "か", "が", "क", "कि", "u-1f3b5"];
+  const ids = names.map((title) => buildUserSong({ artist: "作者", title, body: "C" }).song.id);
+  expect(new Set(ids).size).toBe(names.length);
+  names.forEach((title, i) => expect(buildUserSong({ artist: "作者", title, body: "G" }).song.id).toBe(ids[i]));
+});
+
+it("keeps punctuation, case, whitespace and Unicode normalization differences distinct", () => {
+  const names = ["Song", "Song!", "song", "A B", "A-B", "A  B", "A\tB", "A\nB", "é", "e\u0301", "u~53-6f-6e-67"];
+  for (const field of ["artist", "title"]) {
+    const ids = names.map((value) => buildUserSong({ artist: "Artist", title: "Title", body: "C", [field]: value }).song.id);
+    expect(new Set(ids).size).toBe(names.length);
+  }
 });

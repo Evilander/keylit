@@ -103,7 +103,7 @@ export default function ChordBook({ tuningId = "standard", spelling = "sharps", 
             <input value={query} onChange={(e) => { setQuery(e.target.value); setLookupNote(null); }}
               placeholder="look up… F#m7" aria-label="look up a chord by name" spellCheck={false}
               style={{ width: 120, fontFamily: MONO, fontSize: 12.5, color: C.ink, background: C.panel2,
-                border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 9px", outline: "none" }} />
+                border: `1px solid ${C.line}`, borderRadius: 8, padding: "5px 9px" }} />
             <button type="submit" className="bench-btn" style={{ padding: "5px 9px" }} aria-label="look it up">
               <Search size={13} />
             </button>

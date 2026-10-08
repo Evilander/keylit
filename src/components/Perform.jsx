@@ -162,7 +162,7 @@ function SinglePerform({
   };
 
   const onKeys = (e) => {
-    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    if (e.defaultPrevented || e.target.closest?.("button, input, select, textarea, [role=button], [contenteditable=true]")) return;
     if (e.key === " ") {
       e.preventDefault();
       if (mode === "roll") setRolling((r) => !r);
@@ -348,6 +348,15 @@ function PerformSet({ run, onRequestPage, onSetupChange, onExitSet, onPickSong, 
     if (!rolling || mode !== "roll") return undefined;
     const stage = stageRef.current;
     if (!stage) return undefined;
+    if (reduced) {
+      const lineHeight = 35; // PerformSongPage: 20px type at 1.75 line height.
+      const stepMs = Math.max(250, lineHeight / Math.max(4, prefs.speed || 36) * 1000);
+      const timer = setInterval(() => {
+        stage.scrollTop += lineHeight;
+        if (stage.scrollTop + stage.clientHeight >= stage.scrollHeight - 2) setRolling(false);
+      }, stepMs);
+      return () => clearInterval(timer);
+    }
     let frame = 0, previous = performance.now(), carry = 0;
     const tick = (now) => {
       const elapsed = Math.min(100, now - previous); previous = now;
@@ -358,7 +367,7 @@ function PerformSet({ run, onRequestPage, onSetupChange, onExitSet, onPickSong, 
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [rolling, mode, prefs.speed]);
+  }, [rolling, mode, prefs.speed, reduced]);
 
   useEffect(() => {
     if (mode !== "walk" || !walk.playing) return undefined;
@@ -368,7 +377,7 @@ function PerformSet({ run, onRequestPage, onSetupChange, onExitSet, onPickSong, 
     const timer = setTimeout(() => {
       if (walk.chordIndex < progression.length - 1) {
         const next = walk.chordIndex + 1;
-        onPlayPageChord?.({ pageKey: slot.page.key, chordIndex: next, chord: progression[next] });
+        onPlayPageChord?.({ pageKey: slot.page.key, chordIndex: next, chord: slot.page.soundingProgression?.[next] || progression[next] });
         flushSync(() => setWalk((current) => ({ ...current, chordIndex: next })));
         return;
       }
@@ -384,7 +393,7 @@ function PerformSet({ run, onRequestPage, onSetupChange, onExitSet, onPickSong, 
     const slot = pages[walk.pageIndex];
     const progression = slot?.page?.progression || [];
     if (slot?.status !== "ready" || !progression.length) return;
-    onPlayPageChord?.({ pageKey: slot.page.key, chordIndex: walk.chordIndex, chord: progression[walk.chordIndex] });
+    onPlayPageChord?.({ pageKey: slot.page.key, chordIndex: walk.chordIndex, chord: slot.page.soundingProgression?.[walk.chordIndex] || progression[walk.chordIndex] });
     setWalk((current) => ({ ...current, playing: true }));
   };
   const moveWalk = (direction) => setWalk((current) => {

@@ -1,8 +1,8 @@
 // tutor.js — the BYO-key music tutor. The player brings their own API key
 // (Anthropic / OpenAI / Google / xAI, or a local Ollama — no key at all);
-// calls go STRAIGHT from the browser to the provider. Nothing touches a
-// Keylit server; the key lives in this browser's localStorage and nowhere
-// else. Follows lib/llm.js's precedent as the network-touching corner of
+// API-key calls go straight from the browser to the provider; subscription
+// calls use the local server without exposing its credentials. Browser API
+// keys live in localStorage. Follows lib/llm.js's network-touching precedent in
 // lib/ — prompt building and request shaping are pure and tested.
 //
 // The tutor's soul is the system prompt: a working musician's teacher who
@@ -58,6 +58,22 @@ export function buildContext({ title, artist, keyName, soundingKeyName, capo, tu
  * PROVIDERS — request shaping is pure (tested); streaming is fetch.
  * ================================================================== */
 export const PROVIDERS = {
+  subscription: {
+    name: "ChatGPT subscription (local gateway)",
+    keyless: true,
+    defaultModel: "gpt-6-astra",
+    request({ system, messages, baseUrl }) {
+      return {
+        url: baseUrl || "http://127.0.0.1:8787/api/tutor",
+        headers: { "content-type": "application/json" },
+        body: { stream: true, messages: [{ role: "system", content: system }, ...messages] },
+      };
+    },
+    parseLine(line) {
+      if (!line.startsWith("data:")) return null;
+      try { return JSON.parse(line.slice(5).trim()).choices?.[0]?.delta?.content || null; } catch { return null; }
+    },
+  },
   anthropic: {
     name: "Anthropic",
     keyHint: "sk-ant-…",
@@ -257,12 +273,13 @@ export async function sendChat({ provider, apiKey, model, baseUrl, system, messa
 }
 
 /* ---- settings shape (persistence lives in TutorPanel — lib stays pure) ---- */
-export function normalizeTutorSettings(raw) {
+export function normalizeTutorSettings(raw, overrides = {}) {
   const r = raw && typeof raw === "object" ? raw : {};
   return {
-    provider: PROVIDERS[r.provider] ? r.provider : "anthropic",
+    provider: PROVIDERS[overrides.provider] ? overrides.provider : PROVIDERS[r.provider] ? r.provider : "anthropic",
     models: r.models && typeof r.models === "object" ? r.models : {},
     keys: r.keys && typeof r.keys === "object" ? r.keys : {},
     ollamaUrl: typeof r.ollamaUrl === "string" ? r.ollamaUrl : "http://localhost:11434",
+    subscriptionUrl: typeof overrides.subscriptionUrl === "string" && overrides.subscriptionUrl ? overrides.subscriptionUrl : typeof r.subscriptionUrl === "string" ? r.subscriptionUrl : "http://127.0.0.1:8787/api/tutor",
   };
 }

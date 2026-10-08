@@ -1,8 +1,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { deepProgressionIdeas } from "./llm.js";
+import { deepProgressionIdeas, reharmonize } from "./llm.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("reharmonization fallback", () => {
+  it.each([null, { suggestions: "bad" }])("returns an offline result for a malformed response", async (data) => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => data })));
+    expect((await reharmonize({ progression: ["C", "G"], key: "C" })).ok).toBe(false);
+  });
+
+  it("rejects fractional indices and malformed suggestions without discarding a valid idea", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ suggestions: [
+      null, { targetIndex: 0, chords: "Dm" }, { targetIndex: 0.5, chords: ["Am"] },
+      { targetIndex: 1, chords: ["Dm", "G7"], action: "insertBefore" },
+    ] }) })));
+    const result = await reharmonize({ progression: ["C", "G"], key: "C" });
+    expect(result.data.suggestions).toHaveLength(1);
+    expect(result.data.suggestions[0].targetIndex).toBe(1);
+  });
 });
 
 describe("deepProgressionIdeas", () => {

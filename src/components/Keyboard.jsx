@@ -5,7 +5,7 @@
 // DOM keys (not SVG) so the instrument stretches to ANY container height —
 // the dock's 76px↔220px morph is a plain CSS height transition on the parent
 // and the keys simply fill it. Same public API as the old SVG version.
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { KEYS, midiOctave } from "../lib/voicing.js";
 import { C } from "../ui/theme.js";
 
@@ -53,6 +53,7 @@ export default function Keyboard({ roleFor, onKey, flash, height = 190, ariaLabe
   // button (Enter/Space strikes it), arrows walk the instrument chromatically,
   // Home/End jump to its ends. Display-only boards stay plain divs.
   const keyRefs = useRef(new Map());
+  const [focusMidi, setFocusMidi] = useState(36);
   const chromatic = [...KEYS.whiteKeys, ...KEYS.blackKeys].map((k) => k.midi).sort((a, b) => a - b);
   const moveFocus = (midi, delta) => {
     const at = chromatic.indexOf(midi);
@@ -63,10 +64,12 @@ export default function Keyboard({ roleFor, onKey, flash, height = 190, ariaLabe
   };
   const keyA11y = (midi) => (onKey ? {
     role: "button",
-    tabIndex: 0,
+    tabIndex: midi === focusMidi ? 0 : -1,
+    onFocus: () => setFocusMidi(midi),
     "aria-label": spokenName(midi),
     ref: (el) => { el ? keyRefs.current.set(midi, el) : keyRefs.current.delete(midi); },
     onKeyDown: (e) => {
+      if (["Enter", " ", "ArrowRight", "ArrowUp", "ArrowLeft", "ArrowDown", "Home", "End"].includes(e.key)) e.stopPropagation();
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onKey(midi); }
       else if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); moveFocus(midi, 1); }
       else if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); moveFocus(midi, -1); }

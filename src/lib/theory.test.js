@@ -727,3 +727,58 @@ describe("detectCapo — capo declared in the chart text", () => {
     expect(detectCapo(deep)).toBe(0);
   });
 });
+
+describe("chords the parser used to drop", () => {
+  // parseSheet SKIPS any token it cannot parse, so a dropped chord vanished
+  // from the progression while the chart still printed it — rail, piano and
+  // playhead all slid a chord out of step from that point on. Worse, a line
+  // where over half the tokens failed was not read as a chord line at all.
+  it.each([
+    ["Cø7", [0, 3, 6, 10]],
+    ["C+7", [0, 4, 8, 10]],
+    ["Caug7", [0, 4, 8, 10]],
+    ["Caugmaj7", [0, 4, 8, 11]],
+    ["Cmaj7#5", [0, 4, 8, 11]],
+    ["C9sus4", [0, 5, 7, 10, 14]],
+    ["C13sus4", [0, 5, 7, 10, 14, 21]],
+    ["C9#11", [0, 4, 7, 10, 14, 18]],
+    ["C13#11", [0, 4, 7, 10, 14, 18, 21]],
+  ])("%s parses", (sym, intervals) => {
+    const ch = parseChord(sym);
+    expect(ch, sym).not.toBeNull();
+    expect(ch.rootSemitone).toBe(0);
+    expect(ch.intervals).toEqual(intervals);
+  });
+
+  it("keeps a line of them intact, so nothing slides out of step", () => {
+    const sheet = "Cø7 C+7 Caugmaj7 C9sus4 C13sus4";
+    const { progression } = parseSheet(sheet);
+    expect(progression).toHaveLength(5);
+    expect(progression.map((c) => c.raw)).toEqual(sheet.split(" "));
+  });
+
+  it("reads its own printed output back", () => {
+    for (const sym of ["Cø7", "C+7", "Caugmaj7", "C9sus4", "C13#11"]) {
+      const ch = parseChord(sym);
+      const round = parseChord(chordSymbol(ch));
+      expect(round, sym).not.toBeNull();
+      expect(round.intervals).toEqual(ch.intervals);
+    }
+  });
+});
+
+describe("review chord round-trip regressions", () => {
+  it.each(["Dm(addE)", "C(b5)", "C(#11)"])("preserves %s through naming and transpose", (symbol) => {
+    const original = parseChord(symbol);
+    for (const shift of [0, 2, -3, 12]) {
+      const moved = transposeChord(original, shift);
+      expect(sameChordSound(parseChord(chordSymbol(moved)), moved)).toBe(true);
+    }
+  });
+  it.each(["D9#11", "D13#11"])("recognizes %s as an applied dominant", (symbol) => {
+    const chord = parseChord(symbol);
+    expect(isDominantQuality(chord.quality)).toBe(true);
+    expect(harmonicFunction(chord, 0)).toBe("D");
+    expect(romanNumeral(chord, 0, { next: parseChord("G") })).toBe("V" + chord.quality + "/V");
+  });
+});

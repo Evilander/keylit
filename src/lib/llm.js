@@ -60,15 +60,17 @@ export async function reharmonize({ progression, key, style = "any" }, { signal 
   let data;
   try {
     data = await post({ task: "reharm", progression: symbols, key, style }, signal);
+    if (!data || !Array.isArray(data.suggestions)) throw new Error("invalid suggestions response");
   } catch (e) {
     return { ok: false, error: OFFLINE_HINT, detail: String(e?.message || e) };
   }
 
   const clean = [];
-  for (const s of data.suggestions || []) {
-    const parsed = (s.chords || []).map(parseChord).filter(Boolean);
+  for (const s of data.suggestions.slice(0, 32)) {
+    if (!s || !Array.isArray(s.chords)) continue;
+    const parsed = s.chords.slice(0, MAX_COMPOSE_SYMBOLS).filter((symbol) => typeof symbol === "string" && symbol.length <= MAX_SYMBOL_LENGTH).map(parseChord).filter(Boolean);
     if (!parsed.length) continue; // drop any suggestion the model spelled wrong
-    if (typeof s.targetIndex !== "number" || s.targetIndex < 0 || s.targetIndex >= progression.length) continue;
+    if (!Number.isInteger(s.targetIndex) || s.targetIndex < 0 || s.targetIndex >= progression.length) continue;
     clean.push({
       targetIndex: s.targetIndex,
       action: ["replace", "insertBefore", "insertAfter"].includes(s.action) ? s.action : "replace",

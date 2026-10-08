@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseChord } from "./theory.js";
+import { parseChord, QUALITIES } from "./theory.js";
 import {
   LOW_MIDI, HIGH_MIDI, clampVoicing, reduceVoicing, addBass,
   rootPositionUpper, rootPositionFull, smoothUpper, KEYS, midiName, midiOctave,
@@ -243,5 +243,47 @@ describe("voicing — keyboard geometry", () => {
     }
     expect(midiName(60)).toBe("C");
     expect(midiOctave(60)).toBe(4); // MIDI 60 = C4
+  });
+});
+
+describe("voicing — the keyboard is a hard boundary", () => {
+  // rootPositionUpper feeds the voice-leading chain as `prev`. Callers clamp
+  // what they DISPLAY but keep the raw array as the reference for the next
+  // chord, so a note above C5 here is measured against for the rest of the
+  // song rather than drawn wrong once. Tall extensions are where it happens:
+  // a 13th reaches 21 semitones above its root.
+  const ROOTS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+  it("rootPositionUpper stays inside C2-C5 for every root and quality", () => {
+    const escaped = [];
+    for (const root of ROOTS) {
+      for (const q of Object.keys(QUALITIES)) {
+        const ch = parseChord(root + q);
+        if (!ch) continue;
+        const v = rootPositionUpper(ch);
+        if (Math.min(...v) < LOW_MIDI || Math.max(...v) > HIGH_MIDI) {
+          escaped.push(`${root}${q} -> ${v.join(",")}`);
+        }
+      }
+    }
+    expect(escaped).toEqual([]);
+  });
+
+  it("the voice-leading chain never carries an out-of-range reference", () => {
+    const prog = ["E13", "Am9", "Dm11", "G13", "Cmaj9", "B13", "F#13"];
+    let prev = null;
+    for (const sym of prog) {
+      const up = smoothUpper(parseChord(sym), prev);
+      expect(Math.max(...up), sym).toBeLessThanOrEqual(HIGH_MIDI);
+      expect(Math.min(...up), sym).toBeGreaterThanOrEqual(LOW_MIDI);
+      prev = up;
+    }
+  });
+
+  it("an out-of-range chord still voices only its own tones", () => {
+    const ch = parseChord("E13");
+    const v = rootPositionUpper(ch);
+    const tones = chordTones(ch);
+    for (const m of v) expect(tones.has(pc(m)), `${m}`).toBe(true);
   });
 });

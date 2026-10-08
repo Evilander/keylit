@@ -2,7 +2,7 @@
 // that renders a chord sheet (ChartView's interactive page, Perform's stage).
 // One classifier so a line can never be a lyric in one room and a chord line
 // in another. No React, no DOM (prime directive 2).
-import { parseChord, isSectionLine } from "./theory.js";
+import { parseChord, isSectionLine, isChartMetadataLine } from "./theory.js";
 import { findTabBlocks, unwrapTab } from "./tab.js";
 
 /** [Verse 1] · Chorus: · [Bridge] — the shapes section names arrive in.
@@ -16,6 +16,7 @@ export function isSectionHeader(line) {
 /** A line is a chord line if at least half its tokens parse as chords (≥1).
  * Returns { tokens } (split with whitespace preserved) or null. */
 export function chordLineInfo(line) {
+  if (isChartMetadataLine(line)) return null;
   const tokens = line.split(/(\s+)/);
   const words = tokens.filter((t) => t.trim());
   if (!words.length) return null;

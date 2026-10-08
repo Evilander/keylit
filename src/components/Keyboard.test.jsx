@@ -2,7 +2,7 @@
 // The shared instrument must be playable FROM the keyboard — every key a real
 // button, arrows walking the notes — but only when it's actually playable.
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import Keyboard from "./Keyboard.jsx";
 
 describe("Keyboard accessibility", () => {
@@ -34,7 +34,7 @@ describe("Keyboard accessibility", () => {
   it("arrows walk the instrument chromatically; Home and End jump", () => {
     render(<Keyboard onKey={() => {}} />);
     const c4 = screen.getByRole("button", { name: "C 4" });
-    c4.focus();
+    act(() => c4.focus());
     fireEvent.keyDown(c4, { key: "ArrowRight" });
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "C sharp 4" }));
     fireEvent.keyDown(document.activeElement, { key: "ArrowLeft" });
@@ -44,4 +44,17 @@ describe("Keyboard accessibility", () => {
     fireEvent.keyDown(document.activeElement, { key: "End" });
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "C 5" }));
   });
+});
+
+it("has one Tab stop that follows arrow focus and isolates instrument keys", () => {
+  const stage = vi.fn();
+  const { container } = render(<div onKeyDown={stage}><Keyboard onKey={() => {}} /></div>);
+  const first = container.querySelector('[role="button"][tabindex="0"]');
+  expect(container.querySelectorAll('[role="button"][tabindex="0"]')).toHaveLength(1);
+  fireEvent.keyDown(first, { key: "ArrowRight" });
+  expect(document.activeElement.getAttribute("aria-label")).toBe("C sharp 2");
+  expect(document.activeElement.tabIndex).toBe(0);
+  expect(first.tabIndex).toBe(-1);
+  expect(stage).not.toHaveBeenCalled();
+  cleanup();
 });

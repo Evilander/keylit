@@ -2,7 +2,7 @@
 //  1) "Play it easier" — the real capo.js advisor ranks ways to play the loaded
 //     song across capo positions AND open tunings, with authentic fretboard math.
 //  2) "Tunings" — the curated alternate-tuning reference (data/tunings.js).
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { suggestArrangements } from "../lib/capo.js";
 import { TUNINGS_REFERENCE } from "../data/tunings.js";
@@ -13,10 +13,28 @@ const FAMILY_LABEL = { standard: "Standard", drop: "Drop", open: "Open", modal: 
 export default function CapoTuning({ prog }) {
   const [q, setQ] = useState("");
 
-  const arrangements = useMemo(() => {
-    if (!prog || !prog.length) return [];
-    try { return suggestArrangements(prog, { maxFret: 7 }).slice(0, 6); } catch { return []; }
+  const [ranking, setRanking] = useState({ prog: null, rows: [], loading: false });
+  useEffect(() => {
+    let cancelled = false, timer;
+    const results = [];
+    const tunings = ["standard", "dropD", "openD", "openE", "openG", "openA", "openC", "DADGAD"];
+    let index = 0;
+    setRanking({ prog, rows: [], loading: !!prog?.length });
+    const step = () => {
+      if (cancelled || !prog?.length) return;
+      try {
+        results.push(...suggestArrangements(prog, { tunings: [tunings[index++]], maxFret: 7 }));
+        if (index < tunings.length) { timer = setTimeout(step, 0); return; }
+        const friction = (id) => id === "standard" ? 0 : id === "dropD" ? 0.4 : 1;
+        results.sort((a, b) => a.totalEase - b.totalEase || a.capo - b.capo || friction(a.tuningId) - friction(b.tuningId));
+        setRanking({ prog, rows: results.slice(0, 6), loading: false });
+      } catch { setRanking({ prog, rows: [], loading: false }); }
+    };
+    timer = setTimeout(step, 0);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [prog]);
+  const arrangements = ranking.prog === prog ? ranking.rows : [];
+  const loading = !!prog?.length && (ranking.prog !== prog || ranking.loading);
 
   const tunings = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -28,6 +46,7 @@ export default function CapoTuning({ prog }) {
 
   return (
     <div>
+      {loading && <p role="status">Finding easier capo and tuning arrangements…</p>}
       {arrangements.length > 0 && (
         <section style={{ marginBottom: 30 }}>
           <div className="kl-eyebrow" style={{ marginBottom: 4 }}>Play it easier</div>

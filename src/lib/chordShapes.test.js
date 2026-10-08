@@ -212,3 +212,24 @@ describe("shapeFingerString", () => {
     expect(shapeFingerString({ frets: [10, 12, 12, 11, 10, 10] })).toBe("(10)(12)(12)(11)(10)(10)");
   });
 });
+
+describe("review grip cache regressions", () => {
+  it("keeps explicit root slash bass distinct in open G, in either cache order", () => {
+    const tuning = TUNINGS.openG.notes;
+    for (const [first, second, maxFret] of [["G", "G/G", 8], ["G/G", "G", 9]]) {
+      const results = new Map([first, second].map((symbol) => [symbol, shapes(symbol, { tuning, maxFret, limit: 10000 })]));
+      expect(results.get("G").some((s) => pcOf(Math.min(...s.midi)) === 2)).toBe(true);
+      expect(results.get("G/G").every((s) => pcOf(Math.min(...s.midi)) === 7)).toBe(true);
+    }
+  });
+  it("evicts only the least recently used grip entry at capacity", () => {
+    const chord = parseChord("C");
+    const opts = (i) => ({ tuning: [48 + 12 * i, 52 + 12 * i, 55 + 12 * i], maxFret: 0 });
+    const hot = chordShapes(chord, opts(0))[0];
+    expect(hot).toBeDefined();
+    for (let i = 1; i <= 301; i++) {
+      chordShapes(chord, opts(i));
+      expect(chordShapes(chord, opts(0))[0]).toBe(hot);
+    }
+  });
+});

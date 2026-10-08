@@ -1,7 +1,7 @@
 // TutorPanel.jsx — the tutor's booth: a right-hand drawer available from any
-// room. BYO key (Anthropic / OpenAI / Google / xAI) or a local Ollama; the
-// key lives in THIS browser's localStorage and requests go straight to the
-// provider — no Keylit server in the path. The panel portals to <body>
+// room. BYO key (Anthropic / OpenAI / Google / xAI), local Ollama, or the
+// subscription proxy. API keys stay in browser storage; subscription
+// credentials stay on the local server. The panel portals to <body>
 // because .kl-section's entry transform hijacks position:fixed descendants
 // (hard-won house knowledge, 2026-07).
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,8 +13,9 @@ import { C, MONO, DISPLAY } from "../ui/theme.js";
 // Settings persistence lives here, not in lib/ — the key never leaves this
 // browser, and lib/tutor.js stays free of storage.
 const loadTutorSettings = () => {
-  try { return normalizeTutorSettings(JSON.parse(localStorage.getItem(TUTOR_STORE_KEY) || "{}")); }
-  catch { return normalizeTutorSettings(null); }
+  const overrides = { provider: import.meta.env?.VITE_TUTOR_PROVIDER, subscriptionUrl: import.meta.env?.VITE_TUTOR_SUBSCRIPTION_URL };
+  try { return normalizeTutorSettings(JSON.parse(localStorage.getItem(TUTOR_STORE_KEY) || "{}"), overrides); }
+  catch { return normalizeTutorSettings(null, overrides); }
 };
 const saveTutorSettings = (s) => {
   try { localStorage.setItem(TUTOR_STORE_KEY, JSON.stringify(s)); } catch { /* storage optional */ }
@@ -94,7 +95,7 @@ export default function TutorPanel({ open, onClose, stand }) {
         provider: settings.provider,
         apiKey: settings.keys[settings.provider],
         model: settings.models[settings.provider] || provider.defaultModel,
-        baseUrl: settings.ollamaUrl,
+        baseUrl: settings.provider === 'subscription' ? settings.subscriptionUrl : settings.ollamaUrl,
         system: buildSystemPrompt(),
         messages: wire,
         signal: ac.signal,
@@ -169,8 +170,9 @@ export default function TutorPanel({ open, onClose, stand }) {
             ) : (
               <label className="kl-meta" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 url
-                <input value={settings.ollamaUrl} onChange={(e) => persist({ ...settings, ollamaUrl: e.target.value })}
-                  aria-label="Ollama URL" style={{ ...selStyle, flex: 1, cursor: "text", fontFamily: MONO }} />
+                <input value={settings.provider === 'subscription' ? settings.subscriptionUrl : settings.ollamaUrl}
+                  onChange={(e) => persist({ ...settings, [settings.provider === 'subscription' ? 'subscriptionUrl' : 'ollamaUrl']: e.target.value })}
+                  aria-label={settings.provider === 'subscription' ? 'Subscription proxy URL' : 'Ollama URL'} style={{ ...selStyle, flex: 1, cursor: "text", fontFamily: MONO }} />
               </label>
             )}
             <label className="kl-meta" style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -181,9 +183,13 @@ export default function TutorPanel({ open, onClose, stand }) {
             </label>
           </div>
           <p style={{ fontSize: 11, color: C.faint, margin: "10px 0 0", lineHeight: 1.5 }}>
+            {settings.provider === 'subscription' ? (
+              <>Sign in with ChatGPT through the local gateway, then run the Keylit proxy. Your conversation uses your ChatGPT plan; sign-in credentials stay on this computer.</>
+            ) : (<>
             Your key lives only in this browser's storage and travels only to {provider?.name}, directly —
             no Keylit server in the path. Get a key: <a href={provider?.keyUrl} target="_blank" rel="noreferrer" style={{ color: C.toneText }}>{provider?.keyUrl?.replace("https://", "")}</a>
             {provider?.keyless ? " · start it with OLLAMA_ORIGINS=* so the browser may call it" : ""}
+            </>)}
           </p>
         </div>
       )}

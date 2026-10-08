@@ -1,9 +1,9 @@
 import PerformChart from "./PerformChart.jsx";
-import { TUNINGS } from "../lib/tuning.js";
+import { getTuning, TUNINGS } from "../lib/tuning.js";
 
 // The same guitar tunings the Song room's GuitarSetup offers — the perform
 // page is a reading surface, so it speaks the same shape-shift language.
-const GUITAR_TUNING_IDS = ["standard", "ebStandard", "dStandard"];
+const GUITAR_TUNING_IDS = Object.keys(TUNINGS).filter((id) => !["CGCGCD", "DADGBD"].includes(id));
 
 const signed = (n) => `${n > 0 ? "+" : ""}${n}`;
 
@@ -47,6 +47,7 @@ export default function PerformSongPage({ slot, index, active, activeChordIndex,
         <div className="perform-song-page__setup" aria-label={`guitar setup for ${title}`}>
           <select aria-label={`tuning for ${title}`} value={page.tuning || "standard"}
             onChange={(event) => onSetupChange?.({ tuning: event.target.value })}>
+            {page.tuning && !GUITAR_TUNING_IDS.includes(page.tuning) && <option value={page.tuning}>{getTuning(page.tuning).name}</option>}
             {GUITAR_TUNING_IDS.map((id) => <option key={id} value={id}>{TUNINGS[id].name}</option>)}
           </select>
           <span className="perform-song-page__stepper">
@@ -65,7 +66,7 @@ export default function PerformSongPage({ slot, index, active, activeChordIndex,
           </span>
         </div>
       </header>
-      <PerformChart outline={page.outline} activeKey={page.activeKey} transpose={page.transpose}
+      <PerformChart outline={page.outline} activeKey={page.activeKey} transpose={page.readingShift ?? page.transpose}
         activeChord={chord} anchor={anchor} size={20} />
       <div className="perform-preload-sentinel" data-testid={`preload-sentinel-${entry.entryId}`} data-index={index} ref={registerSentinel} />
     </article>

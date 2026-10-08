@@ -24,8 +24,9 @@ function noteToPc(letter, accidental) {
 // Turn "E A D G B E" / "EADGBE" / "D A D G A D" into a pitch-class array, or null.
 function tokenizeNotes(str) {
   if (!str || typeof str !== "string") return null;
-  const s = str.trim();
+  const s = str.trim().replace(/♭/g, "b").replace(/♯/g, "#").replace(/[,–\-./|]+/g, " ");
   if (!s) return null;
+  if (!/^(?:[A-Ga-g][#b]?\s*)+$/.test(s)) return null;
   const tokens = /\s/.test(s) ? s.split(/\s+/) : s.match(/[A-Ga-g][#b]?/g) || [];
   const pcs = [];
   for (const tok of tokens) {
@@ -97,7 +98,12 @@ export const STANDARD_TUNING = TUNINGS.standard.notes;
 /** Resolve an id ("openD") or free-text spelling ("C G C F C E") to a tuning. */
 export function getTuning(idOrSpelling) {
   if (idOrSpelling == null) return TUNINGS.standard;
-  if (typeof idOrSpelling === "string" && TUNINGS[idOrSpelling]) return TUNINGS[idOrSpelling];
+  if (typeof idOrSpelling === "string") {
+    const normalize = (s) => s.trim().toLowerCase().replace(/♯/g, "#").replace(/♭/g, "b").replace(/\s+/g, " ");
+    const name = normalize(idOrSpelling);
+    const named = Object.values(TUNINGS).find((t) => normalize(t.id) === name || normalize(t.name) === name);
+    if (named) return named;
+  }
   const notes = parseTuning(idOrSpelling);
   if (notes) {
     const known = Object.values(TUNINGS).find(
@@ -199,7 +205,7 @@ const COMPACT_SPELLING = /\b(?:[A-G][#b]?){6}\b/;
 const NAME_OPEN = /\bopen\s*([a-g])\b(?!\s*(?:#|sharp))/i;
 const NAME_DADGAD = /\bdadgad\b/i;
 const NAME_DOUBLE_DROP = /\bdouble[\s-]*drop(?:ped)?[\s-]*d\b/i;
-const NAME_DROP_C = /\bdrop(?:ped)?[\s-]*c(\s*#|sharp)?\b/i;
+const NAME_DROP_C = /\bdrop(?:ped)?[\s-]*c\b(\s*(?:[#♯]|sharp\b))?/i;
 
 /**
  * Two-phase scan of the WHOLE text:

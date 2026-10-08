@@ -23,6 +23,7 @@ export default function Arranger({ prog, title, onStart, onStepIdx }) {
   const [playing, setPlaying] = useState(false);
   const handleRef = useRef(null);
   const restartTimer = useRef(null);
+  const requestRef = useRef(null);
 
   const arrangement = useMemo(
     () => (prog && prog.length ? arrangeBand(prog, style, { bass, drums, count }) : null),
@@ -30,6 +31,8 @@ export default function Arranger({ prog, title, onStart, onStepIdx }) {
   );
 
   const stop = () => {
+    requestRef.current?.abort();
+    requestRef.current = null;
     clearTimeout(restartTimer.current); // a queued restart must not outlive Stop
     handleRef.current?.stop();
     handleRef.current = null;
@@ -38,19 +41,26 @@ export default function Arranger({ prog, title, onStart, onStepIdx }) {
 
   const start = async () => {
     if (!arrangement) return;
-    handleRef.current?.stop();
-    const h = await onStart(arrangement, {
-      bpm, loop,
-      // Count-in clicks carry no stepIdx — don't blank the highlight for them.
-      onStep: (e) => { if (Number.isInteger(e.stepIdx)) onStepIdx?.(e.stepIdx); },
-      // Every way a take can end clears any queued restart — a debounced
-      // restart must never resurrect playback the player already left.
-      onDone: () => { clearTimeout(restartTimer.current); setPlaying(false); },
-      // Another surface took the stage: reset the transport, don't sit on "Stop".
-      onCancel: () => { clearTimeout(restartTimer.current); setPlaying(false); },
-    });
-    handleRef.current = h;
+    stop();
+    const request = new AbortController();
+    requestRef.current = request;
     setPlaying(true);
+    try {
+      const h = await onStart(arrangement, {
+        bpm, loop, signal: request.signal,
+        // Count-in clicks carry no stepIdx — don't blank the highlight for them.
+        onStep: (e) => { if (Number.isInteger(e.stepIdx)) onStepIdx?.(e.stepIdx); },
+        // Every way a take can end clears any queued restart — a debounced
+        // restart must never resurrect playback the player already left.
+        onDone: () => { if (requestRef.current === request) { clearTimeout(restartTimer.current); setPlaying(false); } },
+        // Another surface took the stage: reset the transport, don't sit on "Stop".
+        onCancel: () => { if (requestRef.current === request) { clearTimeout(restartTimer.current); setPlaying(false); } },
+      });
+      if (request.signal.aborted || requestRef.current !== request) { h?.stop(); return; }
+      handleRef.current = h;
+    } catch {
+      if (requestRef.current === request) stop();
+    }
   };
 
   // Style, tempo, or a band member turned mid-flight: restart the take
@@ -64,7 +74,7 @@ export default function Arranger({ prog, title, onStart, onStepIdx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [style, bpm, loop, bass, drums, count]);
 
-  useEffect(() => () => { handleRef.current?.stop(); }, []);
+  useEffect(() => () => { requestRef.current?.abort(); clearTimeout(restartTimer.current); handleRef.current?.stop(); }, []);
   // A different song while playing: stop rather than play the wrong chart.
   useEffect(() => { if (playing) stop(); /* eslint-disable-next-line */ }, [prog]);
 

@@ -32,6 +32,8 @@ export default function TabHunt({ onDone }) {
   const [verdict, setVerdict] = useState(null);
   const pollRef = useRef(null);
   const inFlightRef = useRef(false); // synchronous re-entrancy guard (state lags a click)
+  const generationRef = useRef(0);
+  const abortRef = useRef(null);
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -43,7 +45,11 @@ export default function TabHunt({ onDone }) {
     return () => { ctl.abort(); clearTimeout(t); };
   }, []);
 
-  useEffect(() => () => clearInterval(pollRef.current), []);
+  useEffect(() => () => {
+    generationRef.current++;
+    clearTimeout(pollRef.current);
+    abortRef.current?.abort();
+  }, []);
 
   if (!alive) return null;
 
@@ -54,13 +60,21 @@ export default function TabHunt({ onDone }) {
     // and the second's interval id clobbers the first's in pollRef.
     if (!name || job || inFlightRef.current) return;
     inFlightRef.current = true;
+    const generation = ++generationRef.current;
+    const current = () => generation === generationRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const deadline = Date.now() + 20 * 60000;
+    const startTimeout = setTimeout(() => controller.abort(), 10000);
     setVerdict(null);
     try {
       const r = await fetch(`${HUNTER}/hunt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ artist: name }),
+        signal: controller.signal,
       });
+      if (!current()) return;
       if (!r.ok) {
         setVerdict((await r.json()).err || "the hunter is busy");
         return;
@@ -69,12 +83,24 @@ export default function TabHunt({ onDone }) {
       setJob({ id, artist: name, stages: [] });
       // Each interval clears its own id, never whatever currently sits in the
       // ref, so a poll can't orphan a sibling's timer.
-      const iv = setInterval(async () => {
+      const poll = async () => {
+        if (!current()) return;
+        if (Date.now() >= deadline) {
+          setVerdict("The hunt reached its time limit. Refresh the library to check the charts kept so far.");
+          setJob(null);
+          onDone?.();
+          return;
+        }
+        const pollController = new AbortController();
+        abortRef.current = pollController;
+        const pollTimeout = setTimeout(() => pollController.abort(), 8000);
         try {
-          const s = await (await fetch(`${HUNTER}/hunt/${id}`)).json();
+          const status = await fetch(`${HUNTER}/hunt/${id}`, { signal: pollController.signal });
+          if (!status.ok) throw new Error("Hunter status unavailable");
+          const s = await status.json();
+          if (!current()) return;
           setJob({ id, ...s });
           if (s.done) {
-            clearInterval(iv);
             const kept = (s.stages || [])
               .filter((st) => st.key !== "manifest")
               .reduce((n, st) => n + st.written, 0);
@@ -82,21 +108,26 @@ export default function TabHunt({ onDone }) {
             setVerdict(
               s.error ? s.error
                 : kept ? `the hunt brought home ${kept} new charts${shelf}`
-                : "nothing new out there — the shelf already has it all",
+                : "No new charts were added in this hunt.",
             );
             setJob(null);
-            if (!s.error && kept) onDone?.();
+            if (kept && s.manifest) onDone?.();
+          } else {
+            pollRef.current = setTimeout(poll, 1200);
           }
         } catch {
-          clearInterval(iv);
+          if (!current()) return;
           setVerdict("lost the hunter mid-hunt — check the daemon");
           setJob(null);
+        } finally {
+          clearTimeout(pollTimeout);
         }
-      }, 1200);
-      pollRef.current = iv;
+      };
+      pollRef.current = setTimeout(poll, 1200);
     } catch {
-      setVerdict("the hunter stopped answering");
+      if (current()) setVerdict("the hunter stopped answering");
     } finally {
+      clearTimeout(startTimeout);
       inFlightRef.current = false;
     }
   };

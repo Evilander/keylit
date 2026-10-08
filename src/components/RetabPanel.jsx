@@ -23,16 +23,16 @@ export default function RetabPanel({ retab, onKeep, loaded }) {
   useEffect(() => { setKept(false); setCopied(false); }, [retab]);
   if (!retab) return null; // guitar matches the tab's tuning — nothing to re-fret
 
-  const { text, summary, src, dst, srcCapo, dstCapo } = retab;
+  const { text, exportText = text, summary, src, dst, srcCapo, dstCapo, transpose = 0 } = retab;
   const srcLabel = `${src.name}${srcCapo ? ` · capo ${srcCapo}` : ""}`;
   const dstLabel = `${dst.name}${dstCapo ? ` · capo ${dstCapo}` : ""}`;
 
   const copy = async () => {
-    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }
+    try { await navigator.clipboard.writeText(exportText); setCopied(true); setTimeout(() => setCopied(false), 1500); }
     catch { /* clipboard denied — nothing to do */ }
   };
   const keep = () => {
-    onKeep?.(text, {
+    onKeep?.(exportText, {
       title: `${loaded?.title || "Untitled"} (${dst.name})`,
       artist: loaded?.artist || "",
       tuning: dst.spelling,
@@ -51,7 +51,7 @@ export default function RetabPanel({ retab, onKeep, loaded }) {
         <Guitar size={15} style={{ color: C.rootText, flexShrink: 0 }} />
         <span className="kl-eyebrow">Tab re-fretted</span>
         <span style={{ fontSize: 12.5, color: C.faint }}>
-          written for {srcLabel} — playable on your {dstLabel}
+          written for {srcLabel} → {dstLabel}{transpose ? ` · transpose ${transpose > 0 ? "+" : ""}${transpose}` : ""}
         </span>
       </div>
 

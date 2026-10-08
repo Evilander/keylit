@@ -12,21 +12,32 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import { parseSheet } from "../src/lib/theory.js";
+import { findTabBlocks } from "../src/lib/tab.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const flag = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null; };
 const SITE = flag("--site");
 const DRY = args.includes("--dry");
-const LIMIT = +(flag("--limit") || Infinity);
-const DELAY = +(flag("--delay") || 600);
+const LIMIT = flag("--limit") === null ? 1000 : Number(flag("--limit"));
+const DELAY = flag("--delay") === null ? 600 : Number(flag("--delay"));
+if (!Number.isInteger(LIMIT) || LIMIT < 0 || !Number.isInteger(DELAY) || DELAY < 0) {
+  console.error("--limit and --delay must be nonnegative integers"); process.exit(1);
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const slug = (s) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const get = (url, enc = "latin1") => execFileSync("curl", ["-sL", "-A", "Mozilla/5.0", url], { encoding: enc, maxBuffer: 16 * 1024 * 1024 });
+const get = (url, enc = "latin1") => execFileSync("curl", ["-fsSL", "--connect-timeout", "10", "--max-time", "30", "-A", "Mozilla/5.0", url], { encoding: enc, maxBuffer: 16 * 1024 * 1024, timeout: 35000, windowsHide: true });
 const strip = (h) => h.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#039;|&rsquo;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#?\w+;/g, "");
 const pres = (h) => [...h.matchAll(/<pre>([\s\S]*?)<\/pre>/gi)].map((m) => strip(m[1]));
 const capoFrom = (t) => { const m = t.match(/capo(?:\s*(?:on|at))?[^0-9]{0,12}(\d+)/i); return m ? +m[1] : null; };
+
+export function chartFormat(body) {
+  if (findTabBlocks(body).length) return "tab";
+  return parseSheet(body).progression.length ? "chords" : null;
+}
 
 const SITES = {
   nickdrake: {
@@ -182,41 +193,66 @@ const SITES = {
   },
 };
 
-const site = SITES[SITE];
-if (!site) { console.log("usage: node tools/tabsites_fetch.mjs --site nickdrake|sonicyouth|loureed|actabs [--dry|--limit N|--delay ms]"); process.exit(1); }
+async function main() {
+  const site = SITES[SITE];
+  if (!site) { console.log("usage: node tools/tabsites_fetch.mjs --site nickdrake|sonicyouth|loureed|actabs [--dry|--limit N|--delay ms]"); process.exit(1); }
 
-const OUT = path.join(ROOT, "public", "corpus", site.dir);
-fs.mkdirSync(OUT, { recursive: true });
-const list = await site.list();
-console.log(`${SITE}: ${list.length} pages listed`);
+  const OUT = path.join(ROOT, "public", "corpus", site.dir);
+  if (!DRY) fs.mkdirSync(OUT, { recursive: true });
+  let list;
+  try { list = await site.list(); } catch (err) { console.error(`${SITE}: listing failed: ${err.message.split("\n")[0]}`); process.exit(1); }
+  console.log(`${SITE}: ${list.length} pages listed`);
+  const haveUrls = new Set(fs.existsSync(OUT) ? fs.readdirSync(OUT).filter((f) => f.endsWith(".json")).flatMap((f) => {
+    try { return [JSON.parse(fs.readFileSync(path.join(OUT, f), "utf8")).sourceUrl]; } catch { return []; }
+  }) : []);
 
-let written = 0, skipped = 0, failed = 0;
-for (const e of list.slice(0, LIMIT)) {
-  const artistGuess = e.artist || "Unknown";
-  const id0 = `${slug(artistGuess)}--${slug(e.title)}`;
-  const fp0 = path.join(OUT, `${id0}.json`);
-  if (fs.existsSync(fp0)) { skipped++; continue; }
-  if (DRY) { console.log(`  would fetch: ${artistGuess} — ${e.title}${e.album ? ` [${e.album}]` : ""}`); continue; }
-  await sleep(DELAY);
-  try {
-    const r = await site.fetch(e);
-    if (!r) throw new Error("no usable chart content");
-    const artist = r.artist || e.artist || "Unknown";
-    const id = `${slug(artist)}--${slug(e.title)}`;
-    const rec = {
-      id, artist, title: e.title,
-      album: r.album ?? e.album ?? null, albumOrder: 9999,
-      source: site.source, sourceUrl: e.href,
-      tuning: "standard", tuningRaw: null,
-      capo: r.capo, key: null, format: r.format,
-      transcriber: null, fetchedAt: new Date().toISOString().slice(0, 10),
-    };
-    fs.writeFileSync(path.join(OUT, `${id}.json`), JSON.stringify({ ...rec, body: r.body }), "utf8");
-    console.log(`  ✓ ${artist} — ${e.title}${r.capo ? ` (capo ${r.capo})` : ""}`);
-    written++;
-  } catch (err) {
-    console.log(`  ✗ ${e.title}: ${err.message}`);
-    failed++;
+  let written = 0, skipped = 0, failed = 0, attempted = 0;
+  for (const e of list) {
+    if (e.artist === "Avey Tare" || haveUrls.has(e.href)) { skipped++; continue; }
+    const artistGuess = e.artist || "Unknown";
+    const id0 = `${slug(artistGuess)}--${slug(e.title)}`;
+    const fp0 = path.join(OUT, `${id0}.json`);
+    if (fs.existsSync(fp0) && JSON.parse(fs.readFileSync(fp0, "utf8")).sourceUrl === e.href) { skipped++; continue; }
+    if (attempted >= LIMIT) break;
+    attempted++;
+    if (DRY) { console.log(`  would fetch: ${artistGuess} — ${e.title}${e.album ? ` [${e.album}]` : ""}`); continue; }
+    await sleep(DELAY);
+    try {
+      const r = await site.fetch(e);
+      if (!r) throw new Error("no usable chart content");
+      const format = chartFormat(r.body);
+      if (!format) throw new Error("lyrics/prose only; no playable chords or tab");
+      const artist = r.artist || e.artist || "Unknown";
+      let id = `${slug(artist)}--${slug(e.title)}`;
+      const basePath = path.join(OUT, `${id}.json`);
+      if (fs.existsSync(basePath)) {
+        const prior = JSON.parse(fs.readFileSync(basePath, "utf8"));
+        if (prior.sourceUrl === e.href) { skipped++; continue; }
+        id += `--${createHash("sha256").update(e.href).digest("hex").slice(0, 10)}`;
+      }
+      const rec = {
+        id, artist, title: e.title,
+        album: r.album ?? e.album ?? null, albumOrder: 9999,
+        source: site.source, sourceUrl: e.href,
+        tuning: "standard", tuningRaw: null,
+        capo: r.capo, key: null, format,
+        transcriber: null, fetchedAt: new Date().toISOString().slice(0, 10),
+      };
+      const fp = path.join(OUT, `${id}.json`);
+      if (fs.existsSync(fp)) { skipped++; continue; }
+      fs.writeFileSync(fp, JSON.stringify({ ...rec, body: r.body }), { encoding: "utf8", flag: "wx" });
+      haveUrls.add(e.href);
+      console.log(`  ✓ ${artist} — ${e.title}${r.capo ? ` (capo ${r.capo})` : ""}`);
+      written++;
+    } catch (err) {
+      console.log(`  ✗ ${e.title}: ${err.message}`);
+      failed++;
+    }
   }
+  console.log(`written ${written} · skipped ${skipped} · failed ${failed}`);
+  if (failed) process.exitCode = 1;
 }
-console.log(`written ${written} · skipped ${skipped} · failed ${failed}`);
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((e) => { console.error(e.message); process.exitCode = 1; });
+}

@@ -39,6 +39,7 @@ export default function PlayAlong({
   const [loop, setLoop] = useState(false);
   const [midiState, setMidiState] = useState({ status: "idle", inputs: [] }); // idle|on|denied
   const [heldView, setHeldView] = useState(new Set());
+  const [focusedMidi, setFocusedMidi] = useState(60);
   const [score, setScore] = useState(null);
   const [, setTick] = useState(0);
 
@@ -75,6 +76,18 @@ export default function PlayAlong({
   /* ---- the run + one shared held-set (MIDI hands and mouse clicks) ---- */
   const runRef = useRef(null);
   const heldRef = useRef(new Set());
+  const midiHeldRef = useRef(new Set());
+  const mouseHeldRef = useRef(new Set());
+  const keyboardHeldRef = useRef(new Set());
+  const keyRefs = useRef(new Map());
+  const mountedRef = useRef(true);
+  const connectionRef = useRef(0);
+  const timersRef = useRef(new Set());
+  const later = (fn, ms) => {
+    const id = setTimeout(() => { timersRef.current.delete(id); if (mountedRef.current) fn(); }, ms);
+    timersRef.current.add(id);
+  };
+  const syncHeld = () => { heldRef.current = new Set([...midiHeldRef.current, ...mouseHeldRef.current, ...keyboardHeldRef.current]); };
   const scoredRef = useRef(false);
 
   useEffect(() => {
@@ -91,7 +104,7 @@ export default function PlayAlong({
       scoredRef.current = true;
       onScore?.({ songKey, title, artist, kind: "playalong", accuracy: s.accuracy, total: s.total, clean: s.clean, section: sectionPick || null });
     }
-    if (loop) setTimeout(() => { runRef.current?.reset(); scoredRef.current = false; setScore(null); setTick((t) => t + 1); }, 900);
+    if (loop) later(() => { if (runRef.current !== run) return; runRef.current?.reset(); scoredRef.current = false; setScore(null); setTick((t) => t + 1); }, 900);
   }, [onScore, songKey, title, artist, sectionPick, loop]);
 
   const feed = useCallback((attack) => {
@@ -104,31 +117,68 @@ export default function PlayAlong({
     setTick((t) => t + 1);
   }, [finish]);
 
+  const feedRef = useRef(feed);
+  feedRef.current = feed;
+
   /* ---- MIDI in ---- */
   const unsubRef = useRef(null);
   const connectMidi = async () => {
+    const request = ++connectionRef.current;
     try {
       const access = await requestMidi();
+      if (!mountedRef.current || request !== connectionRef.current) return;
       unsubRef.current?.();
       unsubRef.current = watchInputs(access, (e) => {
-        if (e.type === "down") heldRef.current.add(e.note);
-        else heldRef.current.delete(e.note);
-        feed(e.type === "down");
+        midiHeldRef.current = new Set(e.held);
+        syncHeld();
+        feedRef.current(e.type === "down");
       });
       setMidiState({ status: "on", inputs: listInputs(access).map((i) => i.name) });
     } catch {
-      setMidiState({ status: "denied", inputs: [] });
+      if (mountedRef.current && request === connectionRef.current) setMidiState({ status: "denied", inputs: [] });
     }
   };
-  useEffect(() => () => unsubRef.current?.(), []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false; connectionRef.current++;
+      unsubRef.current?.();
+      for (const id of timersRef.current) clearTimeout(id);
+      timersRef.current.clear();
+    };
+  }, []);
 
   /* ---- mouse hands ---- */
   const clickKey = (midi) => {
     onPlay?.([midi], 0.55);
-    heldRef.current.add(midi);
-    feed(true);
-    setTimeout(() => { heldRef.current.delete(midi); feed(false); }, 240);
+    mouseHeldRef.current.add(midi); syncHeld();
+    feedRef.current(true);
+    later(() => { mouseHeldRef.current.delete(midi); syncHeld(); feedRef.current(false); }, 240);
   };
+
+  const keyA11y = (midi) => ({
+    role: "button", tabIndex: midi === Math.max(range.lo, Math.min(range.hi, focusedMidi)) ? 0 : -1,
+    onFocus: () => setFocusedMidi(midi),
+    "aria-label": `${["C", "C sharp", "D", "D sharp", "E", "F", "F sharp", "G", "G sharp", "A", "A sharp", "B"][midi % 12]} ${midiOctave(midi)}`,
+    "aria-pressed": heldView.has(midi),
+    ref: (el) => { if (el) keyRefs.current.set(midi, el); else keyRefs.current.delete(midi); },
+    onKeyDown: (e) => {
+      if (["Enter", " "].includes(e.key)) {
+        e.preventDefault(); if (e.repeat) return;
+        const held = keyboardHeldRef.current;
+        const attack = !held.has(midi);
+        if (attack) { held.add(midi); onPlay?.([midi], 0.55); } else held.delete(midi);
+        syncHeld(); feedRef.current(attack);
+      } else {
+        const notes = [...keyRefs.current.keys()].sort((a, b) => a - b);
+        const at = notes.indexOf(midi);
+        const next = e.key === "Home" ? notes[0] : e.key === "End" ? notes.at(-1)
+          : ["ArrowRight", "ArrowUp"].includes(e.key) ? notes[at + 1]
+          : ["ArrowLeft", "ArrowDown"].includes(e.key) ? notes[at - 1] : undefined;
+        if (next != null) { e.preventDefault(); keyRefs.current.get(next)?.focus(); }
+      }
+    },
+  });
 
   const run = runRef.current;
   const step = run && !run.done ? run.steps[run.i] : null;
@@ -242,13 +292,13 @@ export default function PlayAlong({
             </div>
             <div className="key-felt" style={{ padding: "12px 10px" }}>
               <div style={{ width: "100%", overflowX: "auto" }}>
-                <svg viewBox={`0 0 ${geom.width} ${WKH + 4}`} width="100%" style={{ maxWidth: geom.width, minWidth: 470, display: "block", margin: "0 auto" }} role="img"
+                <svg viewBox={`0 0 ${geom.width} ${WKH + 4}`} width="100%" style={{ maxWidth: geom.width, minWidth: 470, display: "block", margin: "0 auto" }} role="group"
                   aria-label={`play-along keyboard — waiting for ${missing.map(noteName).join(", ") || "you"}`}>
                   <defs><linearGradient id="paWhite" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#fbf6ec" /><stop offset="100%" stopColor={C.whiteShadow} /></linearGradient></defs>
                   {Object.entries(geom.pos).filter(([n]) => !isBlack(+n)).map(([n, p]) => {
                     const paint = keyPaint(+n);
                     return (
-                      <g key={n} onClick={() => clickKey(+n)} style={{ cursor: "pointer" }}>
+                      <g key={n} {...keyA11y(+n)} onClick={() => clickKey(+n)} style={{ cursor: "pointer" }}>
                         <rect x={p.x + 1} y={2} width={geom.WKW - 2} height={WKH} rx={3}
                           fill={paint?.solid ? paint.fill : "url(#paWhite)"}
                           stroke={paint ? paint.glow : C.whiteShadow} strokeWidth={paint ? 1.6 : 1}
@@ -260,7 +310,7 @@ export default function PlayAlong({
                   {Object.entries(geom.pos).filter(([n]) => isBlack(+n)).map(([n, p]) => {
                     const paint = keyPaint(+n);
                     return (
-                      <g key={n} onClick={() => clickKey(+n)} style={{ cursor: "pointer" }}>
+                      <g key={n} {...keyA11y(+n)} onClick={() => clickKey(+n)} style={{ cursor: "pointer" }}>
                         <rect x={p.x} y={2} width={BKW} height={BKH} rx={2}
                           fill={paint?.solid ? paint.fill : "#221d18"}
                           stroke={paint ? paint.glow : "#0c0a08"} strokeWidth={paint ? 1.5 : 1}
@@ -286,7 +336,7 @@ export default function PlayAlong({
               ) : (
                 <span style={{ fontSize: 12, color: "#8b8378" }}>this browser has no Web MIDI —</span>
               )}
-              <span style={{ fontSize: 12, color: "#8b8378" }}>or click the keys.</span>
+              <span style={{ fontSize: 12, color: "#8b8378" }}>or click the keys. Enter/Space holds or releases a key; arrows move between notes.</span>
               <span style={{ marginLeft: "auto", display: "inline-flex", gap: 8 }}>
                 <button className="bench-btn" onClick={() => { runRef.current?.skip(); setTick((t) => t + 1); if (runRef.current?.done) finish(runRef.current); }} title="Give me this one">
                   <SkipForward size={14} /> skip

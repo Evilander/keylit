@@ -47,18 +47,19 @@ export function loadManifest() {
 // memo lets the Library pull the fresh shelf without a page reload.
 export function invalidateManifest() {
   manifestPromise = null;
+  songCache.clear();
 }
 
-export function loadSong(entry) {
-  if (!entry) return Promise.resolve(null);
+export function loadSong(entry, { signal, cache = true } = {}) {
+  if (!entry || signal?.aborted) return Promise.resolve(null);
   // The user's own songs live in localStorage, not on disk.
   if (entry.source === "user") return Promise.resolve(userSongbook.get(entry.id));
   const key = `${entry.source}/${entry.id}`;
-  if (songCache.has(key)) return Promise.resolve(songCache.get(key));
-  const dir = entry.source === "songbook" ? "songbook" : `corpus/${entry.source}`;
-  return fetch(`${BASE}${dir}/${entry.id}.json`)
+  if (cache && songCache.has(key)) return Promise.resolve(songCache.get(key));
+  const dir = entry.source === "songbook" ? "songbook" : `corpus/${encodeURIComponent(entry.source)}`;
+  return fetch(`${BASE}${dir}/${encodeURIComponent(entry.id)}.json`, signal ? { signal } : undefined)
     .then((r) => (r.ok ? r.json() : null))
-    .then((song) => { if (song) songCache.set(key, song); return song; })
+    .then((song) => { if (signal?.aborted) return null; if (song && cache) { songCache.set(key, song); if (songCache.size > 100) songCache.delete(songCache.keys().next().value); } return song; })
     .catch(() => null);
 }
 
@@ -94,7 +95,8 @@ export function groupByArtist(rows) {
       if ((s.albumOrder ?? 9999) < g.order) g.order = s.albumOrder ?? 9999;
     }
     const albums = [...byAlbum.values()]
-      .map((g) => ({ ...g, songs: g.songs.slice().sort((a, b) => a.title.localeCompare(b.title)) }))
+      .map((g) => ({ ...g, songs: g.songs.slice().sort((a, b) =>
+        (a.trackNumber ?? Infinity) - (b.trackNumber ?? Infinity) || a.title.localeCompare(b.title)) }))
       .sort((a, b) => (a.order - b.order) || (a.album || "~").localeCompare(b.album || "~"));
     return { artist, count: songs.length, albums, multiAlbum: albums.filter((a) => a.album).length > 0 };
   });
@@ -154,6 +156,7 @@ const CORE_ARTISTS = new Set([
   "Animal Collective", "Panda Bear",
   "The Junior Varsity", "Nirvana", "Ryan Adams", "Whiskeytown", "Jeff Buckley",
   "Kinsella Bands", // the collection shelf (corpus source: kinsella)
+  "Coldplay", "Kings of Leon",
 ]);
 
 export const isCoreArtist = (artist, count = 0) =>
@@ -167,6 +170,10 @@ export const SOURCE_LABEL = {
   hyperrust: "hyperrust.org",
   gumbo: "gumbopages.com",
   ultimateguitar: "ultimate-guitar.com",
+  gotabs: "GoTabs",
+  guitartabscc: "GuitarTabs.cc",
+  coldplaying: "Coldplaying forum",
+  guitartabsexplorer: "GuitarTabsExplorer",
   songsterr: "songsterr.com",
   beatlescomplete: "The Beatles Complete",
   bluebook: "Blue Guitar",

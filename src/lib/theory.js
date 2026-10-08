@@ -25,6 +25,15 @@ export const QUALITIES = {
   o7: { name: "dim7", intervals: [0, 3, 6, 9] },
   aug: { name: "aug", intervals: [0, 4, 8] },
   "+": { name: "aug", intervals: [0, 4, 8] },
+  // The augmented triad carrying a 7th. "C+7"/"Caug7" is the everyday
+  // spelling of C7\u266f5; "Caugmaj7"/"CM7#5" puts a MAJOR 7th over it.
+  "+7": { name: "7\u266f5", intervals: [0, 4, 8, 10] },
+  aug7: { name: "7\u266f5", intervals: [0, 4, 8, 10] },
+  augmaj7: { name: "maj7\u266f5", intervals: [0, 4, 8, 11] },
+  "+maj7": { name: "maj7\u266f5", intervals: [0, 4, 8, 11] },
+  "maj7#5": { name: "maj7\u266f5", intervals: [0, 4, 8, 11] },
+  "M7#5": { name: "maj7\u266f5", intervals: [0, 4, 8, 11] },
+  "maj7+5": { name: "maj7\u266f5", intervals: [0, 4, 8, 11] },
   "5": { name: "5", intervals: [0, 7] },
   "6": { name: "6", intervals: [0, 4, 7, 9] },
   m6: { name: "m6", intervals: [0, 3, 7, 9] },
@@ -39,6 +48,8 @@ export const QUALITIES = {
   "-7": { name: "m7", intervals: [0, 3, 7, 10] },
   m7b5: { name: "m7\u266d5", intervals: [0, 3, 6, 10] },
   "\u00f8": { name: "m7\u266d5", intervals: [0, 3, 6, 10] },
+  // In print the half-diminished symbol nearly always carries its 7.
+  "\u00f87": { name: "m7\u266d5", intervals: [0, 3, 6, 10] },
   // Hal Leonard's older minus/plus dialect: -5/-9 mean flat, +5/+9 mean sharp.
   "m7-5": { name: "m7\u266d5", intervals: [0, 3, 6, 10] },
   "7-5": { name: "7\u266d5", intervals: [0, 4, 6, 10] },
@@ -66,6 +77,8 @@ export const QUALITIES = {
   "7#9": { name: "7\u266f9", intervals: [0, 4, 7, 10, 15] },
   "7#11": { name: "7\u266f11", intervals: [0, 4, 7, 10, 18] },
   "maj7#11": { name: "maj7\u266f11", intervals: [0, 4, 7, 11, 18] },
+  "9#11": { name: "9\u266f11", intervals: [0, 4, 7, 10, 14, 18] },
+  "13#11": { name: "13\u266f11", intervals: [0, 4, 7, 10, 14, 18, 21] },
   "9": { name: "9", intervals: [0, 4, 7, 10, 14] },
   maj9: { name: "maj9", intervals: [0, 4, 7, 11, 14] },
   M9: { name: "maj9", intervals: [0, 4, 7, 11, 14] },
@@ -92,6 +105,7 @@ export const QUALITIES = {
   b5: { name: "♭5", intervals: [0, 4, 6] },
   "maj7b5": { name: "maj7♭5", intervals: [0, 4, 6, 11] },
   "#11": { name: "add♯11", intervals: [0, 4, 7, 18] },
+  "add#11": { name: "add♯11", intervals: [0, 4, 7, 18] },
   // engravings occasionally print "Dmsus" — a sus chord has no third to be
   // minor about, so it sounds (and parses) as the plain sus4
   msus: { name: "sus4", intervals: [0, 5, 7] },
@@ -99,10 +113,16 @@ export const QUALITIES = {
   "7sus4": { name: "7sus4", intervals: [0, 5, 7, 10] },
   "7sus2": { name: "7sus2", intervals: [0, 2, 7, 10] },
   "7sus": { name: "7sus4", intervals: [0, 5, 7, 10] },
+  // The suspended dominant with its extensions stacked on — the gospel and
+  // soul cadence chord, and everywhere in fan charts.
+  "9sus4": { name: "9sus4", intervals: [0, 5, 7, 10, 14] },
+  "9sus": { name: "9sus4", intervals: [0, 5, 7, 10, 14] },
+  "13sus4": { name: "13sus4", intervals: [0, 5, 7, 10, 14, 21] },
+  "13sus": { name: "13sus4", intervals: [0, 5, 7, 10, 14, 21] },
 };
 
 export const symFromName = (name) =>
-  name === "maj" ? "" : name === "min" ? "m" : name;
+  name === "maj" ? "" : name === "min" ? "m" : name === "♭5" ? "(♭5)" : name;
 
 function noteToSemitone(letter, acc) {
   return NOTE_TO_SEMITONE[letter + (acc || "")];
@@ -194,6 +214,10 @@ export function isSectionLine(l) {
 //   - ChordPro inline chords:       [C]Twinkle [G]twinkle  ->  chord line + lyric line
 //   - ChordPro directives:          {title: ...}, {soh}  ->  dropped
 // Section headers like [Verse] / [Chorus] are preserved (not treated as chords).
+export function isChartMetadataLine(line) {
+  return /^(tuning|key|capo|tempo|artist|title|album|composer|difficulty|author|tabbed|time|bpm|track|year|genre|chords?|strumming|arranged|transcribed)\b[^:]*:/i.test(line.trim());
+}
+
 export function normalizeChart(text) {
   const out = [];
   for (const rawLine of String(text).split("\n")) {
@@ -202,7 +226,7 @@ export function normalizeChart(text) {
     if (/^\{.*\}$/.test(trimmed)) continue;                  // ChordPro directive
     // chart metadata (Ultimate-Guitar / Songsterr headers) — NOT chords. Drop them
     // so "Tuning: E A D G B E" and "Key: C" don't pollute the progression.
-    if (/^(tuning|key|capo|tempo|artist|title|album|composer|difficulty|author|tabbed|time|bpm|track|year|genre|chords?|strumming|arranged|transcribed)\b[^:]*:/i.test(trimmed)) continue;
+    if (isChartMetadataLine(trimmed)) continue;
     if (/^\d+\s+of\s+\d+$/i.test(trimmed)) continue;         // "1 of 27" page indicator
     const lone = trimmed.match(/^\[([^\]]+)\]$/);
     if (lone) {
@@ -295,6 +319,11 @@ export const transposeChord = (ch, t) => {
   const bs = ch.bassSemitone === null ? null : ((ch.bassSemitone + t) % 12 + 12) % 12;
   return {
     ...ch,
+    // Named additions are absolute pitches and must move with the root.
+    quality: ch.quality.replace(/add([A-G][#b♯♭]?)/g, (_, note) => {
+      const pc = NOTE_TO_SEMITONE[note.replace(/♯/g, "#").replace(/♭/g, "b")];
+      return "add" + SHARP_NAMES[((pc + t) % 12 + 12) % 12];
+    }),
     rootSemitone: rs,
     rootName: SHARP_NAMES[rs],
     bassSemitone: bs,
@@ -319,6 +348,13 @@ export function detectCapo(text) {
     }
   }
   return 0;
+}
+
+/** Resolve chart metadata before falling back to its prose declaration. */
+export function resolveCapo(text, declared) {
+  const value = Number(declared);
+  const present = declared != null && String(declared).trim() !== "";
+  return present && Number.isFinite(value) && value >= 0 ? Math.min(11, Math.round(value)) : detectCapo(text);
 }
 
 /** True when two parsed chords SOUND the same — same root pitch class,
@@ -357,7 +393,7 @@ export const qualClass = (name) => {
 // Is this quality a dominant-7 family chord (7, 9, 11, 13 and their altered
 // forms), as opposed to maj7/min7? Used to label (secondary) dominants.
 export const isDominantQuality = (q) =>
-  !q.startsWith("m") && (q.startsWith("7") || q === "9" || q === "11" || q === "13");
+  /^(?:7|9|11|13)(?=$|[^0-9])/.test(q);
 
 export function nashville(ch, tonic) {
   const d = ((ch.rootSemitone - tonic) % 12 + 12) % 12;

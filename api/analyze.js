@@ -13,6 +13,7 @@
 // rendered. This proxy is best-effort; the app degrades gracefully without it.
 
 import Anthropic from "@anthropic-ai/sdk";
+import { readJsonBody } from "../server/http-body.mjs";
 
 const MODEL = process.env.KEYLIT_MODEL || "claude-opus-4-8";
 
@@ -155,18 +156,7 @@ function composeContext(value) {
 
 const MAX_BODY_BYTES = 64 * 1024; // the biggest legal payload is a 12KB sheet
 
-function readBody(req) {
-  if (req.body) return Promise.resolve(typeof req.body === "string" ? JSON.parse(req.body) : req.body);
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (c) => {
-      data += c;
-      if (data.length > MAX_BODY_BYTES) { reject(Object.assign(new Error("too large"), { tooLarge: true })); req.destroy(); }
-    });
-    req.on("end", () => { try { resolve(data ? JSON.parse(data) : {}); } catch (e) { reject(e); } });
-    req.on("error", reject);
-  });
-}
+const readBody = (req) => readJsonBody(req, MAX_BODY_BYTES);
 
 // The proxy spends the owner's API budget, so it answers only its own UI.
 // KEYLIT_ALLOW_ORIGIN: comma-separated origins, or "*" to deliberately open up.
@@ -204,9 +194,24 @@ export function createRateLimiter({ limit = 20, windowMs = 60_000, maxIps = 2000
 
 const rateAllow = createRateLimiter();
 
-function clientIp(req) {
-  const fwd = req.headers["x-forwarded-for"];
-  if (typeof fwd === "string" && fwd) return fwd.split(",")[0].trim();
+// The limiter is only as good as the identity it counts. The FIRST entry of
+// x-forwarded-for is whatever the caller typed, so reading it let anyone
+// reset their own bucket by rotating a header. Vercel sets
+// x-vercel-forwarded-for and x-real-ip itself and overwrites any client
+// copy; the LAST x-forwarded-for entry is the nearest trusted hop when
+// running behind something else.
+export function clientIp(req) {
+  const h = req.headers || {};
+  const first = (v) => (Array.isArray(v) ? v[0] : v);
+  for (const key of ["x-vercel-forwarded-for", "x-real-ip"]) {
+    const v = first(h[key]);
+    if (typeof v === "string" && v.trim()) return v.split(",")[0].trim();
+  }
+  const fwd = first(h["x-forwarded-for"]);
+  if (typeof fwd === "string" && fwd.trim()) {
+    const hops = fwd.split(",").map((p) => p.trim()).filter(Boolean);
+    if (hops.length) return hops[hops.length - 1];
+  }
   return req.socket?.remoteAddress || "unknown";
 }
 
@@ -215,14 +220,19 @@ export default async function handler(req, res) {
   // no ACAO header and the browser refuses them the response.
   const origin = req.headers.origin;
   if (originAllowed(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Origin", allowedOrigins().includes("*") ? "*" : origin);
     res.setHeader("Vary", "Origin");
   }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") { res.statusCode = 204; return res.end(); }
   if (req.method !== "POST") { res.statusCode = 405; return res.end(JSON.stringify({ error: "POST only" })); }
-  if (origin && !originAllowed(origin)) {
+  // A request with NO Origin used to skip this check entirely, so plain curl
+  // reached the model on the owner's budget. The proxy answers its own UI,
+  // and a browser sends Origin on every POST including same-origin ones, so
+  // the header is required. KEYLIT_ALLOW_ORIGIN="*" stays the deliberate way
+  // to open it up for a script or another client.
+  if (!originAllowed(origin)) {
     res.statusCode = 403;
     return res.end(JSON.stringify({ error: "origin not allowed" }));
   }
@@ -242,6 +252,10 @@ export default async function handler(req, res) {
   catch (e) {
     res.statusCode = e?.tooLarge ? 413 : 400;
     return res.end(JSON.stringify({ error: e?.tooLarge ? "body too large" : "bad JSON" }));
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    res.statusCode = 400;
+    return res.end(JSON.stringify({ error: "JSON object required" }));
   }
 
   const client = new Anthropic();
@@ -271,7 +285,11 @@ export default async function handler(req, res) {
     }
 
     if (task === "reharm") {
-      const { progression = [], key = "C major", style = "any" } = body;
+      // The same caps the compose path already applies: an uncapped
+      // progression is an uncapped prompt, billed to the owner.
+      const progression = cappedStrings(body.progression, 256);
+      const key = String(body.key || "C major").trim().slice(0, 80) || "C major";
+      const style = String(body.style || "any").trim().slice(0, 80) || "any";
       const numbered = progression.map((c, i) => `${i}: ${c}`).join("\n");
       const userText = `Key: ${key}\nStyle preference: ${style}\nProgression (index: chord):\n${numbered}\n\nPropose your best interesting moves.`;
       const data = await callJSON(client, REHARM_SYSTEM, userText, REHARM_SCHEMA);
@@ -286,7 +304,10 @@ export default async function handler(req, res) {
     return res.end(JSON.stringify(data));
   } catch (e) {
     res.statusCode = 502;
-    return res.end(JSON.stringify({ error: "model call failed", detail: String(e?.message || e) }));
+    // Upstream messages can carry account and quota detail, so they stay in
+    // the function log rather than going back over the wire.
+    console.error("analyze: model call failed", e);
+    return res.end(JSON.stringify({ error: "model call failed" }));
   }
 }
 

@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { ArrowRight, Guitar, Minus, Plus, Sparkles } from "lucide-react";
 import { spellChord, spellPc } from "../lib/spelling.js";
-import { shapeShiftForTuning, TUNINGS } from "../lib/tuning.js";
+import { getTuning, shapeShiftForTuning, TUNINGS } from "../lib/tuning.js";
 import { C, MONO } from "../ui/theme.js";
 import { EngLabel, Faceplate } from "../ui/Bench.jsx";
 
-const GUITAR_TUNING_IDS = ["standard", "ebStandard", "dStandard"];
+const GUITAR_TUNING_IDS = Object.keys(TUNINGS).filter((id) => !["CGCGCD", "DADGBD"].includes(id));
 const CHORD_NAME_OPTIONS = [
   { id: "sharps", label: "Guitar ♯", title: "Sharp names everywhere — G#, C#7, D# — the way the fretboard reads" },
   { id: "guitar", label: "Campfire", title: "The mixed set guitarists trade: C#, Eb, F#, Ab, Bb" },
@@ -33,8 +33,9 @@ export default function GuitarSetup({
   onUseDetunedSetup,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const tuning = TUNINGS[tuningId] || TUNINGS.standard;
-  const tuningShapeShift = shapeShiftForTuning(tuning.id) || 0;
+  const tuning = getTuning(tuningId);
+  const tuningShapeShift = shapeShiftForTuning(tuning.id);
+  const alternate = tuningShapeShift === null;
   const capoChanged = capo !== chartCapo;
   const pitchEffects = [];
   if (tuningShapeShift > 0) {
@@ -123,10 +124,11 @@ export default function GuitarSetup({
             <select value={tuning.id} onChange={(e) => onTuningChange(e.target.value)} aria-label="My guitar tuning"
               title="Choose the tuning on the guitar in your hands"
               style={selectStyle}>
+              {!GUITAR_TUNING_IDS.includes(tuning.id) && <option value={tuning.id}>{tuning.name}</option>}
               {GUITAR_TUNING_IDS.map((id) => {
                 const t = TUNINGS[id];
                 const move = shapeShiftForTuning(id);
-                return <option key={id} value={id}>{t.name}{move ? ` · shapes +${move}` : ""}</option>;
+                return <option key={id} value={id}>{t.name}{move ? ` · shapes ${signed(move)}` : ""}</option>;
               })}
             </select>
             {tuningShapeShift > 0 && (
@@ -135,6 +137,7 @@ export default function GuitarSetup({
               </span>
             )}
           </div>
+          <div className="kl-meta">Strings low to high: {tuning.spelling}</div>
 
           <div className="flex items-center" style={{ gap: 9, flexWrap: "wrap" }}>
             <EngLabel>Capo</EngLabel>
@@ -170,7 +173,7 @@ export default function GuitarSetup({
         <div className="readout" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
           <div className="flex items-center" style={{ gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <div style={{ textAlign: "center", minWidth: 86 }}>
-              <EngLabel>Finger</EngLabel>
+              <EngLabel>{alternate ? "Chord" : "Finger"}</EngLabel>
               <div key={`shape-${shapeLabel}`} className="kl-noteswap" style={{ fontFamily: MONO, fontSize: 25, fontWeight: 700, color: C.rootText, marginTop: 3 }}>{shapeLabel}</div>
             </div>
             <ArrowRight size={18} color={C.faint} aria-hidden="true" />
@@ -180,8 +183,13 @@ export default function GuitarSetup({
             </div>
           </div>
           <div style={{ borderTop: `1px solid ${C.line}`, marginTop: 10, paddingTop: 8, textAlign: "center", fontFamily: MONO, fontSize: 11.5, color: C.faint }}>
-            shapes in {shapeKeyName} · concert pitch {soundKeyName}
+            {alternate ? `concert pitch ${soundKeyName}` : `shapes in ${shapeKeyName} · concert pitch ${soundKeyName}`}
           </div>
+          {alternate && (
+            <div style={{ marginTop: 7, textAlign: "center", fontSize: 12, lineHeight: 1.4, color: C.muted }}>
+              Use the grips and re-fretted tab below. This tuning changes the intervals between strings, so familiar chord shapes change.
+            </div>
+          )}
           {pitchEffects.length > 0 && (
             <div style={{ marginTop: 7, textAlign: "center", fontSize: 12, lineHeight: 1.4, color: C.muted }}>
               {pitchEffects.join("; ")}. Keylit does the shape math; playback does not move.

@@ -117,10 +117,11 @@ export default function ChartView({ text, activeKey, transpose = 0, onChordClick
         if (tab) {
           return (
             <div key={i} style={{
-              background: C.panel2, padding: "0 8px",
+              background: C.panel2, paddingLeft: 8, paddingRight: 8,
+              paddingTop: tab.first ? 3 : 0, paddingBottom: tab.last ? 3 : 0,
               borderLeft: `2px solid ${C.lineStrong}`,
-              ...(tab.first ? { marginTop: 4, paddingTop: 3, borderTopRightRadius: 6 } : {}),
-              ...(tab.last ? { marginBottom: 4, paddingBottom: 3, borderBottomRightRadius: 6 } : {}),
+              ...(tab.first ? { marginTop: 4, borderTopRightRadius: 6 } : {}),
+              ...(tab.last ? { marginBottom: 4, borderBottomRightRadius: 6 } : {}),
             }}>
               {line
                 ? tokenizeTabLine(line).map((r, j) => <span key={j} style={tabRunStyle[r.kind]}>{r.text}</span>)

@@ -28,11 +28,18 @@ export default function Metronome({ compact = false }) {
 
   const nudge = (d) => metronome.set({ bpm: Math.max(30, Math.min(260, st.bpm + d)) });
 
+  // The compact transport sits INSIDE the Perform stage, which binds Space and
+  // the arrows for the chart roll. Letting these bubble meant one Space toggled
+  // the click AND the roll, so the transport keeps the keys it handles.
   const onKey = (e) => {
-    if (e.key === " ") { e.preventDefault(); metronome.toggle(); }
-    else if (e.key === "t" || e.key === "T") { e.preventDefault(); tap(); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); nudge(e.shiftKey ? 5 : 1); }
-    else if (e.key === "ArrowDown") { e.preventDefault(); nudge(e.shiftKey ? -5 : -1); }
+    if (![" ", "t", "T", "ArrowUp", "ArrowDown"].includes(e.key)) return;
+    // Keep native controls native, but never let their keys run the stage.
+    e.stopPropagation();
+    if (e.target !== e.currentTarget && e.target.closest?.('button, input, select, textarea, [contenteditable="true"]')) return;
+    e.preventDefault();
+    if (e.key === " ") metronome.toggle();
+    else if (e.key === "t" || e.key === "T") tap();
+    else nudge((e.key === "ArrowUp" ? 1 : -1) * (e.shiftKey ? 5 : 1));
   };
 
   const lamps = (size = 1) => (

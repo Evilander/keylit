@@ -23,6 +23,22 @@ const baseProps = {
 };
 
 describe("GuitarSetup", () => {
+  it("offers alternate tunings and represents the selected setup honestly", () => {
+    render(<GuitarSetup {...baseProps} tuningId="dropD" />);
+    expect(screen.getByText("Drop D · no capo · Guitar ♯ names")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand guitar setup" }));
+    expect(screen.getByRole("combobox", { name: "My guitar tuning" })).toHaveValue("dropD");
+    expect(screen.getByRole("option", { name: /Open G/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /DADGAD/ })).toBeInTheDocument();
+  });
+
+  it("does not describe an open-tuning chord as a familiar standard-tuning fingering", () => {
+    render(<GuitarSetup {...baseProps} tuningId="openG" />);
+    fireEvent.click(screen.getByRole("button", { name: "Expand guitar setup" }));
+    expect(screen.queryByText("Finger")).not.toBeInTheDocument();
+    expect(screen.getByText(/use the grips/i)).toBeInTheDocument();
+  });
+
   it("renders the collapsed summary by default", () => {
     render(<GuitarSetup {...baseProps} />);
     expect(screen.getByText("Standard · no capo · Guitar ♯ names")).toBeInTheDocument();

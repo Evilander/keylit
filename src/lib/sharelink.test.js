@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { encodeShare, decodeShare, buildShareUrl } from "./sharelink.js";
+import { compressToEncodedURIComponent } from "lz-string";
 
 const candle = {
   title: "Candle",
@@ -48,9 +49,40 @@ describe("share links — a song as a URL fragment", () => {
     expect(encodeShare({ title: "x", body: "n".repeat(30001) })).toBe(null);
   });
 
+  it("round-trips maximum valid fields even when JSON escapes every character", () => {
+    const song = { title: "\0".repeat(300), artist: "\0".repeat(300), key: "\0".repeat(80),
+      tuning: "\0".repeat(120), body: "\0".repeat(30000) };
+    expect(decodeShare(encodeShare(song))).toEqual(song);
+  });
+
+  it("refuses compressed expansion before parsing an oversized JSON body", () => {
+    const payload = compressToEncodedURIComponent(JSON.stringify({ v: 1, b: "x".repeat(1000000) }));
+    expect(payload.length).toBeLessThan(2500);
+    expect(decodeShare(payload)).toBeNull();
+  });
+
+  it("keeps explicit capo zero authoritative over a stale chart header", () => {
+    expect(decodeShare(encodeShare({ title: "Re-fretted", body: "Capo 2\nC G", capo: 0 })).capo).toBe(0);
+  });
+
+  it("rejects hostile metadata types before they reach song rendering", () => {
+    for (const field of ["t", "a", "k", "tn"]) {
+      const payload = compressToEncodedURIComponent(JSON.stringify({ v: 1, t: "Song", b: "C G", [field]: { bad: true } }));
+      expect(decodeShare(payload)).toBeNull();
+    }
+    expect(encodeShare({ title: {}, body: "C G" })).toBeNull();
+    expect(decodeShare(compressToEncodedURIComponent(JSON.stringify({ v: 1, b: "C G", c: 40 })))).toBeNull();
+    expect(decodeShare("A".repeat(60000))).toBeNull();
+  });
+
   it("buildShareUrl composes origin + path + fragment", () => {
     const url = buildShareUrl("https://tylereveland.com/keylit", candle);
     expect(url.startsWith("https://tylereveland.com/keylit#s=")).toBe(true);
+    expect(decodeShare(url.slice(url.indexOf("#")))).toEqual(candle);
+  });
+
+  it("replaces an existing fragment rather than appending a second hash", () => {
+    const url = buildShareUrl("https://example.test/keylit#old", candle);
     expect(decodeShare(url.slice(url.indexOf("#")))).toEqual(candle);
   });
 });

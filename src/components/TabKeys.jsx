@@ -45,6 +45,7 @@ export default function TabKeys({ sheet, tuning, tuningRaw, capo, shift = 0, onP
   const [bpm, setBpm] = useState(90);
   const [loop, setLoop] = useState(false);
   const hearRef = useRef(null);
+  const hearGeneration = useRef(0);
   const hearAll = useMemo(() => {
     const blocks = tabBlocks(parsed, { shift, stepsPerBeat: 2 });
     const out = [];
@@ -57,6 +58,7 @@ export default function TabKeys({ sheet, tuning, tuningRaw, capo, shift = 0, onP
     return { events: out, totalBeats: Math.max(0, t0 - 2) };
   }, [parsed, shift]);
   const stopHear = () => {
+    hearGeneration.current++;
     hearRef.current?.stop();
     hearRef.current = null;
     setHearing(false);
@@ -65,19 +67,31 @@ export default function TabKeys({ sheet, tuning, tuningRaw, capo, shift = 0, onP
   const hear = async () => {
     if (hearing) { stopHear(); return; }
     if (!onHear || !hearAll.events.length) return;
+    const generation = ++hearGeneration.current;
     setPlaying(false);
     setHearing(true);
-    const done = () => { hearRef.current = null; setHearing(false); };
-    const h = await onHear(hearAll, {
-      bpm, loop,
-      onStep: (e) => setI(Math.max(0, Math.min(events.length - 1, e.flatIdx))),
-      onDone: done,
-      onCancel: done, // another surface took the stage
-    });
-    hearRef.current = h;
+    const done = () => {
+      if (generation !== hearGeneration.current) return;
+      hearGeneration.current++;
+      hearRef.current = null;
+      setHearing(false);
+    };
+    try {
+      const h = await onHear(hearAll, {
+        bpm, loop,
+        onStep: (e) => {
+          if (generation === hearGeneration.current) setI(Math.max(0, Math.min(events.length - 1, e.flatIdx)));
+        },
+        onDone: done,
+        onCancel: done,
+      });
+      if (generation !== hearGeneration.current) h?.stop();
+      else if (h) hearRef.current = h;
+      else done();
+    } catch { done(); }
   };
 
-  useEffect(() => { setI(0); setPlaying(false); stopHear(); }, [sheet, shift]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setI(0); setPlaying(false); stopHear(); }, [sheet, shift, tuning, tuningRaw, capo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const idx = Math.min(i, Math.max(0, events.length - 1));
   const current = events[idx];

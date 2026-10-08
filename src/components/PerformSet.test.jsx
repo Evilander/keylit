@@ -25,6 +25,17 @@ const readyRun = run([readySlot("e1", "First"), readySlot("e2", "Second")]);
 const readyRunWithOneChordPerPage = run([readySlot("e1", "First", ["C"]), readySlot("e2", "Second", ["G"])]);
 const runWithFirstErrorAndIdleSuccessor = run([errorSlot("e1", "Missing first", "not found"), idleSlot("e2", "Second")]);
 
+it("plays concert pitch while the page continues to show capo shapes", () => {
+  const slot = readySlot("capo", "Capo song", ["C", "G"]);
+  slot.page.soundingProgression = ["D", "A"].map(parseChord);
+  slot.page.capo = 2;
+  const onPlayPageChord = vi.fn();
+  render(<Perform run={run([slot])} onRequestPage={() => {}} onPlayPageChord={onPlayPageChord} />);
+  fireEvent.click(screen.getByRole("tab", { name: /walk/i }));
+  fireEvent.click(screen.getByRole("button", { name: /^Play$/i }));
+  expect(onPlayPageChord).toHaveBeenLastCalledWith(expect.objectContaining({ chord: expect.objectContaining({ rootSemitone: 2 }) }));
+});
+
 let observers;
 beforeEach(() => {
   observers = [];
@@ -86,4 +97,24 @@ it("continues loading after an unresolved first or middle song", () => {
   expect(onRequestPage).not.toHaveBeenCalled();
   observers.find((observer) => observer.options.rootMargin === "0px 0px -25% 0px").callback([{ isIntersecting: true, target: screen.getByTestId("preload-sentinel-e1") }]);
   expect(onRequestPage).toHaveBeenCalledWith(1);
+});
+
+it("Roll advances by whole lines under reduced motion and stops its timer on Hold", () => {
+  vi.useFakeTimers();
+  const originalMatchMedia = window.matchMedia;
+  window.matchMedia = () => ({ matches: true });
+  localStorage.removeItem("keylit.perform.v1");
+  const raf = vi.spyOn(window, "requestAnimationFrame");
+  try {
+    const { unmount } = render(<Perform run={readyRun} />);
+    const stage = screen.getByLabelText("continuous performance set");
+    Object.defineProperties(stage, { clientHeight: { value: 300 }, scrollHeight: { value: 2000 } });
+    fireEvent.click(screen.getByRole("button", { name: "Roll" }));
+    vi.advanceTimersByTime(700); expect(stage.scrollTop).toBe(0);
+    vi.advanceTimersByTime(300); expect(stage.scrollTop).toBe(35);
+    expect(raf).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Hold" }));
+    vi.advanceTimersByTime(2000); expect(stage.scrollTop).toBe(35);
+    unmount();
+  } finally { raf.mockRestore(); window.matchMedia = originalMatchMedia; vi.useRealTimers(); }
 });

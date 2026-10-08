@@ -86,3 +86,12 @@ describe("fingerEvents — integration with tab shapes", () => {
     expect(new Set(rh.map((n) => n.finger)).size).toBe(rh.length);
   });
 });
+
+describe("review dense piano chords", () => {
+  it.each([[60, 61, 62, 63, 64, 65], [40, 41, 42, 43, 44, 45], [40, 60, 61, 62, 63, 64, 65]])("never reuses a finger for distinct simultaneous notes: %s", (...midis) => {
+    const [event] = fingerEvents([{ notes: midis.map((midi) => ({ midi })) }]);
+    const assignments = event.notes.map((n) => n.hand + n.finger);
+    expect(new Set(assignments).size).toBe(midis.length);
+    expect(event.notes.every((n) => n.finger >= 1 && n.finger <= 5)).toBe(true);
+  });
+});

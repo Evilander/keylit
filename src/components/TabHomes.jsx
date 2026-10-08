@@ -24,9 +24,9 @@ export default function TabHomes({ sheet, sourceTuning, sourceCapo, currentTunin
       <div className="flex items-center" style={{ gap: 8, flexWrap: "wrap" }}>
         <Compass size={14} style={{ color: C.toneText, flexShrink: 0 }} />
         <span className="kl-eyebrow">Where this tab sits</span>
-        {homes.blocksJudged < homes.blocksTotal && (
+        {homes.eventsJudged < homes.eventsTotal && (
           <span className="kl-meta" style={{ color: C.faint }}>
-            judged on the first {homes.blocksJudged} of {homes.blocksTotal} riffs
+            judged on the first {homes.eventsJudged} of {homes.eventsTotal} note columns across {homes.blocksJudged} riffs
           </span>
         )}
       </div>

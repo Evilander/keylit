@@ -5,11 +5,15 @@
 //   "C G C F A D" and "dropC" fold together for the Library's tuning filter
 // - rewrites changed song files in place and writes public/corpus/manifest.json
 import fs from "node:fs";
+import { validSongRecord } from "./ingest_server.mjs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { getTuning, canonicalTuning, detectDeclaredTuning } from "../src/lib/tuning.js";
 import { findTabBlocks, parseTabBlock } from "../src/lib/tab.js";
 import { TUNING_OVERRIDES } from "./tuning_overrides.mjs";
+import { selectChartVersions } from "../src/lib/catalog.js";
+import { detectChartFormat } from "../src/lib/library.js";
 
 const normKey = (a, t) => `${a}::${t}`.toLowerCase().replace(/['’`]/g, "").replace(/[^a-z0-9:]+/g, " ").trim();
 const OVERRIDE_MAP = new Map(TUNING_OVERRIDES.map(([a, t, id]) => [normKey(a, t), id]));
@@ -76,8 +80,11 @@ const SMALL = new Set(["of", "the", "and", "a", "an", "to", "in", "on", "for"]);
 const titleCase = (s) => s.toLowerCase().split(/\s+/).map((w, i) => (w === "&" ? "&" : i > 0 && SMALL.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(" ");
 const normArtist = (a) => (!a ? a : FIX[a] ? FIX[a] : a === a.toUpperCase() && /[A-Z]/.test(a) ? titleCase(a) : a);
 
+export function buildManifest(root = ROOT) {
+const ROOT = root;
 let fixedArtists = 0;
 let retuned = 0;
+let formatsFixed = 0;
 const out = [];
 for (const src of fs.readdirSync(ROOT)) {
   const dir = path.join(ROOT, src);
@@ -87,11 +94,17 @@ for (const src of fs.readdirSync(ROOT)) {
     const fp = path.join(dir, f);
     let s;
     try { s = JSON.parse(fs.readFileSync(fp, "utf8")); } catch { continue; }
-    if (!s.id || !s.title) continue;
+    if (!validSongRecord(s)) { console.warn(`Skipping invalid song metadata: ${fp}`); continue; }
     if (EXCLUDE_ID.test(s.id) || EXCLUDE_ARTISTS.has(s.artist)) continue;
     const na = normArtist(s.artist);
     let dirty = na !== s.artist;
     if (dirty) s.artist = na;
+    const format = detectChartFormat(s.body, s.format || "chords");
+    if (format !== s.format) {
+      s.format = format;
+      formatsFixed++;
+      dirty = true;
+    }
 
     // ---- tuning resolution: labels > declared-in-text > metadata > site
     // convention. `tuningSource` records the winner so a convention applied
@@ -162,10 +175,14 @@ for (const src of fs.readdirSync(ROOT)) {
     out.push({
       id: s.id, artist: s.artist || null, title: s.title,
       album: s.album || null, albumOrder: s.albumOrder ?? 9999,
+      ...(Number.isInteger(s.trackNumber) && s.trackNumber > 0 ? { trackNumber: s.trackNumber } : {}),
+      ...(Number.isInteger(s.albumYear) ? { albumYear: s.albumYear } : {}),
+      ...(s.albumTrackKind ? { albumTrackKind: s.albumTrackKind } : {}),
       source: s.source || src, sourceUrl: s.sourceUrl || null,
       tuning: s.tuning || "standard", tuningId: t.id, tuningName: t.name,
-      capo: s.capo || null, key: s.key || null, format: s.format || "chords",
+      capo: s.capo ?? null, key: s.key || null, format: s.format || "chords",
       bodyLen: (s.body || "").length, // transient — dedupe evidence, stripped below
+      contentHash: createHash("sha256").update((s.body || "").replace(/\r\n/g, "\n").trim()).digest("hex"),
     });
   }
 }
@@ -179,40 +196,23 @@ if (indexed.length !== out.length) console.log("hyperrust Neil rows superseded b
 out.length = 0;
 out.push(...indexed);
 
-// General cross-source dedupe (owner ask, 2026-07-15): the same song from two
-// sites indexes ONCE — chords beat tabs (the app's purpose is playing them),
-// then the fuller body wins, then source name for determinism. Deliberate
-// alternates ("… (ver 2)") survive untouched, and every file stays on disk —
-// only the browse index chooses, so this is reversible by deleting the rule.
+// Chord sheets, tabs, and different guitar setups serve different purposes.
+// Deduplicate within each arrangement; keep the other versions discoverable.
 {
-  const keyOf = (r) => `${(r.artist || "").toLowerCase()}|${normTitle(r.title)}`;
-  const groups = new Map();
-  for (const r of out) {
-    if (/\(ver /i.test(r.title)) continue;
-    const k = keyOf(r);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(r);
-  }
-  const drop = new Set();
-  for (const rows of groups.values()) {
-    if (rows.length < 2) continue;
-    const best = rows.slice().sort((a, b) =>
-      (a.format === "chords" ? 0 : 1) - (b.format === "chords" ? 0 : 1) ||
-      (b.bodyLen || 0) - (a.bodyLen || 0) ||
-      (a.source < b.source ? -1 : 1)
-    )[0];
-    for (const r of rows) if (r !== best) drop.add(r);
-  }
-  if (drop.size) console.log("cross-source duplicates superseded:", drop.size);
-  const deduped = out.filter((r) => !drop.has(r));
+  const deduped = selectChartVersions(out);
+  if (deduped.length !== out.length) console.log("equivalent chart versions superseded:", out.length - deduped.length);
   out.length = 0;
   out.push(...deduped);
 }
-for (const r of out) delete r.bodyLen;
+for (const r of out) { delete r.bodyLen; delete r.contentHash; }
 
 fs.writeFileSync(path.join(ROOT, "manifest.json"), JSON.stringify(out), "utf8");
 const tunings = {};
 out.forEach((s) => { if (s.tuningId !== "standard") tunings[s.tuningName] = (tunings[s.tuningName] || 0) + 1; });
-console.log("artist names fixed:", fixedArtists, "| songs retuned from chart text/conventions:", retuned);
+console.log("artist names fixed:", fixedArtists, "| songs retuned from chart text/conventions:", retuned, "| chart formats corrected:", formatsFixed);
 console.log("manifest:", out.length, "songs,", new Set(out.map((s) => s.artist || "Various")).size, "artists");
 console.log("alt tunings:", Object.entries(tunings).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([n, c]) => `${n} (${c})`).join(" · "));
+
+return out;
+}
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) buildManifest();

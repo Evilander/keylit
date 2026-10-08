@@ -24,9 +24,13 @@ export default function AddSong({ onSaved, onClose }) {
   const save = () => {
     const built = buildUserSong(f, Date.now());
     if (built.error) { setError(built.error); return; }
-    try { userSongbook.save(built.song, built.row); }
-    catch { setError("Storage is full — the song wasn't saved. Export a backup, clear space, and try again."); return; }
-    onSaved?.(built.song);
+    let saved;
+    try { saved = userSongbook.save(built.song, built.row); }
+    catch (cause) {
+      setError(`The song was not saved. ${cause?.message || "Storage is unavailable."} Your chart is still here; copy it before closing. Do not clear app data.`);
+      return;
+    }
+    onSaved?.(saved);
   };
 
   return (
@@ -82,7 +86,7 @@ export default function AddSong({ onSaved, onClose }) {
         </p>
       </div>
 
-      {error && <p style={{ color: C.bassText, fontSize: 13, marginTop: 8 }}>{error}</p>}
+      {error && <p role="alert" style={{ color: C.bassText, fontSize: 13, marginTop: 8 }}>{error}</p>}
 
       <div className="flex items-center" style={{ gap: 10, marginTop: 12 }}>
         <button className="bench-btn primary" onClick={save}>Add to library</button>

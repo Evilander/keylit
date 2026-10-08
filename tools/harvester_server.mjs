@@ -8,6 +8,7 @@
 //   POST /hunt {artist}  → { id }            409 while a hunt is running
 //   GET  /hunt/<id>      → { artist, stage, stages, log, done, error }
 import http from "node:http";
+import { readJsonBody } from "../server/http-body.mjs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -54,7 +55,7 @@ function runStage(job, stage, artist) {
     job.stages.push(st);
     job.stage = stage.key;
     const child = spawn(process.execPath, [path.join(ROOT, stage.script), ...stage.args(artist)], {
-      cwd: ROOT, windowsHide: true,
+      cwd: ROOT, windowsHide: true, timeout: stage.key === "manifest" ? 2 * 60000 : 8 * 60000,
     });
     let buf = "";
     const eat = (chunk) => {
@@ -74,8 +75,9 @@ function runStage(job, stage, artist) {
     };
     child.stdout.on("data", eat);
     child.stderr.on("data", eat);
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       st.status = code === 0 ? "done" : "failed";
+      if (signal) job.log.push(`${stage.label} stopped after reaching its time limit`);
       resolve(code === 0);
     });
     child.on("error", (err) => {
@@ -87,23 +89,28 @@ function runStage(job, stage, artist) {
 }
 
 async function hunt(job, artist) {
-  for (const stage of STAGES) {
-    const ok = await runStage(job, stage, artist);
-    // A source having nothing for an artist is a finding, not a failure —
-    // only a broken manifest rebuild aborts the hunt.
-    if (!ok && stage.key === "manifest") {
-      job.error = "the index rebuild failed — corpus files are on disk but the Library can't see them";
-      break;
+  try {
+    for (const stage of STAGES) {
+      const ok = await runStage(job, stage, artist);
+      // Source failures still allow rebuilding the successfully acquired charts.
+      if (!ok && stage.key === "manifest") {
+        job.error = "the index rebuild failed — corpus files are on disk but the Library can't see them";
+        break;
+      }
+      if (!ok || job.stages.at(-1).failed > 0) {
+        job.error = "Some sources could not finish. The charts acquired so far are kept.";
+      }
     }
+  } catch {
+    job.error = "The hunt stopped unexpectedly. The charts acquired so far are kept.";
+  } finally {
+    job.done = true;
+    job.stage = "done";
+    busy = false;
   }
-  job.done = true;
-  job.stage = "done";
-  busy = false;
 }
 
-const readBody = async (req) => { let b = ""; for await (const c of req) b += c; return b; };
-
-const server = http.createServer(async (req, res) => {
+export async function handler(req, res) {
   const origin = req.headers.origin;
   if (req.method === "OPTIONS") return send(res, 204, {}, origin);
   try {
@@ -123,18 +130,19 @@ const server = http.createServer(async (req, res) => {
       busy = true;
       let artist;
       try {
-        ({ artist } = JSON.parse(await readBody(req)));
-      } catch {
+        ({ artist } = await readJsonBody(req, 4096));
+      } catch (error) {
         busy = false;
-        return send(res, 400, { err: "bad json" }, origin);
+        return send(res, error.tooLarge ? 413 : 400, { err: "bad json" }, origin);
       }
-      if (!artist || typeof artist !== "string" || !artist.trim()) {
+      if (!artist || typeof artist !== "string" || !artist.trim() || artist.length > 160) {
         busy = false;
         return send(res, 400, { err: "missing artist" }, origin);
       }
       const id = String(nextId++);
       const job = { artist: artist.trim(), stage: "starting", stages: [], log: [], done: false, error: null, manifest: null };
       jobs.set(id, job);
+      if (jobs.size > 50) jobs.delete(jobs.keys().next().value);
       hunt(job, artist.trim());
       return send(res, 200, { id }, origin);
     }
@@ -151,8 +159,8 @@ const server = http.createServer(async (req, res) => {
     busy = false;
     send(res, 500, { err: e.message }, origin);
   }
-});
+}
 
-server.listen(PORT, "127.0.0.1", () => {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) http.createServer(handler).listen(PORT, "127.0.0.1", () => {
   console.log(`harvester listening on http://127.0.0.1:${PORT} — corpus: ${path.join(ROOT, "public", "corpus")}`);
 });

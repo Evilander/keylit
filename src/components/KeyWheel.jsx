@@ -86,7 +86,7 @@ function KeyWheelBase({ prog, activeKey, currentIdx, onPickTonic, onAudition }) 
   }, [prog, currentIdx]);
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} width="100%" role="img"
+    <svg viewBox={`0 0 ${size} ${size}`} width="100%" role="group"
       aria-label="circle of fifths — C at the top like the printed chart; the dotted wedge travels to your key; click any key to hear it and make it home"
       style={{ display: "block", maxWidth: 440, margin: "0 auto", overflow: "visible" }}>
       <g style={{ transform: `rotate(${wedgeDeg}deg)`, transformOrigin: `${cx}px ${cy}px`, transition: SPRING }}>
@@ -126,7 +126,11 @@ function KeyWheelBase({ prog, activeKey, currentIdx, onPickTonic, onAudition }) 
           <g key={i}>
             <g style={{ transform: `translate(${mx}px, ${my}px)` }}
               onClick={() => click(majPc, "major")} cursor="pointer"
-              role="button" aria-label={`hear ${MAJ[i]} major and make it home`}>
+              role="button" tabIndex={0} onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault(); event.stopPropagation(); click(majPc, "major");
+                }
+              }} aria-label={`hear ${MAJ[i]} major and make it home`}>
               {majPc === currentPc && !currentIsMinor && <circle r={nMaj + 4} fill="none" stroke={C.toneUi} strokeWidth={2} />}
               <circle r={nMaj} fill={majFill}
                 stroke={majTonic ? C.toneUi : majInfo ? "transparent" : C.line} strokeWidth={majTonic ? 2 : 1} />
@@ -135,7 +139,11 @@ function KeyWheelBase({ prog, activeKey, currentIdx, onPickTonic, onAudition }) 
             </g>
             <g style={{ transform: `translate(${ix}px, ${iy}px)` }}
               onClick={() => click(minPc, "minor")} cursor="pointer"
-              role="button" aria-label={`hear ${MIN[i]} and make it home`}>
+              role="button" tabIndex={0} onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault(); event.stopPropagation(); click(minPc, "minor");
+                }
+              }} aria-label={`hear ${MIN[i]} and make it home`}>
               {minPc === currentPc && currentIsMinor && <circle r={nMin + 3.5} fill="none" stroke={C.toneUi} strokeWidth={2} />}
               <circle r={nMin} fill={minFill}
                 stroke={minTonic ? C.toneUi : minInfo ? "transparent" : C.line} strokeWidth={minTonic ? 2 : 1} />

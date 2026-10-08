@@ -12,26 +12,31 @@ import {
 
 const KEY = "keylit.songs.v1";
 
-function memoryBackend() {
-  const store = new Map();
+function unavailableBackend() {
   return {
-    getItem: (key) => store.get(key) ?? "",
-    setItem: (key, value) => store.set(key, value),
+    getItem: () => "",
+    setItem: () => { throw new Error("Persistent storage is unavailable. Keep this window open and download or copy your work before closing."); },
   };
 }
 
-function selectBackend(backend, storage = typeof localStorage !== "undefined" ? localStorage : null) {
+function selectBackend(backend, storage) {
   if (backend) return backend;
+  if (storage === undefined) {
+    try { storage = globalThis.localStorage; } catch { storage = null; }
+  }
   return storage && typeof storage.getItem === "function" && typeof storage.setItem === "function"
     ? storage
-    : memoryBackend();
+    : unavailableBackend();
 }
 
 export function createLibrary(backend) {
   const be = selectBackend(backend);
 
   const read = () => {
-    try { return JSON.parse(be.getItem(KEY) || "[]"); } catch { return []; }
+    try {
+      const songs = JSON.parse(be.getItem(KEY) || "[]");
+      return Array.isArray(songs) ? songs.filter((s) => s && typeof s === "object" && typeof s.id === "string" && typeof s.name === "string" && typeof s.sheet === "string") : [];
+    } catch { return []; }
   };
   const write = (songs) => be.setItem(KEY, JSON.stringify(songs));
 
@@ -66,31 +71,63 @@ function isDraftEnvelope(value) {
 
 export function createDraftBook(backend, storage) {
   const be = selectBackend(backend, storage);
-  const read = () => {
+  const observed = new Map();
+  let readBase;
+  const read = (strict = false) => {
     try {
-      const raw = JSON.parse(be.getItem(DRAFT_KEY) || "{}");
-      if (!isDraftEnvelope(raw)) return [];
+      const rawText = be.getItem(DRAFT_KEY) || "";
+      if (strict) readBase = rawText;
+      if (!rawText) return [];
+      const raw = JSON.parse(rawText);
+      if (!isDraftEnvelope(raw)) throw new Error("Invalid envelope");
       const drafts = raw.drafts.filter((draft) => validateDraft(draft).ok);
-      // Duplicate draft identities make the persisted collection ambiguous.
-      if (new Set(drafts.map((draft) => draft.id)).size !== drafts.length) return [];
+      if (drafts.length !== raw.drafts.length || new Set(drafts.map((draft) => draft.id)).size !== drafts.length) {
+        if (strict) throw new Error("Invalid drafts");
+        if (new Set(drafts.map((draft) => draft.id)).size !== drafts.length) return [];
+      }
       return drafts.map((draft) => createDraft(draft));
-    } catch { return []; }
+    } catch {
+      if (strict) throw new Error("Stored Write drafts need recovery. Existing data was preserved; copy your current writing before closing.");
+      return [];
+    }
   };
-  const write = (drafts) => be.setItem(DRAFT_KEY, JSON.stringify({ version: 2, drafts }));
+  const remember = (draft) => {
+    if (!observed.has(draft.id)) observed.set(draft.id, JSON.stringify(draft));
+    return draft;
+  };
+  const checkRecord = (id, drafts) => {
+    const current = JSON.stringify(drafts.find((draft) => draft.id === id) || null);
+    if (observed.has(id) && observed.get(id) !== current) throw new Error("Write drafts changed in another window. Your edits are still here; copy them before reopening the saved draft.");
+  };
+  const write = (drafts, id) => {
+    // Best-effort conflict detection only: localStorage has no atomic CAS.
+    if ((be.getItem(DRAFT_KEY) || "") !== readBase) throw new Error("Write drafts changed in another window. Copy your edits before reopening the saved draft.");
+    be.setItem(DRAFT_KEY, JSON.stringify({ version: 2, drafts }));
+    observed.set(id, JSON.stringify(drafts.find((draft) => draft.id === id) || null));
+  };
 
   return {
-    list: () => read().slice().sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0)),
-    get: (id) => read().find((draft) => draft.id === id) || null,
+    list: () => read().map(remember).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0)),
+    get(id) {
+      const draft = read().find((item) => item.id === id) || null;
+      observed.set(id, JSON.stringify(draft));
+      return draft;
+    },
     save(draft) {
       if (!validateDraft(draft).ok) throw new Error("Invalid Write draft");
-      const drafts = read();
+      const drafts = read(true);
+      checkRecord(draft.id, drafts);
       const next = drafts.some((item) => item.id === draft.id)
         ? drafts.map((item) => item.id === draft.id ? draft : item)
         : drafts.concat(draft);
-      write(next);
+      write(next, draft.id);
       return draft;
     },
-    remove(id) { write(read().filter((draft) => draft.id !== id)); },
+    remove(id) {
+      const drafts = read(true);
+      checkRecord(id, drafts);
+      write(drafts.filter((draft) => draft.id !== id), id);
+    },
     legacy() { return createLibrary(be).list(); },
   };
 }
@@ -103,7 +140,16 @@ const USER_KEY = "keylit.usersongs.v1";
 export function createUserSongbook(backend) {
   const be = selectBackend(backend);
   const read = () => {
-    try { return JSON.parse(be.getItem(USER_KEY) || "[]"); } catch { return []; }
+    try {
+      const songs = JSON.parse(be.getItem(USER_KEY) || "[]");
+      if (!Array.isArray(songs)) return [];
+      return songs.filter((s) => s && typeof s === "object" && typeof s.id === "string" && typeof s.body === "string").map((s) => ({
+        ...s, title: typeof s.title === "string" ? s.title : "Untitled",
+        artist: typeof s.artist === "string" ? s.artist : "Unknown",
+        tuning: typeof s.tuning === "string" ? s.tuning : "standard",
+        key: typeof s.key === "string" ? s.key : null,
+      }));
+    } catch { return []; }
   };
   const write = (songs) => be.setItem(USER_KEY, JSON.stringify(songs));
 
@@ -113,9 +159,21 @@ export function createUserSongbook(backend) {
     get(id) { return read().find((s) => s.id === id) || null; },
     /** Full records, bodies included — what a backup carries. */
     all() { return read(); },
-    /** Save { song, row } from buildUserSong — same id replaces (edit). */
+    /** Exact artist/title edits retain legacy IDs (including setlist links).
+     * Returns the stored record; callers must use its ID, not the built ID. */
     save(song, row) {
-      write(read().filter((s) => s.id !== song.id).concat({ ...song, ...row }));
+      const songs = read();
+      const record = { ...song, ...row };
+      const sameName = (item) => item.artist === record.artist && item.title === record.title;
+      const existing = songs.find((item) => item.id === record.id && sameName(item))
+        || songs.find(sameName);
+      const id = existing?.id || record.id;
+      if (songs.some((item) => item.id === id && !sameName(item))) {
+        throw new Error("A different song already uses this ID. Nothing was overwritten. Copy your chart and add it again to create a fresh identity.");
+      }
+      const saved = { ...record, id };
+      write(songs.filter((item) => item.id !== id).concat(saved));
+      return saved;
     },
     /** Replace the whole book (import path — caller merged already). */
     replaceAll(songs) { write(Array.isArray(songs) ? songs : []); },
@@ -184,6 +242,29 @@ export function createBenchBook(backend, { makeId = defaultId, now = Date.now } 
       write(state);
     },
     setlists() { return read().setlists; },
+    /** Save the whole selection in one write; failure leaves the book untouched. */
+    saveSetlistSongs({ id = null, name, songs }) {
+      if (!Array.isArray(songs) || !songs.length) throw new Error("Choose at least one song.");
+      const st = read();
+      let next = st;
+      let targetId = id;
+      if (id) {
+        if (!st.setlists.some((setlist) => setlist.id === id)) throw new Error("That setlist no longer exists.");
+      } else {
+        targetId = makeId("setlist");
+        if (typeof targetId !== "string" || !targetId.trim() || st.setlists.some((setlist) => setlist.id === targetId)) {
+          throw new Error("Could not create a unique setlist.");
+        }
+        next = { ...st, setlists: st.setlists.concat({ id: targetId, name: name?.trim() || "Setlist", entries: [], notes: "", createdAt: now() }) };
+      }
+      for (const song of songs) {
+        const added = addEntry(next, targetId, song, { makeId });
+        if (added === next) throw new Error("Could not add every chosen song.");
+        next = added;
+      }
+      write(next);
+      return next.setlists.find((setlist) => setlist.id === targetId);
+    },
     createSetlist(name) {
       const st = read();
       const id = makeId("setlist");

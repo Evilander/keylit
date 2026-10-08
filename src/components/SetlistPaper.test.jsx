@@ -82,3 +82,30 @@ it("renders a complete print-only setlist instead of a blank print page", () => 
   expect(print).toHaveTextContent("capo 2");
   expect(print).toHaveTextContent("encore");
 });
+
+it("retains failed notes and retries without losing text", () => {
+  const onSetNotes = vi.fn(() => { throw new Error("quota"); });
+  render(<SetlistPaper {...props({ onSetNotes })} />);
+  fireEvent.change(screen.getByLabelText("setlist notes"), { target: { value: "unrepeatable notes" } });
+  expect(screen.getByLabelText("setlist notes")).toHaveValue("unrepeatable notes");
+  expect(screen.getByRole("alert")).toHaveTextContent(/Not saved/);
+  onSetNotes.mockImplementation(() => {});
+  fireEvent.click(screen.getByRole("button", { name: /retry saving notes/i }));
+  expect(onSetNotes).toHaveBeenLastCalledWith("unrepeatable notes");
+});
+
+it("focuses Cancel, traps Tab, and returns focus on Escape from delete dialog", () => {
+  render(<SetlistPaper {...props()} />);
+  const trigger = screen.getByRole("button", { name: "delete Open mic" });
+  trigger.focus(); fireEvent.click(trigger);
+  const cancel = screen.getByRole("button", { name: "Cancel" });
+  const confirm = screen.getByRole("button", { name: "Confirm delete" });
+  expect(cancel).toHaveFocus();
+  fireEvent.keyDown(cancel, { key: "Tab", shiftKey: true });
+  expect(confirm).toHaveFocus();
+  fireEvent.keyDown(confirm, { key: "Tab" });
+  expect(cancel).toHaveFocus();
+  fireEvent.keyDown(cancel, { key: "Escape" });
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(trigger).toHaveFocus();
+});

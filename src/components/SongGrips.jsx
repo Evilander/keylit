@@ -18,9 +18,9 @@ export default function SongGrips({
   chords, activeKey,
   shapeTuning = STANDARD_TUNING,
   strumTuning = STANDARD_TUNING, strumCapo = 0,
-  onStrum,
+  onStrum, defaultOpen = true,
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(defaultOpen);
 
   const grips = useMemo(
     () => (chords || []).map((ch) => ({

@@ -7,9 +7,10 @@ import { detectCapo } from "./theory.js";
 import { canonicalTuning, detectDeclaredTuning } from "./tuning.js";
 import { findTabBlocks, parseTabBlock, hasTab } from "./tab.js";
 
-const slug = (s) => String(s || "").toLowerCase().normalize("NFKD")
-  .replace(/[̀-ͯ]/g, "").replace(/&/g, "and")
-  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+// Encode every code point without case folding or Unicode normalization.
+// Parts contain only hex and single hyphens, so the double-hyphen separator
+// cannot alias an artist/title boundary. Exact-name edits retain saved IDs in storage.
+const identitySlug = (s) => `u~${Array.from(s, (c) => c.codePointAt(0).toString(16)).join("-")}`;
 
 // The transcription's own 6-line string labels, if any (4-line riffs excluded).
 function labelsTuning(body) {
@@ -55,11 +56,11 @@ export function buildUserSong(fields, now = 0) {
   const capoRaw = String(fields.capo ?? "").trim();
   const capoField = Number(capoRaw);
   const capo = capoRaw !== "" && Number.isFinite(capoField) && capoField >= 0
-    ? Math.min(11, Math.round(capoField)) || null
+    ? Math.min(11, Math.round(capoField))
     : detectCapo(body) || null;
 
   const song = {
-    id: `user--${slug(artist)}--${slug(title)}`,
+    id: `user--${identitySlug(artist)}--${identitySlug(title)}`,
     artist, title,
     album: String(fields.album || "").trim() || null,
     albumOrder: 9999,

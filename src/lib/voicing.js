@@ -58,10 +58,18 @@ export function rootPositionUpper(chord) {
   const ivs = reduceVoicing(chord.intervals);
   let rootMidi = 48 + chord.rootSemitone;
   const avg = () => rootMidi + ivs.reduce((s, i) => s + i, 0) / ivs.length;
+  const top = () => rootMidi + Math.max(...ivs);
   let guard = 0;
   while (avg() > VOICE_CENTER + 7 && rootMidi - 12 >= LOW_MIDI && guard++ < 6) rootMidi -= 12;
   guard = 0;
-  while (avg() < VOICE_CENTER - 7 && rootMidi + Math.max(...ivs) + 12 <= HIGH_MIDI && guard++ < 6) rootMidi += 12;
+  while (avg() < VOICE_CENTER - 7 && top() + 12 <= HIGH_MIDI && guard++ < 6) rootMidi += 12;
+  // Centering works on the average, so a tall extension can sit dead centre
+  // and still poke out the top — a 13th reaches 21 semitones above its root.
+  // Callers clamp what they DRAW but keep this raw array as `prev` for the
+  // next chord, so an escaped note would steer voice leading for the rest of
+  // the song. Drop the whole shape an octave while the root still fits.
+  guard = 0;
+  while (top() > HIGH_MIDI && rootMidi - 12 >= LOW_MIDI && guard++ < 6) rootMidi -= 12;
   return ivs.map((i) => rootMidi + i);
 }
 
