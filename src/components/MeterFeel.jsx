@@ -86,6 +86,10 @@ export default function MeterFeel({ tutor }) {
   useEffect(() => {
     if (phase !== "tapping") return;
     const onKey = (e) => {
+      // This listens on window, so without a guard it swallows the spacebar
+      // everywhere — a lyric field, a search box, a setlist name. Typing wins.
+      const t = e.target;
+      if (t?.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t?.tagName)) return;
       if (e.code === "Space") { e.preventDefault(); tap(); }
     };
     window.addEventListener("keydown", onKey);

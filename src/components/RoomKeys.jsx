@@ -24,12 +24,16 @@ export default function RoomKeys({ onGo }) {
       if (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.isContentEditable) return;
       if (e.key === "?") { e.preventDefault(); setOpen((o) => !o); return; }
       if (e.key === "Escape") { setOpen(false); return; }
+      // Guarding on the focused element alone was not enough: a modal's own
+      // buttons pass that check, so a digit still jumped rooms underneath an
+      // open dialog. Any dialog but this map owns the number row while it is up.
+      if (!open && document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
       const hit = MAP.find(([k]) => k === e.key);
       if (hit) { onGo(hit[1]); setOpen(false); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onGo]);
+  }, [onGo, open]);
 
   if (!open) return null;
   // Portaled to body: kl-rise creates a transform context that hijacks

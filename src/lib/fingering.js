@@ -71,14 +71,15 @@ export function chordFingers(midis, hand) {
  * previous event so melodies don't flip-flop hands.
  */
 export function splitHands(midis, prev = null) {
-  const m = [...midis].sort((a, b) => a - b);
+  const m = [...new Set(midis)].sort((a, b) => a - b);
   if (!m.length) return { L: [], R: [] };
   const span = m[m.length - 1] - m[0];
-  if (m.length > 1 && span > 14) {
+  if (m.length > 5 || (m.length > 1 && span > 14)) {
     // Pick the split that keeps both hands playable: minimize the larger
     // hand span; break ties toward the bigger gap between the hands.
     let best = 1, bestSpan = Infinity, bestGap = -1;
     for (let i = 1; i < m.length; i++) {
+      if (m.length <= 10 && (i > 5 || m.length - i > 5)) continue;
       const spanL = m[i - 1] - m[0];
       const spanR = m[m.length - 1] - m[i];
       const worst = Math.max(spanL, spanR);

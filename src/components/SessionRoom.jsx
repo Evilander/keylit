@@ -29,11 +29,13 @@ export default function SessionRoom({ prog, labelFor, audio, onClaimStage }) {
   const meterRef = useRef(createLockMeter());
   const runRef = useRef(null); // { arrange, spb, base, passBeats, handles:Set, timers:Set, tier }
   const midiRef = useRef({ unsub: null });
+  const generationRef = useRef(0);
 
   const chordNow = prog?.[nowIdx] || null;
   const style = STYLES[styleId] || STYLES.ballad;
 
   const stop = () => {
+    generationRef.current++;
     const r = runRef.current;
     if (r) {
       for (const t of r.timers) clearTimeout(t);
@@ -74,8 +76,12 @@ export default function SessionRoom({ prog, labelFor, audio, onClaimStage }) {
 
   const start = async () => {
     if (!prog?.length) return;
-    onClaimStage?.(); // one act on stage: pads/arranger step aside, we self-manage
-    await audio.init();
+    stop();
+    const request = ++generationRef.current;
+    setRunning(true);
+    onClaimStage?.(); // one act on stage
+    try { await audio.init(); } catch { if (request === generationRef.current) stop(); return; }
+    if (!mountedRef.current || request !== generationRef.current) return;
     meterRef.current = createLockMeter();
     setLock(0); setTier(0); setPass(0);
 
@@ -92,7 +98,8 @@ export default function SessionRoom({ prog, labelFor, audio, onClaimStage }) {
       if (runRef.current !== r) return;
       const wi = k % windows;
       const t0 = wi * W;
-      const at = r.base + k * W * spb;
+      const at = r.base + (Math.floor(k / windows) * passBeats + t0) * spb;
+      const windowBeats = Math.min(W, passBeats - t0);
       // density decided at schedule time — the band adjusts as the tune comes around
       const cur = tierFor(meterRef.current.lock(), r.tier);
       r.tier = cur;
@@ -103,13 +110,13 @@ export default function SessionRoom({ prog, labelFor, audio, onClaimStage }) {
         .map((e) => ({ ...e, t: e.t - t0 }));
       const played = eventsForTier(winEvents, cur, arrange.beatsPerBar);
       if (played.length) {
-        const h = audio.playEvents({ events: played, totalBeats: Math.min(W, passBeats - t0) }, { bpm, startAt: at });
+        const h = audio.playEvents({ events: played, totalBeats: windowBeats }, { bpm, startAt: at });
         r.handles.add(h);
-        const cleanup = setTimeout(() => r.handles.delete(h), (W * spb + 2) * 1000);
+        const cleanup = setTimeout(() => { r.handles.delete(h); r.timers.delete(cleanup); }, ((at - audio.now()) + windowBeats * spb + 2) * 1000);
         r.timers.add(cleanup);
       }
       // chain the next window half a bar before this one ends
-      const lead = setTimeout(() => scheduleWindow(k + 1), Math.max(50, ((at + W * spb * 0.5) - audio.now()) * 1000));
+      const lead = setTimeout(() => { r.timers.delete(lead); scheduleWindow(k + 1); }, Math.max(50, ((at + windowBeats * spb * 0.5) - audio.now()) * 1000));
       r.timers.add(lead);
     };
     scheduleWindow(0);

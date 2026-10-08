@@ -73,3 +73,15 @@ describe("tabHomes — where the transcription actually sits", () => {
     expect(seen.size).toBe(HOME_CANDIDATES.length);
   });
 });
+
+it("bounds columns across riffs without splitting simultaneous notes", () => {
+  const event = { col: 1, notes: [{ midi: 40 }, { midi: 47 }] };
+  const blocks = [{ events: Array.from({ length: 400 }, (_, col) => ({ ...event, col })) }];
+  const homes = tabHomes(blocks, { maxEvents: 24 });
+  const prefix = tabHomes([{ events: blocks[0].events.slice(0, 24) }]);
+  expect(homes.eventsJudged).toBe(24);
+  expect(homes.eventsTotal).toBe(400);
+  expect(homes.map(h => h.score)).toEqual(prefix.map(h => h.score));
+  expect(homes[0].verdict).toMatch(/sample/);
+  expect(blocks[0].events).toHaveLength(400);
+});

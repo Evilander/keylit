@@ -31,7 +31,10 @@ export default function ThemePicker({ theme, onPick }) {
 
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    menuRef.current?.querySelector('[aria-checked="true"]')?.focus();
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); setOpen(false); btnRef.current?.focus(); }
+    };
     // The menu is portaled to <body>, so it isn't inside btnRef — exclude it
     // explicitly or a click on a swatch closes the menu before its onClick fires.
     const onClick = (e) => {
@@ -51,9 +54,22 @@ export default function ThemePicker({ theme, onPick }) {
     setOpen((o) => !o);
   };
 
+  const menuKeys = (event) => {
+    const items = [...menuRef.current.querySelectorAll('[role="menuitemradio"]')];
+    const index = items.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+      : event.key === "ArrowDown" ? (index + 1) % items.length
+      : event.key === "ArrowUp" ? (index - 1 + items.length) % items.length : null;
+    if (next !== null) { event.preventDefault(); event.stopPropagation(); items[next]?.focus(); }
+    if (event.key === "Tab") { setOpen(false); btnRef.current?.focus(); }
+  };
+
   return (
     <>
       <button ref={btnRef} onClick={toggle} aria-haspopup="menu" aria-expanded={open} aria-label="theme"
+        onKeyDown={(event) => {
+          if (!open && ["ArrowDown", "ArrowUp"].includes(event.key)) { event.preventDefault(); toggle(); }
+        }}
         title={`Theme — ${current.label}`}
         style={{ display: "inline-flex", alignItems: "center", gap: 8, fontFamily: MONO, fontSize: 10,
           letterSpacing: "0.1em", textTransform: "uppercase", color: C.muted, background: "transparent",
@@ -62,7 +78,7 @@ export default function ThemePicker({ theme, onPick }) {
         {current.label}
       </button>
       {open && anchor && createPortal(
-        <div role="menu" aria-label="themes" ref={menuRef}
+        <div role="menu" aria-label="themes" ref={menuRef} onKeyDown={menuKeys}
           style={{ position: "fixed", top: anchor.top, right: anchor.right, zIndex: 300,
             background: C.panel, border: `1px solid ${C.line}`, borderRadius: 12,
             boxShadow: `0 18px 50px ${C.shadow}`, padding: 6, minWidth: 220 }}>
@@ -71,8 +87,8 @@ export default function ThemePicker({ theme, onPick }) {
           {THEMES.map((t) => {
             const active = t.id === theme;
             return (
-              <button key={t.id} role="menuitemradio" aria-checked={active}
-                onClick={() => { onPick(t.id); setOpen(false); }}
+              <button key={t.id} role="menuitemradio" aria-checked={active} tabIndex={-1}
+                onClick={() => { onPick(t.id); setOpen(false); btnRef.current?.focus(); }}
                 style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", textAlign: "left",
                   background: active ? C.panel2 : "transparent", border: "none", borderRadius: 8,
                   padding: "8px 10px", cursor: "pointer",

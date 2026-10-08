@@ -7,7 +7,16 @@
 // Pure math lives in lib/click.js; this file owns Tone nodes + scheduling.
 // Same lookahead discipline as engine.playEvents: a 40ms JS tick schedules
 // everything inside a 180ms horizon onto Tone's sample-accurate clock.
-import * as Tone from "tone";
+// Tone is a 250 KB chunk. A static import had the browser modulepreloading it
+// on first paint, which is exactly what directive 5 asks us not to do — and
+// the gesture gate makes deferring it free, because the click cannot
+// start without start(), and start() is called from a transport button. The
+// synchronous now() below answers 0 until then.
+let Tone = null;
+const loadTone = async () => {
+  if (!Tone) Tone = await import("tone");
+  return Tone;
+};
 import { clickPattern, secondsPerPulse } from "../lib/click.js";
 
 const FREQ = { accent: 1568, beat: 1046, sub: 784 }; // G6 / C6 / G5 pings
@@ -25,6 +34,7 @@ export function createMetronome() {
   let stepIdx = 0;
   let bar = 0;
   let nextTime = 0;
+  let generation = 0;
 
   const volFor = (v) => Math.pow(Math.max(0, Math.min(100, v)) / 100, 2);
 
@@ -72,12 +82,20 @@ export function createMetronome() {
   return {
     async start() {
       if (state.running) return;
+      const request = ++generation;
       // Flip BEFORE the await: two overlapping start() calls both passed the
       // guard and each armed its own setInterval on the one shared `timer`.
       state = { ...state, running: true };
       emit();
-      try { await Tone.start(); } catch { /* autoplay policy; the next gesture retries */ }
-      if (!state.running) return; // stopped while the context was unlocking
+      try {
+        await loadTone();
+        if (request !== generation || !state.running) return;
+        await Tone.start();
+      } catch {
+        if (request === generation) { state = { ...state, running: false }; emit(); }
+        return; // a later gesture can retry a blocked context
+      }
+      if (request !== generation || !state.running) return;
       ensureNodes();
       pattern = clickPattern(state.meterId, state.subdivision);
       stepIdx = 0; bar = 0;
@@ -87,6 +105,7 @@ export function createMetronome() {
       emit();
     },
     stop() {
+      generation++;
       if (!state.running) return;
       state = { ...state, running: false };
       clearInterval(timer); timer = null;
@@ -101,7 +120,7 @@ export function createMetronome() {
       state = { ...state, ...patch };
       if (patch.meterId !== undefined || patch.subdivision !== undefined) {
         pattern = clickPattern(state.meterId, state.subdivision);
-        if (state.running && (patch.meterId !== prev.meterId || patch.subdivision !== prev.subdivision)) {
+        if (state.running && Tone && timer != null && (patch.meterId !== prev.meterId || patch.subdivision !== prev.subdivision)) {
           stepIdx = 0; bar = 0; nextTime = Tone.now() + 0.08;
         }
       }
@@ -114,7 +133,7 @@ export function createMetronome() {
     subscribe(cb) { stateSubs.add(cb); return () => stateSubs.delete(cb); },
     /** Scheduled ticks for lamps and sync (Perform's scroll, The Session). */
     onPulse(cb) { pulseSubs.add(cb); return () => pulseSubs.delete(cb); },
-    now: () => Tone.now(),
+    now: () => (Tone ? Tone.now() : 0),
     dispose() {
       this.stop();
       try { synth?.dispose(); } catch { /* noop */ }

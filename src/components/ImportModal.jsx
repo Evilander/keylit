@@ -20,21 +20,29 @@ ChordPro ([C]lyric), or plain text.`;
 export default function ImportModal({ open, initialText = "", onLoad, onClose }) {
   const [text, setText] = useState("");
   const ref = useRef(null);
+  const dialogRef = useRef(null);
 
   useEffect(() => {
     if (open) {
-      setText("");
+      const previousFocus = document.activeElement;
+      setText(initialText);
       // focus after paint
       const id = setTimeout(() => ref.current?.focus(), 30);
-      return () => clearTimeout(id);
+      return () => { clearTimeout(id); previousFocus?.focus?.(); };
     }
-  }, [open]);
+  }, [open, initialText]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
+      if (e.key === "Escape") { e.preventDefault(); onClose(); }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
+      if (e.key === "Tab") {
+        const controls = [...(dialogRef.current?.querySelectorAll('button:not(:disabled), textarea') || [])];
+        const first = controls[0], last = controls[controls.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -52,7 +60,7 @@ export default function ImportModal({ open, initialText = "", onLoad, onClose })
   return (
     <div onClick={onClose}
       style={{ position: "fixed", inset: 0, background: "#0a0807cc", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 20, backdropFilter: "blur(2px)" }}>
-      <div onClick={(e) => e.stopPropagation()}
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Paste your chords here" onClick={(e) => e.stopPropagation()}
         style={{ width: "min(680px, 100%)", maxHeight: "86vh", overflow: "auto", background: C.panel, border: `1px solid ${C.line}`, borderRadius: 16, padding: "20px 22px", boxShadow: "0 24px 60px #000a" }}>
         <div className="flex items-center" style={{ gap: 10, marginBottom: 4 }}>
           <ClipboardPaste size={18} color={C.tone} />
@@ -62,7 +70,7 @@ export default function ImportModal({ open, initialText = "", onLoad, onClose })
         <p style={{ fontSize: 12.5, color: C.faint, margin: "0 0 12px" }}>
           Paste a chart from Ultimate-Guitar, ChordPro, or any chords-over-lyrics text. Then hit <b style={{ color: C.muted }}>Load</b>.
         </p>
-        <textarea ref={ref} value={text} onChange={(e) => setText(e.target.value)}
+        <textarea ref={ref} value={text} onChange={(e) => setText(e.target.value)} aria-label="Chord chart to import"
           placeholder={PLACEHOLDER} spellCheck={false}
           style={{ width: "100%", minHeight: 280, resize: "vertical", background: C.panel2, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 12, padding: "14px 16px", fontFamily: MONO, fontSize: 13, lineHeight: 1.55, outline: "none", boxSizing: "border-box" }} />
         <div className="flex items-center" style={{ gap: 10, marginTop: 14, justifyContent: "flex-end" }}>

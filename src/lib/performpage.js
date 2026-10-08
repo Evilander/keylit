@@ -40,12 +40,13 @@ export function performancePageKey({ entryId, sheet, tuning, capo, transpose }) 
 
 export function buildPerformPage({
   entry, loaded, sheet, outline, progression, anchors, activeKey, keyName, retab,
-  tuning, capo, transpose,
+  tuning, capo, transpose, readingShift = transpose, soundingProgression = progression,
 }) {
   const page = {
     key: performancePageKey({ entryId: entry?.entryId, sheet, tuning, capo, transpose }),
     entry: copy(entry), loaded: copy(loaded), sheet: String(sheet ?? ""),
     outline: copy(outline || []), progression: copy(progression || []), anchors: copy(anchors || []),
+    soundingProgression: copy(soundingProgression || []), readingShift,
     activeKey: copy(activeKey), keyName, retab: copy(retab),
     retabTag: retab?.tag || retab?.retabTag || null,
     tuning, capo, transpose,

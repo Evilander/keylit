@@ -7,7 +7,8 @@
 // (the named-tuning fretboard model).
 
 import { parseChord, chordSymbol, shapeForCapo, shapeEase } from "./theory.js";
-import { getTuning } from "./tuning.js";
+import { getTuning, uniformTuningOffset } from "./tuning.js";
+import { chordShapes } from "./chordShapes.js";
 
 const pcMod = (n) => ((n % 12) + 12) % 12;
 
@@ -58,41 +59,41 @@ export function classifyChord(chord) {
  * via the transposed shape instead). */
 export function playInTuning(chord, tuning, capo) {
   const open = classifyOpen(tuning.notes);
+  const uniform = uniformTuningOffset(tuning.id);
 
-  if (open.quality === "standard") {
+  if (uniform !== null) {
     // No free chord in the open strings: finger the normal open-position/
     // CAGED shape you'd use under this capo position in standard tuning.
-    const shape = shapeForCapo(chord, capo);
-    let ease = shapeEase(shape);
-    // Drop D lets a D power/major chord be barred across the (now D-tuned)
-    // bottom three strings with one finger — easier than its standard open
-    // shape. Floored so it can never read as "free."
-    if (tuning.id === "dropD" && chord.rootSemitone === 2) {
-      ease = Math.max(0.4, ease - 0.4);
+    const shape = shapeForCapo(chord, capo + uniform);
+    return { fret: null, ease: shapeEase(shape), how: `${chordSymbol(shape)} shape` };
+  }
+
+  if (open.rootPc != null) {
+    const f = pcMod(chord.rootSemitone - open.rootPc - capo);
+    const barreMidis = tuning.notes.map((m) => m + capo + f);
+    const sounded = new Set(barreMidis.map(pcMod));
+    const wanted = new Set(chord.intervals.map((iv) => pcMod(chord.rootSemitone + iv)));
+    const correctBass = chord.bassSemitone == null || pcMod(Math.min(...barreMidis)) === chord.bassSemitone;
+    if (correctBass && sounded.size === wanted.size && [...sounded].every((pc) => wanted.has(pc))) {
+      return {
+        fret: f, frets: tuning.notes.map(() => f), ease: f === 0 ? 0.5 : 1.0 + f * 0.03,
+        how: f === 0 ? "all open" : `barre fret ${f}`,
+      };
     }
-    return { fret: null, ease, how: `${chordSymbol(shape)} shape` };
   }
 
-  // Open-major / modal-sus4 tuning: a full barre at fret f sounds a chord
-  // rooted at (openRoot + capo + f) mod 12, so to land on this chord's root:
-  const f = pcMod(chord.rootSemitone - open.rootPc - capo);
-  const cls = classifyChord(chord);
-  const barreHow = f === 0 ? "all open" : `barre fret ${f}`;
-
-  if (open.quality === "maj") {
-    if (cls === "maj") return { fret: f, ease: f === 0 ? 0.5 : 1.0 + f * 0.03, how: barreHow };
-    if (cls === "sus") return { fret: f, ease: f === 0 ? 0.8 : 1.2 + f * 0.03, how: barreHow };
-    if (cls === "min") return { fret: f, ease: 2.2 + f * 0.03, how: `barre fret ${f} + flatten 3rd` };
-    if (cls === "dom7") return { fret: f, ease: 2.2 + f * 0.03, how: `barre fret ${f} + add ♭7` };
-    return { fret: f, ease: 4.0, how: "hard shape" };
-  }
-
-  // DADGAD-style open sus4: same barre geometry, but the open strings only
-  // give you a sus4 — major/sus chords need the 3rd added in, so a touch harder.
-  if (cls === "maj" || cls === "sus") return { fret: f, ease: f === 0 ? 0.8 : 1.4 + f * 0.03, how: barreHow };
-  if (cls === "min") return { fret: f, ease: 2.4 + f * 0.03, how: `barre fret ${f} + flatten 3rd` };
-  if (cls === "dom7") return { fret: f, ease: 2.4 + f * 0.03, how: `barre fret ${f} + add ♭7` };
-  return { fret: f, ease: 4.0, how: "hard shape" };
+  // Anything beyond the tuning's exact open chord needs real fretting.
+  // Searching the existing grip engine keeps thirds, extensions, and slash
+  // basses honest instead of treating every major-family chord as a barre.
+  const relative = shapeForCapo(chord, capo);
+  const grip = chordShapes(relative, { tuning: tuning.notes, limit: 1 })[0];
+  if (!grip) return { fret: null, ease: 6, how: "no complete grip found within 12 frets" };
+  const fretted = grip.frets.filter((f) => f > 0);
+  const fingers = new Set(grip.fingers.filter((f) => f != null)).size;
+  const opens = grip.frets.filter((f) => f === 0).length;
+  let ease = Math.max(0.6, 0.6 + fingers * 0.5 + (grip.barre ? 0.8 : 0) + Math.max(0, grip.baseFret - 1) * 0.08 - opens * 0.12);
+  if (tuning.id === "dropD" && relative.rootSemitone === 2) ease = Math.min(ease, Math.max(0.4, shapeEase(relative) - 0.4));
+  return { fret: fretted.length ? Math.min(...fretted) : 0, frets: grip.frets.slice(), ease, how: `frets low→high: ${grip.frets.map((f) => f == null ? "x" : f).join(" ")}` };
 }
 
 // Retuning is real effort — added once per (tuning, capo) result so a switch

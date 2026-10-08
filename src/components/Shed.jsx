@@ -9,6 +9,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Copy, Check, ChevronRight, ChevronLeft, FileText, X } from "lucide-react";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 
+// Base-aware, exactly like corpus.js: a relative "corpus/..." resolves
+// against the current URL, so the embed at /keylit/ looked for its shelf
+// at the site root and found nothing.
+const BASE = import.meta.env?.BASE_URL || "/";
+
 const KIND_ORDER = ["method", "technique", "lesson", "exercises", "theory", "reference", "magazine"];
 const KIND_LABEL = {
   method: "Methods", technique: "Technique", lesson: "Lessons",
@@ -50,7 +55,7 @@ export default function Shed() {
 
   useEffect(() => {
     let on = true;
-    fetch("corpus/shed/index.json")
+    fetch(`${BASE}corpus/shed/index.json`)
       .then((r) => (r.ok ? r.json() : []))
       .then((rows) => { if (on) setShelf(rows); })
       .catch(() => { if (on) setShelf([]); });
@@ -69,7 +74,7 @@ export default function Shed() {
   const readText = async (title, textFile) => {
     setViewing(null);
     try {
-      const r = await fetch(`corpus/shed/${textFile}`);
+      const r = await fetch(`${BASE}corpus/shed/${textFile}`);
       setReading({ title, text: r.ok ? await r.text() : "Couldn't load this one." });
     } catch {
       setReading({ title, text: "Couldn't load this one." });
@@ -104,7 +109,8 @@ export default function Shed() {
     return (
       <div style={{ marginTop: 18, color: C.muted, fontSize: 14, maxWidth: 560 }}>
         <p style={{ fontFamily: DISPLAY, fontSize: 19, color: C.ink }}>The shed is empty.</p>
-        <p style={{ marginTop: 8 }}>Run <code style={{ fontFamily: MONO }}>node tools/build_shed.mjs</code> after pointing it at your method books.</p>
+        <p style={{ marginTop: 8 }}>Method books belong to your local collection and are not included in the public app. Visit Learn for lessons or Practice for drills.</p>
+        {import.meta.env.DEV && <p style={{ marginTop: 8 }}>For a local collection, run <code style={{ fontFamily: MONO }}>node tools/build_shed.mjs</code> after pointing it at your method books.</p>}
       </div>
     );
   }

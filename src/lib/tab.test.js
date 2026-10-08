@@ -39,12 +39,60 @@ const CHORDS_ONLY = `Verse:
 C       G       Am      F
 Here come old flat top he come`;
 
+describe("instrument register and partial guitar tabs", () => {
+  it("places a four-row upper-string guitar riff in its actual octave", () => {
+    const tab = ["e|--0---|", "B|--0---|", "G|--0---|", "D|--0---|"].join("\n");
+    expect(tabEventsToMidi(parseTab(tab))).toEqual([[50, 55, 59, 64]]);
+  });
+
+  it("keeps a four-string Drop D bass in the bass register", () => {
+    const tab = ["G|--0---|", "D|--0---|", "A|--0---|", "D|--0---|"].join("\n");
+    expect(tabEventsToMidi(parseTab(tab))).toEqual([[26, 33, 38, 43]]);
+  });
+
+  it("uses the declared guitar's upper strings for an unlabeled short riff", () => {
+    const tab = ["|--0---|", "|--0---|", "|--0---|", "|--0---|"].join("\n");
+    expect(tabEventsToMidi(parseTab(tab, { defaultTuning: "DADGAD" }))).toEqual([[50, 55, 57, 62]]);
+  });
+
+  it("separates adjacent four-string bass systems without dropping the second riff", () => {
+    const rows = ["G|--0---|", "D|--0---|", "A|--0---|", "E|--0---|"];
+    const parsed = parseTab([...rows, ...rows.map((line) => line.replace("0", "2"))].join("\n"));
+    expect(parsed.blocks.map((block) => block.lines.length)).toEqual([4, 4]);
+    expect(tabEventsToMidi(parsed)).toEqual([[28, 33, 38, 43], [30, 35, 40, 45]]);
+  });
+
+  it("reads all seven strings of a labeled guitar in their written register", () => {
+    const text = ["e", "B", "G", "D", "A", "E", "B"].map((label) => `${label}|--0---|`).join("\n");
+    const parsed = parseTab(text);
+    expect(parsed.blocks[0].lines).toHaveLength(7);
+    expect(tabEventsToMidi(parsed)).toEqual([[35, 40, 45, 50, 55, 59, 64]]);
+  });
+
+  it("reads five-string bass labels as B0 through G2 instead of a partial guitar", () => {
+    const text = ["G", "D", "A", "E", "B"].map((label) => `${label}|--0---|`).join("\n");
+    expect(tabEventsToMidi(parseTab(text))).toEqual([[23, 28, 33, 38, 43]]);
+  });
+
+  it("recognizes consecutive six-string systems even with no blank separator", () => {
+    expect(parseTab(`${C_CHORD}\n${C_CHORD}`).blocks).toHaveLength(2);
+  });
+});
+
 describe("hasTab / detection", () => {
   it("detects a tab block in mixed text", () => {
     expect(hasTab(MIXED)).toBe(true);
   });
   it("does not flag a pure chord sheet as tab", () => {
     expect(hasTab(CHORDS_ONLY)).toBe(false);
+  });
+
+  it("recognizes indented unlabeled systems while keeping fret columns intact", () => {
+    const rows = Array.from({ length: 6 }, () => "  |---0---2---|");
+    const parsed = parseTab(rows.join("\n"));
+    expect(parsed.blocks).toHaveLength(1);
+    expect(parsed.blocks[0].events.map((event) => event.col)).toEqual([6, 10]);
+    expect(tabEventsToMidi(parsed)).toEqual([[40, 45, 50, 55, 59, 64], [42, 47, 52, 57, 61, 66]]);
   });
   it("findTabBlocks returns one 6-line block from mixed text", () => {
     const blocks = findTabBlocks(MIXED);
@@ -403,5 +451,97 @@ describe("parseTab — whole document", () => {
     const parsed = parseTab(CHORDS_ONLY);
     expect(parsed.blocks).toHaveLength(0);
     expect(parsed.events).toHaveLength(0);
+  });
+});
+
+describe("tab — the margin is not the grid", () => {
+  // isTabLine deliberately accepts a row whose prose comment sits past the
+  // closing bar. The parser has to stop where the row does: "x2" is a repeat
+  // marker, and reading its digit as a fret opens a phantom column after the
+  // last real note. Every existing comment test used digit-free prose, so
+  // this exact shape went unguarded.
+  const bars = [
+    "e|--0-------------------|",
+    "B|--1----1----1----1----|",
+    "G|--0----0----0----0----|",
+    "D|--2----2----2----2----|",
+    "A|--3----3----3----3----|",
+    "E|----------------------|",
+  ];
+  const withNote = (note) => [bars[0] + note, ...bars.slice(1)];
+
+  it.each([" x2", " X4", " (x3)", " play 4 times", " repeat 8x -- softly"])(
+    "a margin note (%s) changes no note", (note) => {
+      const commented = parseTabBlock(withNote(note));
+      const bare = parseTabBlock(bars);
+      expect(tabEventsToMidi(commented)).toEqual(tabEventsToMidi(bare));
+      expect(commented.events).toHaveLength(bare.events.length);
+    },
+  );
+
+  it("still reads real tab that continues past a bar", () => {
+    const twoBars = [
+      "e|--0---|--3---|",
+      "B|--1---|--0---|",
+      "G|--0---|--0---|",
+      "D|--2---|--0---|",
+      "A|--3---|--2---|",
+      "E|------|--3---|",
+    ];
+    const block = parseTabBlock(twoBars);
+    // second bar is a G chord: G2 B2 D3 G3 B3 G4
+    expect(block.events.length).toBeGreaterThan(1);
+    const last = block.events[block.events.length - 1];
+    expect(last.notes.map((n) => n.midi)).toEqual([43, 47, 50, 55, 59, 67]);
+  });
+});
+
+describe("tab — orientation", () => {
+  // parseTuning force-assigns octaves to ANY note sequence, so it can never
+  // reject the reversed reading on its own: a low-string-on-top system was
+  // silently read under a bogus tuning with every octave wrong. The written
+  // order has to be allowed to win when it names a tuning we know.
+  const lowOnTop = [
+    "E|--3-------|",
+    "A|--2-------|",
+    "D|--0-------|",
+    "G|----------|",
+    "B|----------|",
+    "e|----------|",
+  ];
+
+  it("reads a low-string-on-top system in the written order", () => {
+    const block = parseTabBlock(lowOnTop);
+    expect(block.orientation).toBe("lowOnTop");
+    expect(block.tuning.id).toBe("standard");
+    // low E fret 3 = G2 (43), A fret 2 = B2 (47), D open = D3 (50)
+    expect(block.events[0].notes.map((n) => n.midi)).toEqual([43, 47, 50]);
+  });
+
+  it("still reads the conventional high-on-top system", () => {
+    const highOnTop = [
+      "e|----------|",
+      "B|----------|",
+      "G|----------|",
+      "D|--0-------|",
+      "A|--2-------|",
+      "E|--3-------|",
+    ];
+    const block = parseTabBlock(highOnTop);
+    expect(block.orientation).toBe("highOnTop");
+    expect(block.tuning.id).toBe("standard");
+    expect(block.events[0].notes.map((n) => n.midi)).toEqual([43, 47, 50]);
+  });
+
+  it("falls back to the high-on-top convention for an unknown tuning", () => {
+    const odd = [
+      "F|--0-------|",
+      "C|--0-------|",
+      "G|----------|",
+      "D|----------|",
+      "A|----------|",
+      "E|----------|",
+    ];
+    expect(parseTabBlock(odd).orientation).toBe("highOnTop");
   });
 });

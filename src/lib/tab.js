@@ -33,7 +33,7 @@ function isTabLine(line) {
   if (!line) return false;
   const dashes = (line.match(/-/g) || []).length;
   if (dashes < 3) return false;
-  const body = line.replace(/^\s*[A-Ga-g][#b]?\s*[|:]?\s?/, "");
+  const body = line.replace(/^\s*[A-Ga-g][#b]?\s*[|:]?\s?/, "").trimStart();
   if (!body) return false;
   // The row must still OPEN like tab — this is what keeps prose out.
   if (!/[-0-9|]/.test(body[0])) return false;
@@ -74,7 +74,7 @@ export function unwrapTab(text) {
   return out.join("\n");
 }
 
-/** Find tab blocks (groups of 4–6 adjacent tab lines) inside any text. */
+/** Find tab blocks (groups of 4–8 adjacent tab lines) inside any text. */
 export function findTabBlocks(text) {
   const lines = unwrapTab(String(text || "")).split(/\r?\n/);
   const blocks = [];
@@ -82,9 +82,14 @@ export function findTabBlocks(text) {
   let startIdx = 0;
   const flush = () => {
     if (run.length >= 4) {
-      // Adjacent stacked systems (no blank gap) get chunked into 6-line groups.
-      for (let i = 0; i < run.length; i += 6) {
-        const chunk = run.slice(i, i + 6);
+      // Repeated label sequences identify stacked bass/extended-guitar
+      // systems. A fixed six-row chunk merged two bass riffs and discarded
+      // strings seven/eight from a single extended-guitar system.
+      const labels = extractLabels(run).map((label) => label?.toUpperCase());
+      const repeat = labels.every(Boolean) ? [6, 4, 5, 7, 8].find((size) => run.length > size && run.length % size === 0 && labels.every((label, i) => label === labels[i % size])) : null;
+      const size = repeat || (run.length <= 8 ? run.length : 6);
+      for (let i = 0; i < run.length; i += size) {
+        const chunk = run.slice(i, i + size);
         if (chunk.length >= 4) blocks.push({ startLine: startIdx + i, lines: chunk });
       }
     }
@@ -116,6 +121,7 @@ function extractLabels(lines) {
 
 const TECH_BEFORE = /[hpbrs/\\~^]/i;
 const TECH_AFTER = /[hpbrs/\\~^x]/i;
+const BASS_SPELLINGS = ["E A D G", "D A D G", "D# G# C# F#", "D G C F", "C G C F", "C# G# C# F#", "B E A D G", "A E A D G", "A D G C F"];
 
 // Pull fret numbers (with their column + adjacent technique marks) from one row.
 function parseRowDigits(line) {
@@ -139,6 +145,23 @@ function parseRowDigits(line) {
     }
   }
   return hits;
+}
+
+// Where the row stops being a row. isTabLine accepts a system whose rows carry
+// a prose comment past the closing bar, so the parser has to honour the same
+// boundary: a digit in the margin ("| x2", "| play 4 times") is a repeat
+// marker, not a fret, and reading it opens a phantom column after the last
+// real note. Real tab continuing past a bar is still dash-grid, so the tail
+// only has to clear a lower dash bar than a whole row does.
+function playableExtent(line) {
+  const bar = line.lastIndexOf("|");
+  if (bar < 0) return line;
+  const tail = line.slice(bar + 1);
+  if (!tail.trim()) return line;
+  const dashes = (tail.match(/-/g) || []).length;
+  const tabChars = (tail.match(/[-0-9|:hpbsrxt/\\~^.()* ]/gi) || []).length;
+  if (dashes >= 1 && tabChars / tail.length >= 0.85) return line;
+  return line.slice(0, bar + 1);
 }
 
 /**
@@ -167,35 +190,56 @@ export function parseTabBlock(lines, opts = {}) {
   const labels = extractLabels(lines);
   let tuning;
   let orientation = "highOnTop"; // bottom line = lowest string (the convention)
+  let stringOffset = 0;
 
   let tuningFromLabels = false;
   if (opts.tuning) {
     tuning = getTuning(opts.tuning);
-  } else if (labels.every(Boolean) && (n === 6 || n === 4)) {
+  } else if (labels.every(Boolean) && n >= 4 && n <= 8) {
+    // assignOctaves stacks ANY note sequence into an ascending tuning, so
+    // parseTuning can never reject the reversed reading — testing it first
+    // made the low-string-on-top branch unreachable and read those systems
+    // under a bogus tuning with every octave wrong. Decide by which reading
+    // NAMES a tuning we know; when neither does the high-on-top convention
+    // wins, because that is what almost every transcriber writes.
     const lowToHigh = [...labels].reverse().join(" ");
-    if (parseTuning(lowToHigh)) {
-      tuning = getTuning(lowToHigh);
-      tuningFromLabels = true;
-    } else if (parseTuning(labels.join(" "))) {
-      tuning = getTuning(labels.join(" "));
+    const asWritten = labels.join(" ");
+    const named = (spelling) => getTuning(spelling).family !== "custom" || BASS_SPELLINGS.includes(tuningSpelling(parseTuning(spelling)));
+    if (!named(lowToHigh) && named(asWritten)) {
+      tuning = getTuning(asWritten);
       orientation = "lowOnTop";
+      tuningFromLabels = true;
+    } else if (parseTuning(lowToHigh)) {
+      tuning = getTuning(lowToHigh);
       tuningFromLabels = true;
     }
   }
   if (!tuning) tuning = getTuning(opts.defaultTuning ?? null);
-  // A labeled 4-string E-A-D-G is a bass — guitar octaves would be one too high.
-  if (!opts.tuning && n === 4 && tuning.notes.length === 4 &&
-      tuning.notes[0] === 40 && tuningSpelling(tuning.notes) === "E A D G") {
-    tuning = { id: "bass", name: "Bass", family: "bass", spelling: "E A D G", notes: tuning.notes.map((m) => m - 12) };
+  const fallback = getTuning(opts.tuning ?? opts.defaultTuning);
+  // Short guitar riffs usually omit the low strings. Match their labels to
+  // the declared instrument before assigning octaves to a new instrument.
+  if (n < fallback.notes.length) {
+    const upper = fallback.notes.slice(-n);
+    const labelSpelling = labels.every(Boolean) ? tuningSpelling(parseTuning([...labels].reverse().join(" "))) : null;
+    if (opts.tuning || !labels.some(Boolean) || labelSpelling === tuningSpelling(upper)) {
+      tuning = fallback;
+      stringOffset = fallback.notes.length - n;
+    }
+  }
+  // These four-string systems describe a bass, including common detunings.
+  // A partial guitar system matched above retains the guitar's register.
+  if (!opts.tuning && (n === 4 || n === 5) && tuning.notes.length === n &&
+      BASS_SPELLINGS.includes(tuningSpelling(tuning.notes))) {
+    tuning = { ...tuning, id: "bass", name: "Bass", family: "bass", notes: tuning.notes.map((m) => m - 12) };
   }
   const capo = normCapo(opts.capo);
 
   const byCol = new Map();
   lines.forEach((line, rowIndex) => {
-    const stringLowIndex = orientation === "highOnTop" ? n - 1 - rowIndex : rowIndex;
+    const stringLowIndex = stringOffset + (orientation === "highOnTop" ? n - 1 - rowIndex : rowIndex);
     const base = tuning.notes[stringLowIndex];
     if (base == null) return;
-    for (const h of parseRowDigits(line)) {
+    for (const h of parseRowDigits(playableExtent(line))) {
       const note = { string: stringLowIndex, fret: h.fret, midi: base + capo + h.fret, tech: h.tech, row: rowIndex };
       if (!byCol.has(h.col)) byCol.set(h.col, []);
       byCol.get(h.col).push(note);

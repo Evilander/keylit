@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { buildSystemPrompt, buildContext, PROVIDERS, parseErrorLine } from "./tutor.js";
+import { buildSystemPrompt, buildContext, PROVIDERS, parseErrorLine, normalizeTutorSettings } from "./tutor.js";
+
+it("uses an explicit local subscription launch without forwarding saved API credentials", () => {
+  const saved = { provider: "anthropic", keys: { anthropic: "paid-api-key" } };
+  expect(normalizeTutorSettings(saved).provider).toBe("anthropic");
+  const settings = normalizeTutorSettings(saved, { provider: "subscription", subscriptionUrl: "http://127.0.0.1:8787/api/tutor" });
+  const request = PROVIDERS[settings.provider].request({ apiKey: saved.keys.anthropic, system: "Teach", messages: [], baseUrl: settings.subscriptionUrl });
+  expect(settings.provider).toBe("subscription");
+  expect(request.url).toBe(settings.subscriptionUrl);
+  expect(JSON.stringify(request)).not.toContain("paid-api-key");
+  expect(saved.provider).toBe("anthropic");
+});
 
 describe("the tutor's system prompt", () => {
   const sys = buildSystemPrompt();

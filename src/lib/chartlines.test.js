@@ -2,6 +2,12 @@ import { describe, it, expect } from "vitest";
 import { isSectionHeader, chordLineInfo, chartOutline, sectionIndex, progressionAnchors } from "./chartlines.js";
 import { parseSheet } from "./theory.js";
 
+it("never treats tuning, capo, or key declarations as playable chord rows", () => {
+  for (const line of ["Tuning: D A D G A D", "Key: C", "Capo: 2"]) {
+    expect(chordLineInfo(line)).toBeNull();
+  }
+});
+
 const SHEET = `[Intro]
 E       A       E
 

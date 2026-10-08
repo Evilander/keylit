@@ -112,10 +112,22 @@ export default function WriteDesk({
     setNotice(`${seed.name} is on the desk. Keep it, bend it, or throw it away.`);
   };
 
+  const newSketch = () => {
+    const next = createDraft({
+      id: `draft-${globalThis.crypto?.randomUUID?.() || freshId("new")}`,
+      name: "Untitled",
+      key: draft.key,
+      sections: [{ id: freshId("section"), name: "Verse", chords: [] }],
+      lyrics: "",
+    });
+    onReplaceDraft?.(next, { historyMode: "push" });
+    setNotice("New sketch. Undo restores the writing you just left; kept sketches stay saved.");
+  };
+
   const saveDraft = () => {
     const next = { ...draft, savedAt: nowStamp() };
     try { book.save(next); }
-    catch { setNotice("Storage is full — the sketch wasn't kept. Export a backup, clear space, and try again."); return; }
+    catch (error) { setNotice(`${error?.message || "Storage refused the save"}. The sketch was not kept. Download draft JSON before closing; library backups do not include Write drafts or memos. Do not clear app data.`); return; }
     markBenchDay("kept");
     setSaved(book.list());
     setNotice(`Kept “${next.name}” with its exact sections, repeats, and words.`);
@@ -135,8 +147,19 @@ export default function WriteDesk({
   };
 
   const removeDraft = (id) => {
-    book.remove(id);
+    try { book.remove(id); } catch (error) { setNotice(error.message || "Could not delete the sketch; stored data was preserved."); return; }
     setSaved(book.list());
+  };
+
+  const downloadDraft = () => {
+    const blob = new Blob([JSON.stringify({ version: 2, drafts: [draft] }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "keylit-write-draft.json";
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setNotice("Downloaded this draft as JSON, including sections and words. Keep this recovery file; Library import does not restore Write drafts.");
   };
 
   const exportMidi = () => {
@@ -210,7 +233,9 @@ export default function WriteDesk({
         <label>Draft name<input value={draft.name} onChange={(event) => onEdit?.({ type: "draft/name", name: event.target.value })} /></label>
         <label>Key<select value={draft.key.tonic} onChange={(event) => onEdit?.({ type: "draft/key", key: { ...draft.key, tonic: Number(event.target.value) } })}>{SHARP_NAMES.map((name, tonic) => <option key={name} value={tonic}>{name}</option>)}</select></label>
         <label>Mode<select value={draft.key.mode} onChange={(event) => onEdit?.({ type: "draft/key", key: { ...draft.key, mode: event.target.value } })}><option value="major">major</option><option value="minor">minor</option></select></label>
+        <button className="bench-btn" onClick={newSketch} disabled={!onReplaceDraft}>New sketch</button>
         <button className="bench-btn" onClick={saveDraft}><Save size={13} /> Keep sketch</button>
+        <button className="bench-btn" onClick={downloadDraft}>Download draft JSON</button>
         <span role="status">{notice}</span>
       </div>
 

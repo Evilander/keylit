@@ -14,9 +14,9 @@ export default function PracticeRoom({
   auditionChords, sendChordsToWrite,
 }) {
   return (
-    <div className="kl-section">
+    <div className="kl-section practice-room">
       <QuoteLine quote={quote} size={18} style={{ marginBottom: 16 }} />
-      <div className="kl-seg" role="tablist" aria-label="Practice area" style={{ marginBottom: 6 }}>
+      <div className="kl-seg practice-tabs" role="tablist" aria-label="Practice area" style={{ marginBottom: 6 }}>
         <button role="tab" aria-selected={practiceTab === "drills"} onClick={() => setPracticeTab("drills")}>Drills</button>
         <button role="tab" aria-selected={practiceTab === "song"} onClick={() => setPracticeTab("song")}>Play the song</button>
         <button role="tab" aria-selected={practiceTab === "session"} onClick={() => setPracticeTab("session")}>The Session</button>

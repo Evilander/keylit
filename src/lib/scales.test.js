@@ -70,3 +70,49 @@ describe("scalePitchClasses — new shapes", () => {
     expect(scalePitchClasses(0, "whole tone")).toEqual([0, 2, 4, 6, 8, 10]);
   });
 });
+
+describe("a suggested scale must fit the chord under it", () => {
+  // The first pick is what the room shows first, so it is the one that has
+  // to contain every note of the chord. The altered scale is the standing
+  // exception: it drops the natural 5 on purpose, and it IS the scale for
+  // an altered dominant.
+  const VOCAB = [
+    "C", "Cm", "C7", "Cmaj7", "Cm7", "Cdim", "Cdim7", "Caug", "Csus2", "Csus4",
+    "C6", "Cm6", "Cadd9", "C9", "Cmaj9", "Cm9", "C7sus4", "Cm7b5", "C11", "C13",
+    "C6/9", "Cmmaj7", "C7#5", "C7b5", "C7#11", "Cmaj7#11", "Cø7", "C+7",
+    "Caug7", "Caugmaj7", "Cmaj7#5", "C9sus4", "C13sus4", "C9#11", "C13#11",
+  ];
+
+  it.each(VOCAB)("%s: the first scale holds every chord tone", (sym) => {
+    const ch = parseChord(sym);
+    expect(ch, sym).not.toBeNull();
+    const first = scalesForChord(ch)[0];
+    expect(first, sym).toBeTruthy();
+    const pcs = new Set(first.pcs);
+    const missing = ch.intervals
+      .map((i) => (ch.rootSemitone + i) % 12)
+      .filter((pc) => !pcs.has(pc));
+    expect(missing, `${sym} -> ${first.name}`).toEqual([]);
+  });
+
+  // A m(maj7) exists to put a NATURAL 7 over a minor triad. Dorian and
+  // aeolian both flat it, so leading with them named the one note the chord
+  // is built to contradict.
+  it.each([
+    ["Cmmaj7", "C Melodic Minor"],
+    ["Cm7", "C Dorian"],
+    ["C7#11", "C Lydian Dominant"],
+    ["Cmaj7#11", "C Lydian"],
+    ["Cmaj7", "C Major"],
+    ["C7", "C Mixolydian"],
+    ["C7b9", "C Altered"],
+    ["Cmaj7#5", "C Lydian Augmented"],
+    ["C9sus4", "C Mixolydian"],
+  ])("%s leads with %s", (sym, expected) => {
+    expect(scalesForChord(parseChord(sym))[0].name).toBe(expected);
+  });
+});
+
+it("includes the natural sixth in lydian augmented, melodic minor mode three", () => {
+  expect(scalePitchClasses(0, "lydian augmented")).toEqual([0, 2, 4, 6, 8, 9, 11]);
+});

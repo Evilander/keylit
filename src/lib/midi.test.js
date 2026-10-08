@@ -138,6 +138,25 @@ describe("eventsToMidi", () => {
     const us = (m[idx + 3] << 16) | (m[idx + 4] << 8) | m[idx + 5];
     expect(us).toBe(1000000);
   });
+
+  it("truncates the previous note at a re-strike so its old note-off cannot cut the new one", () => {
+    const bytes = eventsToMidi([
+      { t: 0, dur: 2.6, midis: [60, 64] },
+      { t: 2, dur: 1.9, midis: [60, 64] },
+    ], { ticksPerBeat: 100 });
+    const notes = decodeTrack(bytes).filter((e) => e.note === 60);
+    expect(notes.map(({ tick, type }) => [tick, type])).toEqual([[0, "on"], [200, "off"], [200, "on"], [390, "off"]]);
+  });
+
+  it("ignores malformed event timing instead of turning it into a note at tick zero", () => {
+    const bytes = eventsToMidi([
+      { t: NaN, dur: 1, midis: [60] },
+      { t: 1, dur: Infinity, midis: [62] },
+      { t: 2, dur: -1, midis: [64] },
+      { t: 3, dur: 1, midis: [65, 65] },
+    ], { ticksPerBeat: 100 });
+    expect(decodeTrack(bytes).map(({ tick, type, note }) => [tick, type, note])).toEqual([[300, "on", 65], [400, "off", 65]]);
+  });
 });
 
 /* ---- eventsToMidiTracks: format-1 multi-track (the Band's export) ---- */
@@ -161,7 +180,7 @@ function parseSmf(bytes) {
       tick += vlq();
       const status = b[i++];
       if (status === 0xff) {
-        const type = b[i++]; const len2 = b[i++];
+        const type = b[i++]; const len2 = vlq();
         track.metas.push({ tick, type, data: [...b.slice(i, i + len2)] });
         i += len2;
         continue;
@@ -258,5 +277,14 @@ describe("eventsToMidiTracks", () => {
     const ts = parseSmf(bytes).tracks[0].metas.find((m) => m.type === 0x58);
     expect(ts.data[0]).toBe(3);
     expect(ts.data[1]).toBe(2);
+  });
+
+  it("preserves Unicode track names and uses a variable-length metadata size", () => {
+    const name = "É".repeat(80);
+    const bytes = eventsToMidiTracks([{ name, channel: 0, events: [{ t: 0, dur: 1, midis: [60] }] }]);
+    const track = parseSmf(bytes).tracks[1];
+    const data = track.metas.find((meta) => meta.type === 3).data;
+    expect(new TextDecoder().decode(new Uint8Array(data))).toBe(name);
+    expect(track.events).toHaveLength(2);
   });
 });

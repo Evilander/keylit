@@ -201,3 +201,14 @@ describe("composition draft", () => {
     expect(deriveActiveDocument({ baseSheet: "C", baseProg, labProg })).toMatchObject({ source: "lab", sheet: "C", progression: labProg });
   });
 });
+
+it("transposes a draft's named addition without losing the ninth", () => {
+  const before = createDraft({
+    id: "addition", key: { tonic: 2, mode: "minor" },
+    sections: [{ id: "verse", name: "Verse", chords: [{ id: "c1", symbol: "Dm(addE)" }] }],
+  });
+  const after = applyCompositionOp(before, { type: "draft/key", key: { tonic: 4, mode: "minor" } });
+  const chord = parseChord(after.sections[0].chords[0].symbol);
+  expect(chord.rootSemitone).toBe(4);
+  expect(chord.intervals).toEqual([0, 3, 7, 14]);
+});

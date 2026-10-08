@@ -48,6 +48,13 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  win.webContents.on("will-navigate", (event, url) => {
+    if (isDev) return;                    // the dev server owns its own reloads
+    if (url.startsWith("app://")) return; // the packaged SPA
+    event.preventDefault();
+    if (/^https?:/.test(url)) shell.openExternal(url);
+  });
+
   if (isDev) {
     win.loadURL(process.env.KEYLIT_DEV_URL);
     win.webContents.openDevTools({ mode: "detach" });
@@ -63,7 +70,11 @@ app.whenReady().then(() => {
     let rel = decodeURIComponent(new URL(request.url).pathname);
     if (rel === "/" || rel === "") rel = "/index.html";
     const filePath = path.normalize(path.join(DIST, rel));
-    if (!filePath.startsWith(DIST)) return new Response("forbidden", { status: 403 });
+    // A bare prefix test also accepts a SIBLING whose name merely starts with
+    // the same characters (dist-anything), so the separator has to be part of it.
+    if (filePath !== DIST && !filePath.startsWith(DIST + path.sep)) {
+      return new Response("forbidden", { status: 403 });
+    }
     try {
       const data = await fs.promises.readFile(filePath);
       const ext = path.extname(filePath).toLowerCase();

@@ -72,6 +72,22 @@ describe("parseTuning", () => {
     expect(parseTuning("")).toBeNull();
   });
 
+  it("does not extract a bogus tuning from note letters embedded in ordinary words", () => {
+    for (const word of ["Standard", "garbage", "Guitar Tab", "not EADGBE actually"]) expect(parseTuning(word)).toBeNull();
+  });
+
+  it("accepts explicit separators and Unicode accidentals without changing pitch", () => {
+    expect(parseTuning("E-A-D-G-B-E")).toEqual([40, 45, 50, 55, 59, 64]);
+    expect(parseTuning("D♯ G♯ C♯ F♯ A♯ D♯")).toEqual([39, 44, 49, 54, 58, 63]);
+    expect(parseTuning("E♭ A♭ D♭ G♭ B♭ E♭")).toEqual([39, 44, 49, 54, 58, 63]);
+  });
+
+  it("resolves named IDs regardless of letter case and rejects inherited object keys", () => {
+    expect(getTuning("Standard").id).toBe("standard");
+    expect(getTuning("OPENd").id).toBe("openD");
+    for (const key of ["__proto__", "constructor", "toString"]) expect(getTuning(key)).toBe(TUNINGS.standard);
+  });
+
   it("anchors low A/B strings at A1/B1 instead of an octave up", () => {
     expect(parseTuning("B F# B F# B D#")[0]).toBe(35); // open B low string = B1
     expect(parseTuning("A E A E A C#")[0]).toBe(33);   // drop-A-ish low string = A1
@@ -307,5 +323,17 @@ Tune 1/2 step down
 EBGDAE    EBGDAE
 x24442    x02220`;
     expect(detectDeclaredTuning(sheet)).toBe("ebStandard");
+  });
+});
+
+describe("review tuning regressions", () => {
+  it.each(["Drop C#", "Drop C sharp", "Drop C♯", "Tuning: Drop C#"])("recognizes %s", (text) => {
+    expect(detectDeclaredTuning(text)).toBe("dropCsharp");
+  });
+  it("accepts every catalog display name with whitespace and case variations", () => {
+    for (const tuning of Object.values(TUNINGS)) {
+      expect(canonicalTuning("  " + tuning.name.toLowerCase().replaceAll(" ", "  ") + "  ").notes).toEqual(tuning.notes);
+    }
+    expect(canonicalTuning("Drop C♯").id).toBe("dropCsharp");
   });
 });

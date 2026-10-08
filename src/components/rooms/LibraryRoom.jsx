@@ -3,7 +3,7 @@
 import Library from "../Library.jsx";
 
 export default function LibraryRoom({
-  onOpen, quote, potd, arm, auditionChords, sendChordsToWrite,
+  onOpen, onSetlist, onPerform, quote, potd, arm, auditionChords, sendChordsToWrite,
   setSection, setImportTarget, setImportOpen, setLoaded, loadSheet, defaultSheet,
 }) {
   return (
@@ -15,7 +15,8 @@ export default function LibraryRoom({
         if (action === "hear") { auditionChords(potd.chords); return; }
         sendChordsToWrite(potd.chords, `${potd.name} · ${potd.keyName}`);
       }}
-      onSetlist={() => setSection("setlists")}
+      onSetlist={onSetlist || (() => setSection("setlists"))}
+      onPerform={onPerform}
       onPaste={() => { setSection("song"); setImportTarget("song"); setImportOpen(true); }}
       onDemo={() => { setLoaded(null); loadSheet(defaultSheet); setSection("song"); }}
       onHeard={(sheetText, title) => {

@@ -76,7 +76,7 @@ export function detectPitch(frame, sampleRate, { minHz = 60, maxHz = 1100, thres
   if (tau > minTau && tau < maxTau) {
     const a = cmnd[tau - 1], b = cmnd[tau], c = cmnd[tau + 1];
     const denom = a - 2 * b + c;
-    if (denom !== 0) refined = tau + (a - c) / (2 * denom) * -1;
+    if (denom !== 0) refined = tau + (a - c) / (2 * denom);
   }
   if (!(refined > 0)) return null;
 

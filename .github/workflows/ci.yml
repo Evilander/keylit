@@ -12,8 +12,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run build
+      - run: npm run test:tools
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/requirements-test.txt
+      - run: python -m pip install -r tools/requirements-test.txt
+      - run: python -m unittest discover -s tools -p '*_test.py'
+      - run: npm run build:deploy
+      - run: npm run check:publish

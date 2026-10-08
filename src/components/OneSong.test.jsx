@@ -67,3 +67,14 @@ describe("OneSong", () => {
     expect(screen.getByText(/Day one at the bench/)).toBeTruthy();
   });
 });
+
+it("keeps the title and accurately scopes backup recovery when finishing fails", () => {
+  const book = createOneSongBook(fakeBackend());
+  book.finish = () => { throw new Error("quota"); };
+  mount({ book });
+  const input = screen.getByLabelText(/name a song finished elsewhere/i);
+  fireEvent.change(input, { target: { value: "Keep this title" } });
+  fireEvent.click(screen.getByRole("button", { name: /call it finished/i }));
+  expect(input.value).toBe("Keep this title");
+  expect(screen.getByText(/Do not clear app data/)).toBeTruthy();
+});

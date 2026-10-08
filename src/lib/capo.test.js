@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { parseChord, chordSymbol, shapeEase } from "./theory.js";
-import { TUNINGS } from "./tuning.js";
+import { getTuning, shapeToMidi, TUNINGS } from "./tuning.js";
 import {
   classifyOpen,
   classifyChord,
@@ -86,6 +86,30 @@ describe("playInTuning", () => {
     const plain = playInTuning(parseChord("D"), TUNINGS.standard, 0);
     const dropped = playInTuning(parseChord("D"), TUNINGS.dropD, 0);
     expect(dropped.ease).toBeLessThan(plain.ease);
+  });
+
+  it("accounts for uniform detuning when naming a familiar shape", () => {
+    expect(playInTuning(parseChord("D"), TUNINGS.dStandard, 0).how).toBe("E shape");
+    expect(playInTuning(parseChord("D"), TUNINGS.ebStandard, 1).how).toBe("D shape");
+  });
+
+  it.each([
+    ["D", "DADGAD"], ["Dsus4", "openD"], ["Dmaj7", "openD"],
+    ["D/F#", "openD"], ["Dm7", "openD"], ["E", "dropD"], ["C", "CGCGCD"],
+  ])("offers an actual %s fingering in %s instead of a false full barre", (symbol, tuningId) => {
+    const chord = parseChord(symbol);
+    const tuning = getTuning(tuningId);
+    const result = playInTuning(chord, tuning, 0);
+    expect(result.how).not.toBe("all open");
+    expect(result.frets).toBeDefined();
+    const pitches = shapeToMidi(tuning.notes, result.frets);
+    const pcs = new Set(chord.intervals.map((iv) => (chord.rootSemitone + iv) % 12));
+    if (chord.bassSemitone != null) pcs.add(chord.bassSemitone);
+    expect(pitches.every((midi) => pcs.has(midi % 12))).toBe(true);
+    if (chord.bassSemitone != null) expect(Math.min(...pitches) % 12).toBe(chord.bassSemitone);
+    for (const iv of chord.intervals.filter((iv) => iv !== 7)) {
+      expect(pitches.some((midi) => midi % 12 === (chord.rootSemitone + iv) % 12)).toBe(true);
+    }
   });
 });
 

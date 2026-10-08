@@ -11,9 +11,12 @@ npm install
 npm run dev      # http://localhost:5173
 npm run build    # production build (installable PWA) to dist/
 npm test         # the full suite
+npm run test:tools # offline Node tooling regressions
 ```
 
-Node 18+ recommended. The production build is a PWA: install it from the browser and the app, fonts, and piano samples work offline after first load.
+Use Node 22.13 or newer within Node 22, or Node 24+ (Node 24 is used in CI). The production build is a PWA: after its service worker finishes installing, the app, fonts, and public-domain songbook work offline. Piano samples are cached after you first play while online; the synth remains available if samples have not been cached.
+
+Python helper fixtures run with `python -m unittest discover -s tools -p '*_test.py'` and require the existing parser dependencies listed in `tools/requirements-test.txt`. They use local fixtures, not live chart sites.
 
 ## The rooms
 
@@ -47,7 +50,7 @@ Drop an mp3/wav and Keylit writes the chart: FFT chromagram → chord-template m
 
 ## The AI proxy (optional)
 
-"Analyze with Claude" and the Chord Lab's Deep mode call a small proxy that keeps your Anthropic key server-side (`api/analyze.js`, or `node server.mjs` locally). Without it the app degrades gracefully — the offline theory engine covers everything else. There's also a bring-your-own-key tutor panel (Anthropic / OpenAI / Google / xAI / local Ollama); keys stay in your browser.
+"Analyze with Claude" and the Chord Lab's Deep mode call a small proxy that keeps your Anthropic key server-side (`api/analyze.js`, or `node server.mjs` locally). Without it the app degrades gracefully — the offline theory engine covers everything else. The bring-your-own-key tutor sends requests directly from your browser to the selected provider (Anthropic / OpenAI / Google / xAI / local Ollama); provider keys are stored in your browser and sent only to that provider.
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-... npm run proxy     # http://localhost:8787/api/analyze
@@ -55,6 +58,10 @@ echo "VITE_AI_PROXY_URL=http://localhost:8787/api/analyze" > .env
 ```
 
 Env vars: `KEYLIT_MODEL` (model id), `KEYLIT_ALLOW_ORIGIN` (comma-separated CORS allowlist; defaults cover localhost dev), `KEYLIT_PROXY_PORT`. The proxy rate-limits per IP and caps request size; every chord a model returns is re-parsed by Keylit's own parser before it can be applied, so a hallucinated symbol is dropped, never played.
+
+The tutor also offers a local subscription gateway. Configure `KEYLIT_SUBSCRIPTION_BASE_URL` with your existing loopback gateway's API base (`http://127.0.0.1:PORT/v1`), `KEYLIT_SUBSCRIPTION_API_KEY`, and optionally `KEYLIT_TUTOR_ORIGINS` before starting the proxy. That gateway credential stays server-side. This option requires a separately configured gateway; choosing it does not create one.
+
+Origin checks and per-process rate limits are not user authentication or an account-wide spending cap. An owner-funded public proxy needs deployment-level access controls and budget limits appropriate to its audience.
 
 ## Desktop app (Windows)
 
@@ -66,7 +73,7 @@ The Electron shell serves the built app over a custom `app://` protocol, so Web 
 
 ## Privacy
 
-No telemetry. No accounts. Charts, sketches, setlists, practice history, and preferences live in your browser's storage; audio is decoded and analyzed locally; nothing is sent anywhere unless you press an AI button, and then only the chart text you're working on.
+No telemetry. No accounts. Charts, sketches, setlists, practice history, and preferences live in your browser's storage; audio is decoded and analyzed locally. AI actions send the chart context and messages needed for the requested response. Piano playback downloads samples from the sample host; it does not upload your recordings or charts.
 
 ## Project layout
 

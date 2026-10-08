@@ -26,6 +26,17 @@ describe("detectPitch — YIN on synthesized tones", () => {
     expect(Math.abs(r.hz - 147) / 147).toBeLessThan(0.01);
   });
 
+  it("refines fractional periods toward the dip across browser sample rates", () => {
+    for (const sampleRate of [22050, 44100, 48000]) {
+      for (const hz of [196, 261.6256, 440, 660, 880]) {
+        const tone = Float32Array.from({ length: 4096 }, (_, i) => 0.4 * Math.sin(2 * Math.PI * hz * i / sampleRate));
+        const result = detectPitch(tone, sampleRate);
+        expect(result).not.toBeNull();
+        expect(Math.abs(1200 * Math.log2(result.hz / hz)), `${hz}Hz at ${sampleRate}Hz`).toBeLessThan(3);
+      }
+    }
+  });
+
   it("refuses silence and noise", () => {
     expect(detectPitch(new Float32Array(2048), SR)).toBeNull();
     let seed = 1;

@@ -97,3 +97,33 @@ describe("WriteDesk", () => {
     expect(screen.queryByText("Chord Lab")).not.toBeInTheDocument();
   });
 });
+
+it("offers scoped recovery after a refused save without replacing the current draft", () => {
+  const book = { list: () => [], legacy: () => [], save: () => { throw new Error("quota"); } };
+  render(<WriteDesk {...props} book={book} />);
+  fireEvent.click(screen.getByRole("button", { name: /Keep sketch/i }));
+  expect(screen.getByRole("status")).toHaveTextContent(/Download draft JSON before closing/);
+  expect(screen.getByRole("status")).toHaveTextContent(/Do not clear app data/);
+  expect(screen.getByLabelText("Draft name")).toHaveValue("Working title");
+  expect(screen.getByRole("button", { name: "Download draft JSON" })).toBeVisible();
+});
+
+it("downloads the full current draft even when storage cannot save", async () => {
+  let downloaded;
+  const oldCreate = URL.createObjectURL, oldRevoke = URL.revokeObjectURL;
+  URL.createObjectURL = vi.fn((blob) => { downloaded = blob; return "blob:recovery"; });
+  URL.revokeObjectURL = vi.fn();
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+  try {
+    render(<WriteDesk {...props} book={createDraftBook(memoryBackend())} />);
+    fireEvent.click(screen.getByRole("button", { name: "Download draft JSON" }));
+    const text = await new Promise((resolve) => {
+      const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsText(downloaded);
+    });
+    expect(JSON.parse(text)).toEqual({ version: 2, drafts: [draft] });
+    expect(click).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(1000);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:recovery");
+  } finally { click.mockRestore(); URL.createObjectURL = oldCreate; URL.revokeObjectURL = oldRevoke; vi.useRealTimers(); }
+});

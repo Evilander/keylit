@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createDraftBook, createLibrary, createBenchBook, createOneSongBook } from "./storage.js";
+import { createDraftBook, createLibrary, createUserSongbook, createBenchBook, createOneSongBook } from "./storage.js";
 import { adaptLegacySketch, createDraft } from "./lib/composition.js";
 import { dayKey } from "./lib/onesong.js";
 
@@ -11,6 +11,37 @@ function fakeBackend(seed = {}) {
     snapshot: () => Object.fromEntries(data),
   };
 }
+
+describe("storage recovery", () => {
+  it("treats valid JSON with the wrong collection shape as an empty book", () => {
+    const be = fakeBackend({ "keylit.songs.v1": "{}", "keylit.usersongs.v1": "null" });
+    expect(createLibrary(be).list()).toEqual([]);
+    expect(createUserSongbook(be).rows()).toEqual([]);
+  });
+
+  it("ignores corrupt entries while preserving usable songs and safe display fields", () => {
+    const be = fakeBackend({
+      "keylit.songs.v1": JSON.stringify([null, 42, { id: "a", name: "Draft", sheet: "C G", savedAt: 1 }]),
+      "keylit.usersongs.v1": JSON.stringify([null, false, { id: "b", title: { bad: true }, artist: [], body: "Am F" }]),
+    });
+    expect(createLibrary(be).list()).toHaveLength(1);
+    expect(createUserSongbook(be).rows()[0]).toMatchObject({ id: "b", title: "Untitled", artist: "Unknown" });
+    expect(createUserSongbook(be).get("b").body).toBe("Am F");
+  });
+
+  it("an explicit backend still works when browser storage access throws", () => {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, get: () => { throw new Error("storage disabled"); } });
+    try {
+      const be = fakeBackend();
+      expect(() => createLibrary(be)).not.toThrow();
+      expect(() => createUserSongbook().rows()).not.toThrow();
+    } finally {
+      if (previous) Object.defineProperty(globalThis, "localStorage", previous);
+      else delete globalThis.localStorage;
+    }
+  });
+});
 
 describe("Write draft book", () => {
   const draft = (id, input = {}) => createDraft({ id, name: id, ...input });
@@ -55,11 +86,11 @@ describe("Write draft book", () => {
     expect(createDraftBook(be).list()).toEqual([]);
   });
 
-  it("falls back from partial browser storage without aliasing v2 and v1 keys", () => {
+  it("keeps reads usable but refuses false persistent saves with partial storage", () => {
     const partialStorage = { getItem: () => { throw new Error("must not be used"); } };
     const book = createDraftBook(null, partialStorage);
-    book.save(draft("fallback"));
-    expect(book.list().map((item) => item.id)).toEqual(["fallback"]);
+    expect(() => book.save(draft("fallback"))).toThrow(/Persistent storage is unavailable/);
+    expect(book.list()).toEqual([]);
     expect(book.legacy()).toEqual([]);
   });
 
@@ -182,6 +213,49 @@ describe("song library", () => {
 describe("bench book — setlists", () => {
   const song = (t) => ({ songKey: t.toLowerCase(), source: "user", id: t.toLowerCase(), title: t, artist: "Artist" });
   const sequenceIds = () => { let n = 0; return (prefix = "id") => `${prefix}-${++n}`; };
+
+  it("saves an ordered selection and repeat occurrences with one storage write", () => {
+    const be = fakeBackend();
+    let writes = 0;
+    const book = createBenchBook({ getItem: be.getItem, setItem: (...args) => { writes++; be.setItem(...args); } }, { makeId: sequenceIds() });
+    const setlist = book.saveSetlistSongs({ name: "Record", songs: [{ ...song("First"), tuning: "dropD", capo: 0 }, song("Last"), song("First")] });
+    expect(writes).toBe(1);
+    expect(setlist.entries.map((entry) => entry.title)).toEqual(["First", "Last", "First"]);
+    expect(new Set(setlist.entries.map((entry) => entry.entryId)).size).toBe(3);
+    expect(book.setlists()[0].entries[0]).toMatchObject({ tuning: "dropD", capo: 0 });
+  });
+
+  it("appends atomically to an existing set without erasing notes or practice history", () => {
+    const book = createBenchBook(fakeBackend(), { makeId: sequenceIds() });
+    const old = book.createSetlist("Existing");
+    book.setSetlistNotes(old.id, "Remember the ending");
+    book.addToSetlist(old.id, song("Opening"));
+    book.logPractice({ songKey: "opening", at: 1 });
+    const saved = book.saveSetlistSongs({ id: old.id, songs: [song("Record A"), song("Record B")] });
+    expect(saved.entries.map((entry) => entry.title)).toEqual(["Opening", "Record A", "Record B"]);
+    expect(saved.notes).toBe("Remember the ending");
+    expect(book.log()).toHaveLength(1);
+  });
+
+  it("leaves the original book intact if any selected occurrence cannot be created", () => {
+    const be = fakeBackend();
+    const book = createBenchBook(be, { makeId: sequenceIds() });
+    const old = book.createSetlist("Keep");
+    const before = be.snapshot();
+    expect(() => book.saveSetlistSongs({ id: old.id, songs: [song("Good"), { title: "Invalid" }] })).toThrow();
+    expect(() => book.saveSetlistSongs({ id: "gone", songs: [song("Good")] })).toThrow();
+    expect(be.snapshot()).toEqual(before);
+  });
+
+  it("creates no empty or partial album on quota failure or duplicate occurrence IDs", () => {
+    const be = fakeBackend();
+    const book = createBenchBook(be, { makeId: (prefix) => prefix });
+    expect(() => book.saveSetlistSongs({ name: "Record", songs: [song("A"), song("B")] })).toThrow();
+    expect(be.snapshot()).toEqual({});
+    const full = createBenchBook({ getItem: be.getItem, setItem: () => { throw new DOMException("Full", "QuotaExceededError"); } });
+    expect(() => full.saveSetlistSongs({ songs: [song("A")] })).toThrow("Full");
+    expect(full.setlists()).toEqual([]);
+  });
 
   it("creates, renames and removes setlists", () => {
     const bb = createBenchBook(fakeBackend());
@@ -334,4 +408,94 @@ describe("one song book", () => {
     const be = { getItem: () => "{broken", setItem: () => {} };
     expect(createOneSongBook(be).state()).toEqual({ days: {}, finished: [], doors: {} });
   });
+});
+
+it("preserves rejected draft bytes on both save and remove", () => {
+  for (const raw of ["{broken", '{"version":3,"drafts":[]}', '{"version":2,"drafts":[{}]}']) {
+    const be = fakeBackend({ "keylit.write.drafts.v2": raw });
+    const book = createDraftBook(be);
+    book.list();
+    expect(() => book.save(createDraft({ id: "rescue" }))).toThrow(/recovery/);
+    expect(() => book.remove("anything")).toThrow(/recovery/);
+    expect(be.getItem("keylit.write.drafts.v2")).toBe(raw);
+  }
+});
+
+it("rejects an observed stale draft collection without overwriting another window", () => {
+  const be = fakeBackend();
+  const first = createDraftBook(be), second = createDraftBook(be);
+  first.save(createDraft({ id: "a", name: "original" }));
+  const old = second.get("a");
+  first.save({ ...old, name: "newer" });
+  expect(() => second.save({ ...old, name: "stale" })).toThrow(/another window/);
+  expect(first.get("a").name).toBe("newer");
+});
+
+it("preserves a legacy ID for exact-name edits and returns the saved identity", () => {
+  const be = fakeBackend();
+  const book = createUserSongbook(be);
+  book.save({ id: "user--artist--song", artist: "Artist", title: "Song!", body: "C" });
+  const saved = book.save({ id: "new-encoded-id", artist: "Artist", title: "Song!", body: "G" }, { tuningName: "Standard" });
+  expect(saved).toMatchObject({ id: "user--artist--song", body: "G" });
+  expect(book.all()).toHaveLength(1);
+  expect(book.get(saved.id).tuningName).toBe("Standard");
+});
+
+it("refuses to overwrite a different actual name sharing a legacy or imported ID", () => {
+  const be = fakeBackend();
+  const book = createUserSongbook(be);
+  book.save({ id: "collision", artist: "Artist", title: "Song!", body: "C" });
+  const before = be.getItem("keylit.usersongs.v1");
+  for (const change of [{ title: "Song" }, { artist: "artist" }]) {
+    expect(() => book.save({ id: "collision", artist: "Artist", title: "Song!", body: "G", ...change })).toThrow(/different song/);
+    expect(be.getItem("keylit.usersongs.v1")).toBe(before);
+  }
+});
+
+
+it("keeps long encoded song IDs through setlist storage and backup restore", async () => {
+  const { buildUserSong } = await import("./lib/usersong.js");
+  const { buildBackup, parseBackup } = await import("./lib/backup.js");
+  const built = buildUserSong({ artist: "Artist ".repeat(30), title: "Long title! ".repeat(30), body: "C" });
+  expect(built.song.id.length).toBeGreaterThan(160);
+  const be = fakeBackend();
+  const songs = createUserSongbook(be);
+  const saved = songs.save(built.song, built.row);
+  const bench = createBenchBook(be);
+  const set = bench.createSetlist("Tonight");
+  bench.addToSetlist(set.id, { ...saved, songKey: `user:${saved.id}` });
+  const parsed = parseBackup(buildBackup({ songs: songs.all(), ...bench.raw() }));
+  expect(parsed.ok).toBe(true);
+  expect(parsed.data.songs[0].id).toBe(saved.id);
+  expect(parsed.data.setlists[0].entries[0]).toMatchObject({ id: saved.id, songKey: `user:${saved.id}` });
+  const restored = createBenchBook(fakeBackend());
+  restored.restore(parsed.data);
+  expect(restored.setlists()[0].entries[0].id).toBe(saved.id);
+});
+
+it("shelf refreshes do not accept external edits over an already opened draft", () => {
+  const be = fakeBackend();
+  const first = createDraftBook(be), second = createDraftBook(be);
+  first.save(createDraft({ id: "a", name: "original" }));
+  const stale = second.get("a");
+  first.save({ ...stale, name: "external" });
+  expect(second.list()[0].name).toBe("external");
+  expect(() => second.save({ ...stale, name: "stale edit" })).toThrow(/another window/);
+  expect(first.get("a").name).toBe("external");
+  const reopened = second.get("a");
+  expect(() => second.save({ ...reopened, name: "reviewed edit" })).not.toThrow();
+});
+
+it("cannot claim persistence when the browser storage getter is denied", () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, get: () => { throw new Error("denied"); } });
+  try {
+    const book = createDraftBook();
+    expect(book.list()).toEqual([]);
+    expect(() => book.save(createDraft({ id: "precious" }))).toThrow(/Persistent storage is unavailable/);
+    expect(() => createUserSongbook().save({ id: "song", artist: "A", title: "B", body: "C" })).toThrow(/Persistent storage is unavailable/);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "localStorage", previous);
+    else delete globalThis.localStorage;
+  }
 });

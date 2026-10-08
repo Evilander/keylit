@@ -10,26 +10,51 @@ import { C, MONO } from "../ui/theme.js";
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const stamp = (at) => new Date(at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
+// Keep unsaved audio through room changes, including saves still in flight.
+// Never evict a take: reserve space before asking for the microphone.
+const MAX_TAKES = 4, MAX_TAKE_BYTES = 16 * 1024 * 1024, MAX_SECONDS = 300;
+const recoveryTakes = [], recoveryListeners = new Set();
+let nextTake = 0;
+const notifyRecovery = () => { for (const listener of recoveryListeners) listener(); };
+const discardTake = (take) => {
+  const index = recoveryTakes.indexOf(take);
+  if (index >= 0) { recoveryTakes.splice(index, 1); notifyRecovery(); }
+};
+const recoveryFull = () => recoveryTakes.length >= MAX_TAKES ||
+  recoveryTakes.reduce((sum, take) => sum + (take.blob?.size || MAX_TAKE_BYTES), 0) + MAX_TAKE_BYTES > MAX_TAKES * MAX_TAKE_BYTES;
+
 export default function PocketRecorder() {
   const [rows, setRows] = useState([]);
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [denied, setDenied] = useState(false);
-  const [saveFailed, setSaveFailed] = useState(false);
+  const [recovery, setRecovery] = useState(() => recoveryTakes.slice());
   const [playingId, setPlayingId] = useState(null);
   const recRef = useRef(null);
   const startingRef = useRef(false);
-  const failedBlobRef = useRef(null);
   const timerRef = useRef(null);
   const audioRef = useRef(null);
   const urlRef = useRef(null);
+  const mountedRef = useRef(true);
+  const playGenerationRef = useRef(0);
 
-  const refresh = () => memos.list().then(setRows);
+  const refresh = () => memos.list().then((list) => { if (mountedRef.current) setRows(list); }).catch(() => {});
   useEffect(() => { refresh(); }, []);
-  useEffect(() => () => {
-    try { recRef.current?.stream?.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
-    clearInterval(timerRef.current);
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+  useEffect(() => {
+    mountedRef.current = true;
+    const recoveryChanged = () => { setRecovery(recoveryTakes.slice()); refresh(); };
+    recoveryListeners.add(recoveryChanged);
+    setRecovery(recoveryTakes.slice());
+    return () => {
+      mountedRef.current = false;
+      recoveryListeners.delete(recoveryChanged);
+      playGenerationRef.current++;
+      try { if (recRef.current?.state === "recording") recRef.current.stop(); } catch { /* already stopped */ }
+      try { recRef.current?.stream?.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
+      clearInterval(timerRef.current);
+      audioRef.current?.pause();
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    };
   }, []);
 
   if (!memos.supported()) return null;
@@ -37,47 +62,84 @@ export default function PocketRecorder() {
   const start = async () => {
     // double-click guard: a second click during the permission wait would
     // spawn a second recorder and orphan the first one's mic stream
-    if (startingRef.current || recRef.current?.state === "recording") return;
+    if (startingRef.current || recRef.current?.state === "recording" || recoveryFull()) return;
     startingRef.current = true;
     setDenied(false);
+    const take = { id: ++nextTake, status: "recording", at: Date.now(), blob: null };
+    recoveryTakes.push(take); notifyRecovery();
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-    catch { setDenied(true); startingRef.current = false; return; }
-    const rec = new MediaRecorder(stream);
+    catch { discardTake(take); if (mountedRef.current) setDenied(true); startingRef.current = false; return; }
+    if (!mountedRef.current) {
+      stream.getTracks().forEach((track) => track.stop());
+      discardTake(take);
+      startingRef.current = false;
+      return;
+    }
+    let rec;
+    try { rec = new MediaRecorder(stream); }
+    catch {
+      stream.getTracks().forEach((track) => track.stop());
+      discardTake(take);
+      startingRef.current = false;
+      setDenied(true);
+      return;
+    }
     // chunks are PER-SESSION: a shared ref let a quick stop→re-record wipe
     // the previous take's buffer before its onstop had built the blob
     const chunks = [];
-    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    let bytes = 0;
+    rec.ondataavailable = (e) => {
+      if (e.data.size) { chunks.push(e.data); bytes += e.data.size; }
+      // A final browser chunk may cross the limit; keep it and stop collecting.
+      if (bytes >= MAX_TAKE_BYTES && rec.state === "recording") { try { rec.stop(); } catch { /* already stopped */ } }
+    };
     rec.onstop = async () => {
       stream.getTracks().forEach((t) => t.stop());
+      if (recRef.current === rec) {
+        clearInterval(timerRef.current);
+        if (mountedRef.current) setRecording(false);
+      }
       const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+      chunks.length = 0;
       if (blob.size > 0) {
         const at = Date.now();
-        const id = await memos.save({ name: `Hum — ${stamp(at)}`, blob, at });
-        if (id) refresh();
-        else { failedBlobRef.current = blob; setSaveFailed(true); } // say so — never silently drop a take
-      }
+        take.blob = blob; take.at = at; take.status = "saving"; notifyRecovery();
+        let id;
+        try { id = await memos.save({ name: `Hum — ${stamp(at)}`, blob, at }); } catch { /* rescue below */ }
+        if (id) discardTake(take);
+        else { take.status = "failed"; notifyRecovery(); }
+      } else discardTake(take);
     };
-    rec.start();
+    try { rec.start(1000); }
+    catch {
+      stream.getTracks().forEach((track) => track.stop());
+      discardTake(take);
+      startingRef.current = false;
+      setDenied(true);
+      return;
+    }
     recRef.current = rec;
     startingRef.current = false;
-    setSaveFailed(false);
     setRecording(true);
     setElapsed(0);
     const t0 = Date.now();
-    timerRef.current = setInterval(() => setElapsed((Date.now() - t0) / 1000), 250);
+    timerRef.current = setInterval(() => {
+      const seconds = (Date.now() - t0) / 1000;
+      if (mountedRef.current) setElapsed(seconds);
+      if (seconds >= MAX_SECONDS) { clearInterval(timerRef.current); try { rec.stop(); } catch { /* already stopped */ } }
+    }, 250);
   };
 
-  const rescueDownload = () => {
-    const blob = failedBlobRef.current;
+  const rescueDownload = (take) => {
+    const blob = take.blob;
     if (!blob) return;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "hum.webm";
+    a.download = `hum-${take.id}.webm`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    setSaveFailed(false);
   };
 
   const stop = () => {
@@ -87,8 +149,9 @@ export default function PocketRecorder() {
   };
 
   const play = async (row) => {
+    const generation = ++playGenerationRef.current;
     const blob = await memos.blobOf(row.id);
-    if (!blob) return;
+    if (!blob || !mountedRef.current || generation !== playGenerationRef.current) return;
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     urlRef.current = URL.createObjectURL(blob);
     if (!audioRef.current) audioRef.current = new Audio();
@@ -97,7 +160,7 @@ export default function PocketRecorder() {
     audioRef.current.play().catch(() => setPlayingId(null));
     setPlayingId(row.id);
   };
-  const stopPlay = () => { try { audioRef.current?.pause(); } catch { /* noop */ } setPlayingId(null); };
+  const stopPlay = () => { playGenerationRef.current++; try { audioRef.current?.pause(); } catch { /* noop */ } setPlayingId(null); };
 
   const download = async (row) => {
     const blob = await memos.blobOf(row.id);
@@ -118,26 +181,32 @@ export default function PocketRecorder() {
             <Square size={14} /> keep it · {fmtTime(elapsed)}
           </button>
         ) : (
-          <button className="bench-btn" onClick={start}>
+          <button className="bench-btn" onClick={start} disabled={recoveryFull()}>
             <span className={recording ? "kl-pulse" : ""} style={{ width: 9, height: 9, borderRadius: "50%", background: C.root, display: "inline-block" }} />
             <Mic size={14} /> hum it before you lose it
           </button>
         )}
         {denied && <span style={{ fontSize: 12, color: C.bassText }}>mic said no — check the browser's permission</span>}
-        {saveFailed && (
-          <span style={{ fontSize: 12, color: C.rootText }}>
-            storage refused that take — it is NOT saved.{" "}
-            <button onClick={rescueDownload} style={{ background: "transparent", border: 0, padding: 0, color: C.rootText, textDecoration: "underline", cursor: "pointer", fontSize: 12 }}>
-              download it instead
-            </button>
-          </span>
-        )}
+        {!recording && recoveryFull() && <span style={{ fontSize: 12, color: C.rootText }}>Recovery is full. Download and discard a take before recording again.</span>}
         {recording && <span className="kl-pulse" style={{ fontFamily: MONO, fontSize: 11, color: C.rootText }}>recording — stays on this machine</span>}
       </div>
 
+      {recovery.some((take) => take.status !== "recording") && (
+        <div style={{ marginTop: 10 }} aria-live="polite">
+          <div style={{ fontSize: 12, color: C.rootText }}>Unsaved takes stay here until saved or discarded. Download them before closing this app. If saving stays unavailable, close other Keylit windows and reopen after downloading your takes.</div>
+          {recovery.filter((take) => take.status !== "recording").map((take) => (
+            <div key={take.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
+              <span style={{ flex: 1, fontSize: 12 }}>Take {take.id} · {stamp(take.at)} · {take.status === "saving" ? "saving…" : "storage refused — not saved"}</span>
+              <button className="bench-btn" onClick={() => rescueDownload(take)} aria-label={`download unsaved take ${take.id}`}><Download size={13} /> download</button>
+              {take.status === "failed" && <button className="bench-btn" onClick={() => discardTake(take)} aria-label={`discard unsaved take ${take.id}`}><Trash2 size={13} /> discard</button>}
+            </div>
+          ))}
+        </div>
+      )}
+
       {rows.length > 0 && (
         <div style={{ marginTop: 10 }}>
-          {rows.slice(0, 6).map((r) => (
+          {rows.map((r) => (
             <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.line}` }}>
               <button onClick={() => (playingId === r.id ? stopPlay() : play(r))}
                 aria-label={playingId === r.id ? "stop" : `play ${r.name}`}
@@ -151,7 +220,6 @@ export default function PocketRecorder() {
                 style={{ background: "transparent", border: 0, color: C.faint, cursor: "pointer", display: "inline-flex", padding: 2 }}><Trash2 size={13} /></button>
             </div>
           ))}
-          {rows.length > 6 && <div className="kl-meta" style={{ color: C.faint, marginTop: 6 }}>+{rows.length - 6} older hums on the shelf</div>}
         </div>
       )}
     </div>

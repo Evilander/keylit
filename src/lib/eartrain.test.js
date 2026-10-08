@@ -61,6 +61,31 @@ describe("mkQuestion — drills built from the actual song", () => {
     expect(correct.label).toContain("2 → 1");
     expect(correct.label).not.toContain("4 → 1");
   });
+
+  it("does not describe a deceptive V → vi cadence as arriving at 1", () => {
+    const progression = parseSheet("G Am").progression;
+    expect(mkQuestion(seeded([0.1, 0.5]), { progression, key: { tonic: 0, mode: "major" }, level: 4 })).toBeNull();
+  });
+
+  it("names a leading-tone chord's actual degree when it resolves home", () => {
+    const progression = parseSheet("Bdim C").progression;
+    const q = mkQuestion(seeded([0.1, 0.5]), { progression, key: { tonic: 0, mode: "major" }, level: 4 });
+    expect(q.options.find((o) => o.correct).label).toContain("7 → 1");
+    expect(q.explain).not.toContain("5 → 1");
+  });
+
+  it("establishes a minor tonic for minor-key degree questions", () => {
+    const progression = parseSheet("Am Dm E Am").progression;
+    const q = mkQuestion(seeded([0.1, 0.5]), { progression, key: { tonic: 9, mode: "minor" }, level: 2 });
+    expect(q.play[0].intervals).toEqual([0, 3, 7]);
+    expect(q.play[2].intervals).toEqual([0, 3, 7]);
+  });
+
+  it("does not invent a leading tone in a minor v → i landing", () => {
+    const progression = parseSheet("Em Am").progression;
+    const q = mkQuestion(seeded([0.1, 0.5]), { progression, key: { tonic: 9, mode: "minor" }, level: 4 });
+    if (q) expect(q.explain).not.toContain("leading tone pulls");
+  });
 });
 
 describe("levels", () => {

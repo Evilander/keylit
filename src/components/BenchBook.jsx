@@ -13,9 +13,10 @@ const ago = (at, now) => {
   return days < 30 ? `${days}d ago` : `${Math.floor(days / 30)}mo ago`;
 };
 
-export default function BenchBook({ onOpen, onPerformSet, onRunFrom }) {
+export default function BenchBook({ onOpen, onPerformSet, onRunFrom, initialSetlistId = null }) {
+  const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
-  const [activeId, setActiveId] = useState(null);
+  const [activeId, setActiveId] = useState(initialSetlistId);
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState([]);
   const bump = () => setRevision((value) => value + 1);
@@ -41,8 +42,10 @@ export default function BenchBook({ onOpen, onPerformSet, onRunFrom }) {
   const cold = useMemo(() => coldSongs(log, now, { limit: 6 }), [log, now]);
 
   const create = () => {
-    const setlist = benchBook.createSetlist("Tonight", Date.now());
-    if (setlist) { setActiveId(setlist.id); bump(); }
+    try {
+      const setlist = benchBook.createSetlist("Tonight", Date.now());
+      if (setlist) { setActiveId(setlist.id); bump(); setError(""); }
+    } catch (e) { setError(`Setlist was not saved: ${e?.message || "storage is unavailable"}. Existing setlists are unchanged.`); }
   };
   const add = (row) => {
     if (!active) return;
@@ -56,6 +59,7 @@ export default function BenchBook({ onOpen, onPerformSet, onRunFrom }) {
 
   return (
     <div className="bench-book" style={{ marginTop: 18 }}>
+      {error && <p role="alert">{error}</p>}
       <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 10 }}>
         <div><div className="kl-eyebrow">The bench book</div><h2 className="kl-title" style={{ marginTop: 4, fontSize: 26 }}>Setlists</h2></div>
         <div className="flex items-center" style={{ gap: 8, flexWrap: "wrap" }}>

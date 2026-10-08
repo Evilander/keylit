@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { parseTab, parseTabBlock, findTabBlocks } from "./tab.js";
-import { getTuning } from "./tuning.js";
-import { detectCapo } from "./theory.js";
-import { assignColumns, renderAscii, retabText, swapTabBlocks } from "./retab.js";
+import { getTuning, detectDeclaredTuning } from "./tuning.js";
+import { detectCapo, parseSheet, transposeChord } from "./theory.js";
+import { assignColumns, renderAscii, retabText, swapTabBlocks, retabForSetup } from "./retab.js";
+import { tabEvents } from "./tabplay.js";
 
 // a simple standard-tuning riff + an open C chord column
 const RIFF = [
@@ -15,6 +16,60 @@ const RIFF = [
 ].join("\n");
 
 const midisOf = (cols) => cols.filter((c) => c.notes.length).map((c) => c.notes.map((n) => n.midi).sort((a, b) => a - b));
+
+describe("retabbing the player's setup", () => {
+  it("normalizes capo metadata strings before fret and export arithmetic", () => {
+    const changed = retabForSetup(RIFF, { from: { capo: "2" }, to: { tuning: "dropD", capo: "1" }, transpose: 2 });
+    expect(changed.srcCapo).toBe(2);
+    expect(changed.dstCapo).toBe(1);
+    expect(midisOf(parseTab(changed.text, { capo: 1 }).events)[0]).toEqual([52, 56]);
+  });
+
+  it("re-frets a key change even when tuning and capo stay the same", () => {
+    const changed = retabForSetup(RIFF, { to: { tuning: "standard" }, transpose: 2 });
+    expect(changed).not.toBeNull();
+    expect(midisOf(parseTab(changed.text).events)[0]).toEqual([50, 54]);
+  });
+
+  it("uses the tab labels when metadata says the guitar already matches", () => {
+    const drop = RIFF.replace("E|---------------|", "D|---------------|");
+    const changed = retabForSetup(drop, { from: { tuning: "standard" }, to: { tuning: "standard" } });
+    expect(changed).not.toBeNull();
+    expect(changed.src.id).toBe("dropD");
+    expect(retabForSetup(RIFF, { to: { tuning: "standard" } })).toBeNull();
+  });
+
+  it("exports mixed charts with chord names at the same pitch as the re-fretted notes", () => {
+    const changed = retabForSetup(`Capo 2\n[Intro]\nC G/B\n${RIFF}`, {
+      from: { tuning: "standard", capo: 2 }, to: { tuning: "dStandard", capo: 1 }, transpose: 2,
+    });
+    const chords = parseSheet(changed.exportText).progression.map((ch) => transposeChord(ch, 1));
+    expect(chords.map((ch) => ch.rootSemitone)).toEqual([4, 11]);
+    expect(chords[1].bassSemitone).toBe(3);
+    expect(midisOf(parseTab(changed.exportText, { capo: 1 }).events)[0]).toEqual([52, 56]);
+  });
+
+  it("replaces a stale tuning header so the copied chart declares its new setup", () => {
+    const changed = retabForSetup(`Tuning: E A D G B E\n${RIFF}`, { to: { tuning: "DADGAD" } });
+    expect(detectDeclaredTuning(changed.text)).toBe("DADGAD");
+  });
+
+  it("transposes displayed frets as well as the sounding notes", () => {
+    const changed = swapTabBlocks(RIFF, { from: { tuning: "standard", capo: 2 }, to: { tuning: "dropD", capo: 1 }, transpose: 2 });
+    expect(midisOf(parseTab(changed.text, { capo: 1 }).events)).toEqual([[52, 56], [59], [64], [68], [64], [59]]);
+  });
+
+  it("transposes standalone tab exports too", () => {
+    const changed = retabText(RIFF, { from: { tuning: "standard" }, to: { tuning: "standard" }, transpose: 2 });
+    expect(midisOf(parseTab(changed.text).events)[0]).toEqual([50, 54]);
+  });
+
+  it("preserves short notes and long holds when changing tuning", () => {
+    const riff = ["e|-0-2-------3---|", "B|---------------|", "G|---------------|", "D|---------------|", "A|---------------|", "E|---------------|"].join("\n");
+    const changed = swapTabBlocks(riff, { to: { tuning: "dStandard" } });
+    expect(tabEvents(parseTab(changed.text).events).events.map((e) => e.t)).toEqual([0, 0.5, 2.5]);
+  });
+});
 
 describe("assignColumns — pitches survive the move", () => {
   const parsed = parseTab(RIFF);

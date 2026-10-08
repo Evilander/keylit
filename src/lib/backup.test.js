@@ -29,6 +29,13 @@ describe("buildBackup / parseBackup", () => {
     expect(parsed.data.log).toEqual([]);
   });
 
+  it("retains unknown capo and mixed formats with album track metadata", () => {
+    const parsed = parseBackup({ keylit: 2, songs: [song("a", "Coldplay", "Yellow", {
+      capo: null, format: "mixed", album: "Parachutes", albumYear: 2000, trackNumber: 5,
+    })] });
+    expect(parsed.data.songs[0]).toMatchObject({ capo: null, format: "mixed", albumYear: 2000, trackNumber: 5 });
+  });
+
   it("rejects non-backups with a human error", () => {
     expect(parseBackup("not json").ok).toBe(false);
     expect(parseBackup({ hello: 1 }).ok).toBe(false);
@@ -136,6 +143,35 @@ describe("mergeBackup — never destroys, never duplicates", () => {
     expect(report.songsSkipped).toBe(1);
   });
 
+  it("preserves different chart bodies, formats, tunings and capo setups", () => {
+    const cur = { songs: [song("home", "Coldplay", "Yellow")], setlists: [], log: [] };
+    const inc = { songs: [
+      song("same", "Coldplay", "Yellow"),
+      song("body", "Coldplay", "Yellow", { body: "C G D Em" }),
+      song("tab", "Coldplay", "Yellow", { format: "tab" }),
+      song("mixed", "Coldplay", "Yellow", { format: "mixed" }),
+      song("tuning", "Coldplay", "Yellow", { tuning: "dropD" }),
+      song("capo", "Coldplay", "Yellow", { capo: 2 }),
+    ], setlists: [], log: [] };
+    const merged = mergeBackup(cur, inc);
+    expect(merged.songs.map((s) => s.id)).toEqual(["home", "body", "tab", "mixed", "tuning", "capo"]);
+    expect(mergeBackup(merged, inc).report.songsAdded).toBe(0);
+  });
+
+  it("remaps imported setlist occurrences and practice references when identical charts dedupe", () => {
+    const cur = { songs: [song("home", "Owen", "Bad News")], setlists: [], log: [] };
+    const inc = { songs: [song("away", "Owen", "Bad News")], setlists: [{ id: "gig", entries: [
+      { entryId: "one", songKey: "user:away", source: "user", id: "away", capo: 0 },
+      { entryId: "two", songKey: "user:away", source: "user", id: "away", capo: 3 },
+    ] }], log: [{ songKey: "user:away", at: 1 }] };
+    const merged = mergeBackup(cur, inc);
+    expect(merged.setlists[0].entries.map((e) => [e.id, e.songKey, e.capo])).toEqual([
+      ["home", "user:home", 0], ["home", "user:home", 3],
+    ]);
+    expect(merged.log[0].songKey).toBe("user:home");
+    expect(inc.setlists[0].entries[0].id).toBe("away");
+  });
+
   it("caps the merged practice log, keeping the newest", () => {
     const cur = { songs: [], setlists: [], log: Array.from({ length: 490 }, (_, i) => ({ songKey: "a", at: i })) };
     const inc = { songs: [], setlists: [], log: Array.from({ length: 30 }, (_, i) => ({ songKey: "b", at: 1000 + i })) };
@@ -174,4 +210,10 @@ it("PREF_KEYS carries exactly the cross-machine settings", () => {
   expect(PREF_KEYS).toContain("keylit.theme.v2"); // the LIVE theme key — v2, not the retired v1
   expect(PREF_KEYS).toContain("keylit.theme.v1"); // old backup files must still restore
   expect(PREF_KEYS).toContain("keylit.chart-spelling.v2");
+});
+
+it("reconstructs tuning display metadata on restored rows without changing identity", () => {
+  const { data } = parseBackup({ keylit: 2, songs: [{ id: "kept-id", artist: "A", title: "B", body: "C", tuning: "DADGAD" }] });
+  expect(data.songs[0]).toMatchObject({ id: "kept-id", tuningId: "DADGAD", tuningName: expect.any(String) });
+  expect(data.songs[0].tuningName).not.toBe("Standard");
 });

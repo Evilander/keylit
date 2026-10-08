@@ -3,29 +3,33 @@
 // lets you click a tuning to see every song in it, across all artists.
 // "Setlist" mode turns rows into a picker: check songs across any artists,
 // stack them straight into the Bench Book.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, ChevronRight, X, Plus, Disc3, ListMusic, CircleCheck, Circle, Download } from "lucide-react";
 import { invalidateManifest, loadManifest, loadSong, groupByArtist, isCoreArtist, SOURCE_LABEL } from "../corpus.js";
 import { userSongbook, benchBook } from "../storage.js";
-import { slugSongKey } from "../lib/bench.js";
+import { loadAlbumCharts } from "../albumloader.js";
+import { chartExportText, chartSetlistSong, groupLibraryAlbums, groupSongArrangements, libraryStats, matchesChartFormat } from "../lib/library.js";
 import { makeZip } from "../lib/zip.js";
-import { buildBackup, parseBackup, mergeBackup, reportLine, PREF_KEYS } from "../lib/backup.js";
+import { buildBackup, parseBackup, mergeBackup, reportLine, PREF_KEYS, BACKUP_SCOPE_NOTICE } from "../lib/backup.js";
 import AddSong from "./AddSong.jsx";
 import TabHunt from "./TabHunt.jsx";
 import Ear from "./Ear.jsx";
+import AlbumSession from "./AlbumSession.jsx";
 import { C, MONO, DISPLAY } from "../ui/theme.js";
 
 // Browse state survives leaving the room (Back returns you to the same
 // search, tuning filter, and expanded artists — not a collapsed index).
-const remembered = { q: "", tuning: null, open: [] };
+const remembered = { q: "", tuning: null, format: "all", browse: "artists", open: [], albumSession: null };
 
-export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, potd, onPotd, quote }) {
+export default function Library({ onOpen, onSetlist, onPerform, onPaste, onDemo, onHeard, potd, onPotd, quote }) {
   const [fetched, setFetched] = useState(null);
   const [userRows, setUserRows] = useState(() => userSongbook.rows());
   const [adding, setAdding] = useState(false);
   const [hearing, setHearing] = useState(false);
   const [q, setQ] = useState(remembered.q);
   const [tuning, setTuning] = useState(remembered.tuning); // tuningId or null
+  const [format, setFormat] = useState(remembered.format);
+  const [browse, setBrowse] = useState(remembered.browse);
   const [open, setOpen] = useState(() => new Set(remembered.open));
   const [allTunings, setAllTunings] = useState(false);
   const [selecting, setSelecting] = useState(false);
@@ -33,32 +37,55 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
   const [setName, setSetName] = useState("Tonight");
   const [destId, setDestId] = useState("new");
   const [exporting, setExporting] = useState(null); // { done, total } while a zip builds
+  const [albumSession, setAlbumSession] = useState(remembered.albumSession);
+  const librarySearch = useRef(null);
+  const backupInput = useRef(null);
+  const [savingSelection, setSavingSelection] = useState(false);
+  const selectionRequest = useRef(null);
+  const exportRequest = useRef(null);
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [q, tuning, format, browse]);
+  useEffect(() => () => exportRequest.current?.abort(), []);
 
   useEffect(() => { remembered.q = q; }, [q]);
   useEffect(() => { remembered.tuning = tuning; }, [tuning]);
+  useEffect(() => { remembered.format = format; }, [format]);
+  useEffect(() => { remembered.browse = browse; }, [browse]);
   useEffect(() => { remembered.open = [...open]; }, [open]);
+  useEffect(() => { remembered.albumSession = albumSession; }, [albumSession]);
+  useEffect(() => () => selectionRequest.current?.abort(), []);
 
   const toggleSel = (row) => setSel((m) => {
+    if (savingSelection) return m;
     const n = new Map(m);
-    n.has(row.id) ? n.delete(row.id) : n.set(row.id, row);
+    const key = `${row.source}/${row.id}`;
+    n.has(key) ? n.delete(key) : n.set(key, row);
     return n;
   });
 
-  const makeSetlist = () => {
-    if (!sel.size) return;
-    let target = destId !== "new" && benchBook.setlists().find((s) => s.id === destId);
-    if (!target) target = benchBook.createSetlist(setName.trim() || "Tonight", Date.now());
-    for (const row of sel.values()) {
-      benchBook.addToSetlist(target.id, {
-        songKey: slugSongKey(row.artist, row.title),
-        title: row.title, artist: row.artist,
-        source: row.source, id: row.id,
-        tuning: row.tuning || null, capo: row.capo || null, key: row.key || null,
+  const makeSetlist = async () => {
+    if (!sel.size || selectionRequest.current) return;
+    const controller = new AbortController();
+    selectionRequest.current = controller;
+    setSavingSelection(true);
+    setImportNote("");
+    try {
+      const rows = [...sel.values()];
+      const songs = await loadAlbumCharts(rows, { loadSong, signal: controller.signal });
+      if (controller.signal.aborted) return;
+      const target = benchBook.saveSetlistSongs({
+        id: destId === "new" ? null : destId, name: setName.trim() || "Tonight",
+        songs: rows.map((row, index) => chartSetlistSong(row, songs[index])),
       });
+      setSel(new Map());
+      setSelecting(false);
+      onSetlist?.(target);
+    } catch (failure) {
+      if (!controller.signal.aborted) setImportNote(`${failure.message} Your selection is still here; the setlist was not saved.`);
+    } finally {
+      if (!controller.signal.aborted) setSavingSelection(false);
+      selectionRequest.current = null;
     }
-    setSel(new Map());
-    setSelecting(false);
-    onSetlist?.(target);
   };
 
   useEffect(() => { let on = true; loadManifest().then((r) => { if (on) setFetched(r); }); return () => { on = false; }; }, []);
@@ -77,35 +104,54 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
   // unfiltered, or just the picked songs in Setlist mode) as a zip of plain
   // .txt charts — the portable, future-proof form of a tab library.
   const exportZip = async (rowsToExport) => {
-    if (exporting || !rowsToExport.length) return;
+    if (exportRequest.current || !rowsToExport.length) return;
+    const controller = new AbortController();
+    exportRequest.current = controller;
+    const timer = setTimeout(() => {
+      setImportNote("Export timed out. Try a smaller selection.");
+      controller.abort();
+      setExporting(null);
+    }, 120000);
+    controller.signal.addEventListener("abort", () => { clearTimeout(timer); if (exportRequest.current === controller) exportRequest.current = null; }, { once: true });
+    setImportNote(null);
     setExporting({ done: 0, total: rowsToExport.length });
     const clean = (s) => (s || "").replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/\s+/g, " ").trim() || "Untitled";
     const entries = [];
     const seen = new Set();
-    const queue = rowsToExport.slice();
-    await Promise.all(Array.from({ length: 8 }, async () => {
-      while (queue.length) {
-        const row = queue.shift();
-        const song = await loadSong(row).catch(() => null);
-        setExporting((x) => (x ? { ...x, done: x.done + 1 } : x));
-        if (!song?.body) continue;
-        let name = `${clean(row.artist || "Various")}/${clean(row.title)}`;
-        if (seen.has(name)) name = `${name} (${row.source})`;
-        while (seen.has(name)) name += "_";
-        seen.add(name);
-        const facts = [
-          row.tuningId && row.tuningId !== "standard" ? `Tuning: ${row.tuningName}` : "",
-          row.capo ? `Capo ${row.capo}` : "",
-          row.key ? `Key: ${row.key}` : "",
-          song.sourceUrl || "",
-        ].filter(Boolean).join(" · ");
-        entries.push({ name: `${name}.txt`, data: `${row.title} — ${row.artist || "Various"}${facts ? `\n${facts}` : ""}\n\n${song.body}` });
+    let next = 0;
+    let failed = 0, completed = 0;
+    try {
+      await Promise.all(Array.from({ length: 8 }, async () => {
+        while (!controller.signal.aborted && next < rowsToExport.length) {
+          if (++completed % 32 === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+          if (controller.signal.aborted || next >= rowsToExport.length) return;
+          const row = rowsToExport[next++];
+          const song = await loadSong(row, { signal: controller.signal, cache: false }).catch(() => null);
+          if (controller.signal.aborted) return;
+          setExporting((x) => (x ? { ...x, done: x.done + 1 } : x));
+          if (!song?.body) { failed++; continue; }
+          let name = `${clean(row.artist || "Various")}/${clean(row.title)}`;
+          if (seen.has(name)) name = `${name} (${row.source})`;
+          while (seen.has(name)) name += "_";
+          seen.add(name);
+          entries.push({ name: `${name}.txt`, data: chartExportText(song, row) });
+        }
+      }));
+      if (controller.signal.aborted) return;
+      if (!entries.length) { setImportNote("No charts could be loaded for export. Check the connection and try again."); return; }
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      const stamp = new Date().toISOString().slice(0, 10);
+      download(`keylit-charts-${stamp}.zip`, new Blob([makeZip(entries)], { type: "application/zip" }));
+      if (failed) setImportNote(`${entries.length} charts exported; ${failed} could not be loaded.`);
+    } catch {
+      if (!controller.signal.aborted) setImportNote("The chart export failed. Your library is unchanged; try a smaller selection.");
+    } finally {
+      clearTimeout(timer);
+      if (exportRequest.current === controller) {
+        exportRequest.current = null;
+        if (!controller.signal.aborted) setExporting(null);
       }
-    }));
-    entries.sort((a, b) => a.name.localeCompare(b.name));
-    const stamp = new Date().toISOString().slice(0, 10);
-    download(`keylit-charts-${stamp}.zip`, new Blob([makeZip(entries)], { type: "application/zip" }));
-    setExporting(null);
+    }
   };
 
   // Your whole musical self as one JSON file: songs, setlists, practice log,
@@ -128,8 +174,7 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
   };
 
   const [importNote, setImportNote] = useState(null);
-  // Import MERGES — same song from another machine dedupes by (artist, title),
-  // nothing here is ever overwritten or lost. lib/backup.js owns the rules.
+  // Identical charts merge; different arrangements and setups remain available.
   const importBackup = async (file) => {
     if (!file) return;
     const text = await file.text().catch(() => null);
@@ -181,14 +226,41 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
     if (!rows) return [];
     const needle = q.trim().toLowerCase();
     return rows.filter((r) =>
+      matchesChartFormat(r, format) &&
       (!tuning || (r.tuningId || r.tuning || "standard") === tuning) &&
       (!needle || r.artist?.toLowerCase().includes(needle) || r.title.toLowerCase().includes(needle) || (r.album || "").toLowerCase().includes(needle)));
-  }, [rows, q, tuning]);
+  }, [rows, q, tuning, format]);
 
-  const groups = useMemo(() => groupByArtist(filtered), [filtered]);
-  const toggle = (artist) => setOpen((s) => { const n = new Set(s); n.has(artist) ? n.delete(artist) : n.add(artist); return n; });
   const autoOpen = q.trim().length > 0 || !!tuning;
-
+  const bundles = useMemo(() => groupSongArrangements(filtered), [filtered]);
+  const albums = useMemo(() => groupLibraryAlbums(filtered), [filtered]);
+  const pageSize = browse === "albums" ? 10 : 100;
+  const resultCount = browse === "albums" ? albums.length : tuning ? filtered.length : bundles.length;
+  const pageCount = browse === "albums" || autoOpen ? Math.ceil(resultCount / pageSize) : 1;
+  const currentPage = Math.min(page, Math.max(0, pageCount - 1));
+  const visibleRows = useMemo(() => {
+    if (!autoOpen || browse === "albums") return filtered;
+    if (tuning) return filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+    return bundles.slice(currentPage * pageSize, (currentPage + 1) * pageSize).flatMap(b => b.rows);
+  }, [filtered, bundles, autoOpen, browse, tuning, currentPage, pageSize]);
+  const groups = useMemo(() => groupByArtist(visibleRows), [visibleRows]);
+  const stats = useMemo(() => libraryStats(rows || []), [rows]);
+  const fullAlbums = useMemo(() => groupLibraryAlbums(rows || []), [rows]);
+  const matchingAlbumKeys = new Set(albums.map(album => album.key));
+  const visibleAlbums = fullAlbums.filter(album => matchingAlbumKeys.has(album.key)).slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const currentAlbum = fullAlbums.find((album) => album.key === albumSession?.key);
+  const workOnAlbum = (album) => {
+    exportRequest.current?.abort();
+    setExporting(null);
+    selectionRequest.current?.abort();
+    setSavingSelection(false);
+    setAlbumSession({ key: album.key });
+  };
+  const workOnAlbumRow = (row) => {
+    const [album] = groupLibraryAlbums([row]);
+    if (album) workOnAlbum(album);
+  };
+  const toggle = (artist) => setOpen((s) => { const n = new Set(s); n.has(artist) ? n.delete(artist) : n.add(artist); return n; });
   // The shelf vs. the stacks: the owner's artists stay on the index; anthology
   // fill folds into one Miscellaneous drawer. A search sees everything flat.
   const { shelf, misc } = useMemo(() => {
@@ -200,6 +272,10 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
   const miscCount = useMemo(() => misc.reduce((n, g) => n + g.count, 0), [misc]);
 
   if (rows === null) return <p style={{ color: C.muted }}>Loading the library…</p>;
+
+  if (currentAlbum) return <AlbumSession key={currentAlbum.key} album={currentAlbum} session={albumSession}
+    onChange={setAlbumSession} onOpen={onOpen} onSetlist={onSetlist} onPerform={onPerform}
+    onBack={() => { setAlbumSession(null); requestAnimationFrame(() => librarySearch.current?.focus()); }} />;
 
   // No songs at all — invite, don't apologize.
   if (rows.length === 0) {
@@ -232,14 +308,13 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
   const shownFacets = allTunings ? tuningFacets : tuningFacets.slice(0, 8);
 
   return (
-    <div className="kl-section">
+    <div className={`kl-section library-room${q.trim() || tuning || format !== "all" || browse === "albums" ? " library-browsing" : ""}`}>
       {/* The hero speaks in borrowed lines — a new one each time the app opens. */}
       <div className="kl-eyebrow faint">The songbook</div>
       {quote && (
         <>
-          {/* aphorisms get the full 52px; interview paragraphs step down to stay a hero, not a wall */}
-          <h1 className="kl-title hero" style={{ margin: "14px 0 0", maxWidth: 680,
-            fontSize: quote.q.length > 150 ? 30 : quote.q.length > 100 ? 38 : quote.q.length > 70 ? 44 : undefined }}>
+          <h1 className="kl-title hero library-quote" style={{ margin: "14px 0 0", maxWidth: 680,
+            "--library-quote-size": quote.q.length > 150 ? "30px" : quote.q.length > 100 ? "38px" : quote.q.length > 70 ? "44px" : undefined }}>
             {quote.q}
           </h1>
           <div style={{ fontFamily: MONO, fontSize: 11.5, letterSpacing: "0.05em", color: C.muted, marginTop: 14 }}>— {quote.by}</div>
@@ -247,9 +322,10 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
       )}
 
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginTop: 30 }}>
-        <span className="kl-meta">{rows.length} songs · {new Set(rows.map((r) => r.artist || "Various")).size} artists</span>
+        <span className="kl-meta library-count">{stats.songs.toLocaleString()} songs <span>· {stats.charts.toLocaleString()} charts · {stats.artists.toLocaleString()} artists</span></span>
         <div className="flex items-center" style={{ gap: 12, flexWrap: "wrap" }}>
           <button className={`bench-btn${selecting ? " primary" : ""}`} style={{ padding: "7px 13px", fontSize: 13 }}
+            disabled={savingSelection}
             onClick={() => { setSelecting((v) => !v); setSel(new Map()); }} aria-pressed={selecting}
             title="pick songs across the library and stack them into a setlist">
             <ListMusic size={14} /> {selecting ? "picking…" : "Setlist"}
@@ -277,24 +353,35 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
             title="songs + setlists + practice log + settings — one JSON file for the other machine">
             backup your songbook (.json)
           </button>
-          <label style={{ ...quietLink, cursor: "pointer" }}
-            title="merge a backup from another machine — nothing here gets overwritten">
-            import a backup
-            <input type="file" accept=".json,application/json" style={{ display: "none" }}
-              onChange={(e) => { importBackup(e.target.files?.[0]); e.target.value = ""; }} />
-          </label>
+          <button style={quietLink} onClick={() => backupInput.current?.click()}
+            title="merge a backup from another machine — nothing here gets overwritten">import a backup</button>
+          <input ref={backupInput} type="file" accept=".json,application/json" style={{ display: "none" }}
+            onChange={(e) => { importBackup(e.target.files?.[0]); e.target.value = ""; }} />
+          <p style={{ width: "100%", margin: 0, fontSize: 12, color: C.muted }}>{BACKUP_SCOPE_NOTICE}</p>
         </div>
       )}
 
       {hearing && <Ear onLoadSheet={onHeard} onClose={() => setHearing(false)} />}
       {adding && <AddSong onSaved={onSaved} onClose={() => setAdding(false)} />}
 
-      <div className="bench-cols" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", gap: 48, alignItems: "start", marginTop: 8 }}>
+      <div className="bench-cols library-layout" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 280px", gap: 40, alignItems: "start", marginTop: 8 }}>
       <div style={{ minWidth: 0 }}>
-      <div style={{ position: "relative", margin: "10px 0 10px", maxWidth: 420 }}>
+      <div className="library-search" style={{ position: "relative", margin: "10px 0 10px" }}>
         <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.faint }} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search songs, albums, artists" aria-label="Search the library"
-          style={{ width: "100%", padding: "10px 12px 10px 34px", fontFamily: "var(--kl-sans)", fontSize: 14, color: C.ink, background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 10, outline: "none" }} />
+        <input ref={librarySearch} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search songs, albums, artists" aria-label="Search the library"
+          style={{ width: "100%", padding: "12px 38px 12px 34px", fontFamily: "var(--kl-sans)", fontSize: 14, color: C.ink, background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 6 }} />
+        {q && <button className="library-clear" onClick={() => setQ("")} aria-label="Clear library search"><X size={15} /></button>}
+      </div>
+      <div className="library-viewbar">
+        <div className="library-switch" role="group" aria-label="Browse library by">
+          <button aria-pressed={browse === "artists"} onClick={() => setBrowse("artists")}>Artists</button>
+          <button aria-pressed={browse === "albums"} onClick={() => setBrowse("albums")}>Albums <span>{stats.albums}</span></button>
+        </div>
+        <div className="library-switch" role="group" aria-label="Chart format">
+          {[["all", "All charts"], ["tabs", "Tabs"], ["chords", "Chord charts"]].map(([id, label]) => (
+            <button key={id} aria-pressed={format === id} onClick={() => setFormat(id)}>{label}</button>
+          ))}
+        </div>
       </div>
       <TabHunt onDone={refresh} />
 
@@ -307,7 +394,7 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
               <button key={t.id} onClick={() => setTuning(active ? null : t.id)}
                 style={{ fontFamily: MONO, fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 999, cursor: "pointer",
                   color: active ? "#FAFAF8" : C.toneText, background: active ? C.toneUi : C.panel, border: `1px solid ${active ? C.toneUi : C.line}` }}>
-                {t.name} <span style={{ opacity: 0.7 }}>{t.count}</span>
+                {t.name}
               </button>
             );
           })}
@@ -320,7 +407,39 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
         </div>
       )}
 
-      {tuning ? (
+      {exporting && <div role="status">Exporting {exporting.done} of {exporting.total} charts
+        <button className="bench-btn" onClick={() => { exportRequest.current?.abort(); setExporting(null); setImportNote("Export cancelled."); }}>Cancel export</button>
+      </div>}
+      {pageCount > 1 && <nav aria-label="Library result pages" className="flex items-center" style={{ gap: 12 }}>
+        <button className="bench-btn" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous page</button>
+        <span role="status">{browse === "albums" ? "Albums" : tuning ? "Charts" : "Matching songs"} {currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, resultCount)} of {resultCount}</span>
+        <button className="bench-btn" disabled={currentPage + 1 >= pageCount} onClick={() => setPage(currentPage + 1)}>Next page</button>
+      </nav>}
+      {!filtered.length && <div className="library-empty" role="status">
+        <h2>No charts match this view</h2>
+        <p>Try a song title, another tuning, or all chart formats.</p>
+        <button className="bench-btn" onClick={() => { setQ(""); setTuning(null); setFormat("all"); }}>Clear filters</button>
+      </div>}
+      {browse === "albums" ? (
+        <div className="library-albums">
+          {visibleAlbums.map((album) => {
+            const isOpen = autoOpen || open.has(album.key);
+            const bundles = groupSongArrangements(album.songs);
+            return <section key={album.key} className="library-album">
+              <button className="library-album-heading" aria-expanded={isOpen} onClick={() => toggle(album.key)}>
+                <span className="library-album-year">{album.year || "LP"}</span>
+                <span className="library-album-title"><span>{album.artist}</span><strong>{album.album}</strong></span>
+                <span className="kl-meta">{bundles.length} {bundles.length === 1 ? "song" : "songs"}</span>
+                <ChevronRight size={16} style={{ transform: isOpen ? "rotate(90deg)" : undefined }} />
+              </button>
+              {isOpen && <button className="library-album-work" onClick={() => workOnAlbum(album)} aria-label={`Work through ${album.album} by ${album.artist}`}><ListMusic size={14} /> Work through album</button>}
+              {isOpen && <AlbumSongs bundles={bundles} onOpen={onOpen} onTuning={setTuning} onRemove={removeUserSong}
+                selecting={selecting} sel={sel} onToggleSel={toggleSel} />}
+            </section>;
+          })}
+          {!albums.length && filtered.length > 0 && <p className="kl-prose">These charts have no album attribution. Browse Artists to see them.</p>}
+        </div>
+      ) : tuning ? (
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 6px" }}>
             <span style={{ fontFamily: DISPLAY, fontSize: 19, color: C.ink }}>Songs in {tuningName}</span>
@@ -328,12 +447,12 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
             <button onClick={() => setTuning(null)} className="chip" style={{ padding: "3px 10px", fontSize: 12 }}><X size={12} /> clear</button>
           </div>
           <div className="kl-rows" style={{ marginTop: 4 }}>
-            {filtered.slice().sort((a, b) => (a.artist || "").localeCompare(b.artist || "") || a.title.localeCompare(b.title)).map((s) => (
-              <button key={s.id} onClick={() => (selecting ? toggleSel(s) : onOpen?.(s))}
+            {visibleRows.slice().sort((a, b) => (a.artist || "").localeCompare(b.artist || "") || a.title.localeCompare(b.title)).map((s) => (
+              <button key={`${s.source}/${s.id}`} onClick={() => (selecting ? toggleSel(s) : onOpen?.(s))}
                 style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "9px 4px", borderBottom: `1px solid ${C.line}`, background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = C.panel2)} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-                {selecting && <SelMark on={sel.has(s.id)} />}
-                <span style={{ fontFamily: DISPLAY, fontSize: 15, color: C.muted, minWidth: 160 }}>{s.artist || "Various"}</span>
+                {selecting && <SelMark on={sel.has(`${s.source}/${s.id}`)} />}
+                <span style={{ fontFamily: DISPLAY, fontSize: 15, color: C.muted, flex: "0 1 160px", minWidth: 0 }}>{s.artist || "Various"}</span>
                 <span style={{ fontFamily: "var(--kl-sans)", fontSize: 14.5, color: C.ink, flex: 1 }}>{s.title}</span>
                 {s.capo ? <Tag color={C.rootText}>capo {s.capo}</Tag> : null}
               </button>
@@ -343,8 +462,8 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
       ) : (
         <div className="kl-rows">
           {shelf.map((g) => (
-            <ArtistGroup key={g.artist} g={g} isOpen={autoOpen || open.has(g.artist)} onToggle={toggle}
-              onOpen={onOpen} onTuning={setTuning} onRemove={removeUserSong}
+            <ArtistGroup key={g.artist} g={g} partial={autoOpen && pageCount > 1} isOpen={autoOpen || open.has(g.artist)} onToggle={toggle}
+              onOpen={onOpen} onTuning={setTuning} onRemove={removeUserSong} onAlbum={workOnAlbumRow}
               selecting={selecting} sel={sel} onToggleSel={toggleSel} />
           ))}
           {misc.length > 0 && (
@@ -353,14 +472,14 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
                 style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "13px 4px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
                 <ChevronRight size={15} style={{ color: C.faint, transform: open.has("__misc__") ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
                 <span style={{ fontFamily: DISPLAY, fontSize: 21, color: C.muted, flex: 1, minWidth: 0, whiteSpace: "nowrap" }}>Miscellaneous</span>
-                <span className="kl-meta" style={{ flex: "0 0 auto", whiteSpace: "nowrap" }}>{misc.length} artists · {miscCount} songs</span>
+                <span className="kl-meta" style={{ flex: "0 0 auto", whiteSpace: "nowrap" }}>{misc.length} artists · {miscCount} charts</span>
                 <span className="kl-meta kl-hide-sm" style={{ color: C.faint, flex: "0 0 auto", whiteSpace: "nowrap" }}>anthologies &amp; strays</span>
               </button>
               {open.has("__misc__") && (
                 <div style={{ paddingBottom: 10, paddingLeft: 18, borderLeft: `2px solid ${C.line}`, marginLeft: 10 }}>
                   {misc.map((g) => (
                     <ArtistGroup key={g.artist} g={g} isOpen={open.has(g.artist)} onToggle={toggle} compact
-                      onOpen={onOpen} onTuning={setTuning} onRemove={removeUserSong}
+                      onOpen={onOpen} onTuning={setTuning} onRemove={removeUserSong} onAlbum={workOnAlbumRow}
                       selecting={selecting} sel={sel} onToggleSel={toggleSel} />
                   ))}
                 </div>
@@ -394,19 +513,19 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
             <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: sel.size ? C.toneText : C.faint }}>
               {sel.size} picked
             </span>
-            <select value={destId} onChange={(e) => setDestId(e.target.value)} aria-label="destination setlist"
+            <select value={destId} disabled={savingSelection} onChange={(e) => setDestId(e.target.value)} aria-label="destination setlist"
               style={{ background: C.panel2, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "6px 9px", fontSize: 13 }}>
               <option value="new">new setlist…</option>
               {benchBook.setlists().map((sl) => <option key={sl.id} value={sl.id}>add to: {sl.name}</option>)}
             </select>
             {destId === "new" && (
-              <input value={setName} onChange={(e) => setSetName(e.target.value)} aria-label="setlist name" placeholder="setlist name"
+              <input value={setName} disabled={savingSelection} onChange={(e) => setSetName(e.target.value)} aria-label="setlist name" placeholder="setlist name"
                 style={{ width: 150, background: C.panel2, color: C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "6px 10px", fontSize: 13, outline: "none" }} />
             )}
-            <button className="bench-btn primary" disabled={!sel.size} onClick={makeSetlist} style={{ opacity: sel.size ? 1 : 0.5 }}>
-              <ListMusic size={14} /> To the Bench Book
+            <button className="bench-btn primary" disabled={!sel.size || savingSelection} onClick={makeSetlist} style={{ opacity: sel.size ? 1 : 0.5 }}>
+              <ListMusic size={14} /> {savingSelection ? "Checking charts…" : "To the Bench Book"}
             </button>
-            <button className="bench-btn" onClick={() => { setSelecting(false); setSel(new Map()); }}>cancel</button>
+            <button className="bench-btn" onClick={() => { selectionRequest.current?.abort(); setSavingSelection(false); setSelecting(false); setSel(new Map()); }}>cancel</button>
             <span style={{ fontSize: 12, color: C.faint, marginLeft: "auto" }} className="kl-hide-sm">
               click songs to pick them — any artist, any tuning
             </span>
@@ -417,8 +536,13 @@ export default function Library({ onOpen, onSetlist, onPaste, onDemo, onHeard, p
   );
 }
 
-function ArtistGroup({ g, isOpen, onToggle, onOpen, onTuning, onRemove, selecting, sel, onToggleSel, compact }) {
+function ArtistGroup({ g, partial, isOpen, onToggle, onOpen, onTuning, onRemove, onAlbum, selecting, sel, onToggleSel, compact }) {
+  const [songPage, setSongPage] = useState(0);
   const allSongs = g.albums.flatMap((a) => a.songs);
+  const allBundles = groupSongArrangements(allSongs);
+  const currentSongPage = Math.min(songPage, Math.max(0, Math.ceil(allBundles.length / 100) - 1));
+  const shown = new Set(allBundles.slice(currentSongPage * 100, (currentSongPage + 1) * 100).map(b => b.key));
+  const songCount = groupSongArrangements(allSongs).length;
   const sources = [...new Set(allSongs.map((s) => s.source))].map((s) => SOURCE_LABEL[s] || s);
   return (
     <div style={{ borderBottom: `1px solid ${C.line}` }}>
@@ -426,22 +550,29 @@ function ArtistGroup({ g, isOpen, onToggle, onOpen, onTuning, onRemove, selectin
         style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: compact ? "9px 4px" : "13px 4px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}>
         <ChevronRight size={15} style={{ color: C.faint, flex: "0 0 auto", transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 160ms ease" }} />
         <span title={g.artist} style={{ fontFamily: DISPLAY, fontSize: compact ? 16.5 : 21, color: C.ink, flex: "1 1 auto", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.artist}</span>
-        <span className="kl-meta" style={{ flex: "0 0 auto", whiteSpace: "nowrap" }}>{g.count} {g.count === 1 ? "song" : "songs"}</span>
+        <span className="kl-meta" style={{ flex: "0 0 auto", whiteSpace: "nowrap" }}>{songCount} {songCount === 1 ? "song" : "songs"} <span className="library-chart-count">· {g.count} charts{partial ? " on this page" : ""}</span></span>
       </button>
       {isOpen && (
         <div style={{ paddingBottom: 10 }}>
-          {g.albums.map((al, ai) => (
+          {allBundles.length > 100 && <nav aria-label={`${g.artist} song pages`}>
+            <button className="bench-btn" disabled={!currentSongPage} onClick={() => setSongPage(currentSongPage - 1)}>Previous songs</button>
+            <span role="status"> Songs {currentSongPage * 100 + 1}–{Math.min((currentSongPage + 1) * 100, allBundles.length)} of {allBundles.length} </span>
+            <button className="bench-btn" disabled={(currentSongPage + 1) * 100 >= allBundles.length} onClick={() => setSongPage(currentSongPage + 1)}>Next songs</button>
+          </nav>}
+          {g.albums.filter(al => groupSongArrangements(al.songs).some(b => shown.has(b.key))).map((al, ai) => (
             <div key={ai}>
               {g.multiAlbum && (
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "10px 4px 4px 31px" }}>
                   <span style={{ fontFamily: DISPLAY, fontSize: 15.5, color: C.muted }}>{al.album || "Other"}</span>
-                  <span className="kl-meta" style={{ color: C.faint, fontSize: 11 }}>{al.songs.length}</span>
+                  <span className="kl-meta" style={{ color: C.faint, fontSize: 11 }}>{groupSongArrangements(al.songs).length} songs</span>
+                  {al.album && al.songs[0]?.album === al.album && <button className="library-album-work" onClick={() => onAlbum?.(al.songs[0])}
+                    aria-label={`Work through ${al.album} by ${al.songs[0].artist}`}><ListMusic size={13} /> Work through album</button>}
                   <span style={{ flex: 1, height: 1, background: C.line, marginLeft: 4 }} />
                 </div>
               )}
-              {al.songs.map((s) => (
-                <SongRow key={s.id} s={s} onOpen={onOpen} onTuning={onTuning} onRemove={onRemove}
-                  selecting={selecting} selected={sel.has(s.id)} onToggle={onToggleSel} />
+              {groupSongArrangements(al.songs).filter(b => shown.has(b.key)).map((bundle) => (
+                <SongBundle key={bundle.key} bundle={bundle} onOpen={onOpen} onTuning={onTuning} onRemove={onRemove}
+                  selecting={selecting} sel={sel} onToggleSel={onToggleSel} />
               ))}
             </div>
           ))}
@@ -462,33 +593,53 @@ function SelMark({ on }) {
     : <Circle size={16} style={{ color: C.faint, flex: "0 0 auto" }} />;
 }
 
-function SongRow({ s, onOpen, onTuning, onRemove, selecting, selected, onToggle }) {
+function SongBundle({ bundle, onOpen, onTuning, onRemove, selecting, sel, onToggleSel }) {
+  const [expanded, setExpanded] = useState(false);
+  const [first, ...alternates] = bundle.rows;
+  return <div className="library-song-bundle">
+    <div className="library-song-line">
+      <SongRow s={first} onOpen={onOpen} onTuning={onTuning} onRemove={onRemove}
+        selecting={selecting} selected={sel.has(`${first.source}/${first.id}`)} onToggle={onToggleSel} />
+      {alternates.length > 0 && <button className="library-arrangements" aria-expanded={expanded}
+        aria-label={`${expanded ? "Hide" : "Show"} arrangements of ${bundle.title}`} onClick={() => setExpanded((value) => !value)}>
+        {bundle.rows.length} charts <ChevronRight size={12} style={{ transform: expanded ? "rotate(90deg)" : undefined }} />
+      </button>}
+    </div>
+    {expanded && <div className="library-alternates">
+      {alternates.map((s) => <SongRow key={`${s.source}/${s.id}`} s={s} arrangement
+        onOpen={onOpen} onTuning={onTuning} onRemove={onRemove} selecting={selecting}
+        selected={sel.has(`${s.source}/${s.id}`)} onToggle={onToggleSel} />)}
+    </div>}
+  </div>;
+}
+
+function SongRow({ s, onOpen, onTuning, onRemove, selecting, selected, onToggle, arrangement }) {
   const alt = s.tuningId && s.tuningId !== "standard";
   const mine = s.source === "user";
   return (
-    <button onClick={() => (selecting ? onToggle?.(s) : onOpen?.(s))}
-      style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "7px 4px 7px 31px", background: "transparent", border: 0, cursor: "pointer", textAlign: "left" }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = C.panel2)} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+    <div className="library-song-row">
+      <button className="library-song-open" onClick={() => (selecting ? onToggle?.(s) : onOpen?.(s))}>
       {selecting && <SelMark on={selected} />}
-      <span style={{ fontFamily: "var(--kl-sans)", fontSize: 14.5, color: C.ink, flex: 1, minWidth: 0 }}>{s.title}</span>
+      {s.trackNumber && !arrangement && <span className="library-track">{String(s.trackNumber).padStart(2, "0")}</span>}
+      <span className="library-song-title">{s.title}{arrangement && <small>{SOURCE_LABEL[s.source] || s.source}</small>}</span>
       {mine && <Tag color={C.toneText}>yours</Tag>}
-      {s.format === "tab" && <Tag>tab</Tag>}
-      {alt && <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onTuning?.(s.tuningId); }}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onTuning?.(s.tuningId); } }}
-        title={`Filter by ${s.tuningName}`}
-        style={{ fontFamily: MONO, fontSize: 10.5, fontWeight: 600, color: C.toneText, border: `1px solid ${C.toneText}66`, borderRadius: 5, padding: "1px 6px", cursor: "pointer" }}>{s.tuningName}</span>}
+      {["hidden", "bonus"].includes(s.albumTrackKind) && <Tag>{s.albumTrackKind}</Tag>}
+      <Tag>{s.format === "tab" ? "tab" : s.format === "mixed" ? "chords + tab" : "chords"}</Tag>
       {s.capo ? <Tag color={C.rootText}>capo {s.capo}</Tag> : null}
       {s.key ? <span className="kl-meta kl-hide-sm" style={{ minWidth: 42, textAlign: "right" }}>{s.key}</span> : null}
+      </button>
+      {alt && <button onClick={() => onTuning?.(s.tuningId)}
+        title={`Filter by ${s.tuningName}`}
+        className="library-tuning-tag">{s.tuningName}</button>}
       {mine && (
-        <span role="button" tabIndex={0} aria-label={`remove ${s.title} from your songbook`}
-          onClick={(e) => { e.stopPropagation(); onRemove?.(s.id); }}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onRemove?.(s.id); } }}
+        <button aria-label={`remove ${s.title} from your songbook`}
+          onClick={() => onRemove?.(s.id)}
           title="Remove from your songbook"
-          style={{ color: C.faint, display: "inline-flex", padding: 2, cursor: "pointer" }}>
+          className="library-remove">
           <X size={13} />
-        </span>
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -500,4 +651,17 @@ function Tag({ children, color }) {
       {children}
     </span>
   );
+}
+
+function AlbumSongs({ bundles, ...props }) {
+  const [page, setPage] = useState(0);
+  const current = Math.min(page, Math.max(0, Math.ceil(bundles.length / 100) - 1));
+  return <>
+    {bundles.length > 100 && <nav aria-label="Album song pages">
+      <button className="bench-btn" disabled={!current} onClick={() => setPage(current - 1)}>Previous songs</button>
+      <span role="status"> Songs {current * 100 + 1}–{Math.min((current + 1) * 100, bundles.length)} of {bundles.length} </span>
+      <button className="bench-btn" disabled={(current + 1) * 100 >= bundles.length} onClick={() => setPage(current + 1)}>Next songs</button>
+    </nav>}
+    {bundles.slice(current * 100, (current + 1) * 100).map(bundle => <SongBundle key={bundle.key} bundle={bundle} {...props} />)}
+  </>;
 }

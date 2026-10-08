@@ -55,17 +55,30 @@ export function midiBlob(voicings, opts) {
 // Flatten timed events into sorted on/off moments; at equal ticks, offs go
 // first so a re-struck note never gets swallowed by its own previous note-off.
 function noteMoments(events, ticksPerBeat) {
-  const moments = [];
-  for (const e of events || []) {
-    const vel = Math.max(1, Math.min(127, Math.round((e.v ?? 0.75) * 127)));
-    const on = Math.max(0, Math.round(e.t * ticksPerBeat));
+  const spans = [];
+  const latest = new Map();
+  const ordered = (events || []).filter((e) => e && Number.isFinite(e.t) && Number.isFinite(e.dur) && e.t >= 0 && e.dur > 0).slice().sort((a, b) => a.t - b.t);
+  for (const e of ordered) {
+    const vel = Math.max(1, Math.min(127, Math.round((Number.isFinite(e.v) ? e.v : 0.75) * 127)));
+    const on = Math.round(e.t * ticksPerBeat);
     const off = Math.max(on + 1, Math.round((e.t + e.dur) * ticksPerBeat));
-    for (const m of e.midis || []) {
-      const n = Math.round(m);
-      if (!Number.isFinite(n) || n < 0 || n > 127) continue;
-      moments.push({ tick: on, kind: 1, note: n, vel });
-      moments.push({ tick: off, kind: 0, note: n, vel: 0 });
+    for (const n of new Set((e.midis || []).filter(Number.isFinite).map(Math.round))) {
+      if (n < 0 || n > 127) continue;
+      const previous = latest.get(n);
+      if (previous && previous.on === on) {
+        previous.off = Math.max(previous.off, off);
+        previous.vel = Math.max(previous.vel, vel);
+        continue;
+      }
+      if (previous && previous.off > on) previous.off = on;
+      const span = { on, off, note: n, vel };
+      spans.push(span); latest.set(n, span);
     }
+  }
+  const moments = [];
+  for (const span of spans) {
+    moments.push({ tick: span.on, kind: 1, note: span.note, vel: span.vel });
+    moments.push({ tick: span.off, kind: 0, note: span.note, vel: 0 });
   }
   moments.sort((a, b) => a.tick - b.tick || a.kind - b.kind);
   return moments;
@@ -129,8 +142,8 @@ export function eventsToMidiTracks(tracks, opts = {}) {
     const ch = clampCh(part.channel ?? 0);
     const body = [];
     if (part.name) {
-      const name = str(String(part.name).slice(0, 96));
-      body.push(...vlq(0), 0xff, 0x03, name.length, ...name);
+      const name = [...new TextEncoder().encode(String(part.name).slice(0, 96))];
+      body.push(...vlq(0), 0xff, 0x03, ...vlq(name.length), ...name);
     }
     if (part.program != null) body.push(...vlq(0), 0xc0 | ch, part.program & 0x7f);
     let last = 0;

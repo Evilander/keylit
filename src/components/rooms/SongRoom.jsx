@@ -110,23 +110,19 @@ export default function SongRoom({
         transpose={transpose}
         onUseDetunedSetup={useDetunedSetup}
       />
-      <TabHomes sheet={sheet}
-        sourceTuning={loaded?.tuningRaw || loaded?.tuning} sourceCapo={capoShift}
-        currentTuningId={guitarTuning} currentCapo={effectiveCapo}
-        onApply={(tuningId, capo) => { setGuitarTuning(tuningId); setPlayCapo(capo); }} />
       {songNumbersRailPanel}
       {aiPanel}
-      {tabKeysPanel}
       <SongGrips chords={readingView.unique} activeKey={readingKey}
+        defaultOpen={false}
         shapeTuning={guitarLens.shapeTuning}
         strumTuning={guitarLens.strumTuning} strumCapo={guitarLens.strumCapo}
         onStrum={strumNotes} />
-      <section style={{ marginTop: 18 }}>
+      <section className="song-chart" aria-label="Song chart" style={{ marginTop: 18 }}>
         <RetabPanel retab={currentRetab} loaded={loaded}
           onKeep={(body, meta) => {
             const built = buildUserSong({
               artist: meta.artist || "", title: meta.title || "Untitled",
-              album: "", key: "", capo: meta.capo ? String(meta.capo) : "",
+              album: "", key: "", capo: meta.capo != null ? String(meta.capo) : "",
               tuning: meta.tuning || "", body,
             }, Date.now());
             if (built.error) return;
@@ -137,6 +133,11 @@ export default function SongRoom({
           onChordClick={hearReadingChord}
           guitar={guitarLens} />
       </section>
+      {tabKeysPanel}
+      <TabHomes sheet={sheet}
+        sourceTuning={loaded?.tuningRaw || loaded?.tuning} sourceCapo={capoShift}
+        currentTuningId={guitarTuning} currentCapo={effectiveCapo}
+        onApply={(tuningId, capo) => { setGuitarTuning(tuningId); setPlayCapo(capo); }} />
       <Coverize prog={view.prog} activeKey={activeKey} loaded={loaded}
         sourceHasTab={hasTab(sheet)}
         onAudition={auditionChords}

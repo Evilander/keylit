@@ -39,10 +39,20 @@ function verdictFor(h) {
  * verdict }] ascending by score (best first). `blocksJudged` says how much
  * of the song the ranking saw (long tabs are sampled, never silently).
  */
-export function tabHomes(blocks, { candidates = HOME_CANDIDATES, maxResults = 5, maxBlocks = 8, sourceCapo = 0 } = {}) {
+export function tabHomes(blocks, { candidates = HOME_CANDIDATES, maxResults = 5, maxBlocks = 8, maxEvents = 128, sourceCapo = 0 } = {}) {
   const playable = (blocks || []).filter((b) => b.events?.length);
   if (!playable.length) return [];
-  const judged = playable.slice(0, maxBlocks);
+  // Budget whole time columns: simultaneous notes must never be split.
+  const eventsTotal = playable.reduce((n, b) => n + b.events.length, 0);
+  let remaining = Math.max(1, Math.min(128, Math.floor(maxEvents) || 128));
+  const judged = [];
+  for (const b of playable.slice(0, maxBlocks)) {
+    if (!remaining) break;
+    const events = b.events.slice(0, remaining);
+    judged.push({ ...b, events });
+    remaining -= events.length;
+  }
+  const eventsJudged = judged.reduce((n, b) => n + b.events.length, 0);
 
   const homes = [];
   for (const cand of candidates) {
@@ -73,13 +83,15 @@ export function tabHomes(blocks, { candidates = HOME_CANDIDATES, maxResults = 5,
       (cols ? spanSum / cols : 0) * WEIGHTS.span +
       openRatio * WEIGHTS.open;
     const h = { tuning, capo: cand.capo, score, dropped, shifted, avgPos, openRatio };
-    h.verdict = verdictFor(h);
+    h.verdict = (eventsJudged < eventsTotal ? "In the sample: " : "") + verdictFor(h);
     homes.push(h);
   }
   homes.sort((a, b) => a.score - b.score);
   const out = homes.slice(0, maxResults);
   out.blocksJudged = judged.length;
   out.blocksTotal = playable.length;
+  out.eventsJudged = eventsJudged;
+  out.eventsTotal = eventsTotal;
   // keep the honesty visible even after the array is spread/copied
   return Object.assign(out, { sourceCapo });
 }

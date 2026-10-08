@@ -53,7 +53,7 @@ export default function OneSong({ onStart, onPlay, goWrite, book = onesongBook, 
     if (!title) { setNotice("Name it first — even badly."); return; }
     let next;
     try { next = book.finish({ title, draftId: picked?.id || null, at: now() }); }
-    catch { setNotice("Storage is full — the shelf couldn't take it. Export a backup and clear space."); return; }
+    catch { setNotice("The shelf could not be saved. Your title is still here. Copy it before closing; library backups do not include One Song history or Write drafts. Do not clear app data."); return; }
     setSt(next);
     setPickId("");
     setFreeTitle("");
@@ -64,7 +64,7 @@ export default function OneSong({ onStart, onPlay, goWrite, book = onesongBook, 
   };
 
   const unfinish = (index) => {
-    try { setSt(book.removeFinished(index)); } catch { /* storage optional */ }
+    try { setSt(book.removeFinished(index)); } catch { setNotice("The shelf change was not saved. Your finished songs are unchanged; do not clear app data."); }
   };
 
   return (

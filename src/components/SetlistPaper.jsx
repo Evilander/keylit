@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, GripVertical, Play, Plus, Trash2, X } from "lucide-react";
 import { C, MONO } from "../ui/theme.js";
 
@@ -21,15 +21,33 @@ export default function SetlistPaper({
   onRemove = clear,
   onRestore = clear,
 }) {
+  const dialog = useRef(null);
+  const [error, setError] = useState("");
+  const [edits, setEdits] = useState({});
   const [name, setName] = useState(setlist?.name || "");
   const [query, setQuery] = useState("");
   const [undo, setUndo] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => { setName(setlist?.name || ""); setUndo(null); }, [setlist?.id, setlist?.name]);
+  useEffect(() => { setEdits({}); setError(""); setConfirmDelete(false); }, [setlist?.id]);
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const previous = document.activeElement;
+    dialog.current?.querySelector("button")?.focus();
+    return () => { if (previous?.isConnected) previous.focus(); };
+  }, [confirmDelete]);
   if (!setlist) return null;
   const entries = setlist.entries || [];
-  const mutate = (work) => { setUndo(null); work(); };
+  const attempt = (work) => {
+    try { const out = work(); setError(""); return { ok: true, out }; }
+    catch (e) { setError(`Not saved: ${e?.message || "storage refused the change"}. Your edits remain here. Copy them before leaving.`); return { ok: false }; }
+  };
+  const mutate = (work) => { const result = attempt(work); if (result.ok) setUndo(null); return result; };
+  const editNote = (key, value, save) => {
+    setEdits((old) => ({ ...old, [key]: value }));
+    if (mutate(() => save(value)).ok) setEdits((old) => { const next = { ...old }; delete next[key]; return next; });
+  };
   const move = (entryId, toIndex) => {
     if (toIndex >= 0 && toIndex < entries.length) mutate(() => onMove(entryId, toIndex));
   };
@@ -41,6 +59,10 @@ export default function SetlistPaper({
 
   return (
     <section className="setlist-paper" aria-label={`${setlist.name} setlist`}>
+      {error && <p role="alert">{error}</p>}
+      {Object.keys(edits).length > 0 && <button className="bench-btn" onClick={() => {
+        for (const [key, value] of Object.entries(edits)) editNote(key, value, (text) => key === "notes" ? onSetNotes(text) : onSetEntryNote(key.slice(6), text));
+      }}>Retry saving notes</button>}
       <div className="setlist-paper__head">
         <div>
           <div className="kl-eyebrow">Setlist</div>
@@ -55,9 +77,9 @@ export default function SetlistPaper({
         </div>
       </div>
 
-      <textarea className="setlist-paper__notes" value={setlist.notes || ""} aria-label="setlist notes"
+      <textarea className="setlist-paper__notes" value={edits.notes ?? setlist.notes ?? ""} aria-label="setlist notes"
         placeholder="The set: tempos, introductions, who sings what…" spellCheck={false}
-        onChange={(event) => mutate(() => onSetNotes(event.target.value))} />
+        onChange={(event) => editNote("notes", event.target.value, onSetNotes)} />
 
       <ol className="setlist-paper__entries">
         {entries.map((entry, index) => (
@@ -83,8 +105,8 @@ export default function SetlistPaper({
               </div>
               <label className="setlist-paper__note-label">
                 <span className="sr-only">note for setlist item {index + 1}, {entry.title}</span>
-                <input className="setlist-paper__note" value={entry.note || ""} placeholder="note to self"
-                  onChange={(event) => mutate(() => onSetEntryNote(entry.entryId, event.target.value))} />
+                <input className="setlist-paper__note" value={edits[`entry:${entry.entryId}`] ?? entry.note ?? ""} placeholder="note to self"
+                  onChange={(event) => editNote(`entry:${entry.entryId}`, event.target.value, (value) => onSetEntryNote(entry.entryId, value))} />
               </label>
             </div>
             <div className="setlist-paper__controls" aria-label={`controls for ${entry.title}`}>
@@ -98,7 +120,7 @@ export default function SetlistPaper({
               <button className="setlist-paper__quiet" aria-label="run from here" onClick={() => onRunFrom(setlist, entry.entryId)}><Play size={14} /></button>
               <button className="setlist-paper__quiet" aria-label="mark practiced" onClick={() => mutate(() => onMarkPracticed(entry))}><Check size={15} /></button>
               <button className="setlist-paper__quiet" aria-label="remove" onClick={() => {
-                const removed = onRemove(entry.entryId);
+                const removed = attempt(() => onRemove(entry.entryId)).out;
                 if (removed?.entry) setUndo(removed);
               }}><X size={15} /></button>
             </div>
@@ -109,7 +131,7 @@ export default function SetlistPaper({
       {undo && (
         <div className="setlist-paper__undo" role="status">
           Removed {undo.entry.title}.
-          <button className="bench-btn" onClick={() => { onRestore(undo.entry, undo.index); setUndo(null); }} aria-label="undo remove">Undo remove</button>
+          <button className="bench-btn" onClick={() => { if (attempt(() => onRestore(undo.entry, undo.index)).ok) setUndo(null); }} aria-label="undo remove">Undo remove</button>
         </div>
       )}
 
@@ -132,11 +154,19 @@ export default function SetlistPaper({
       </div>
 
       {confirmDelete && (
-        <div className="setlist-paper__dialog" role="alertdialog" aria-modal="true" aria-label={`delete ${setlist.name}`}>
+        <div ref={dialog} onKeyDown={(event) => {
+          if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setConfirmDelete(false); }
+          if (event.key === "Tab") {
+            const buttons = dialog.current.querySelectorAll("button");
+            const first = buttons[0], last = buttons[buttons.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+          }
+        }} className="setlist-paper__dialog" role="alertdialog" aria-modal="true" aria-label={`delete ${setlist.name}`}>
           <p>Delete <strong>{setlist.name}</strong>? This removes the setlist, not its songs.</p>
           <div>
             <button className="bench-btn" onClick={() => setConfirmDelete(false)}>Cancel</button>
-            <button className="bench-btn primary" onClick={() => { onDeleteSetlist(setlist.id); setConfirmDelete(false); }}>Confirm delete</button>
+            <button className="bench-btn primary" onClick={() => { if (mutate(() => onDeleteSetlist(setlist.id)).ok) setConfirmDelete(false); }}>Confirm delete</button>
           </div>
         </div>
       )}

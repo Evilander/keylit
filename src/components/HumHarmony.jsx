@@ -21,15 +21,20 @@ export default function HumHarmony({ activeKey, onAudition, onCommitChords, onLo
   const samplesRef = useRef([]);
   const mountedRef = useRef(true);
   const startingRef = useRef(false);
+  const captureGeneration = useRef(0);
 
   const stopMic = () => {
+    captureGeneration.current++;
+    startingRef.current = false;
     const a = audioRef.current;
     if (a) {
       cancelAnimationFrame(a.raf);
+      clearTimeout(a.timer);
       try { a.stream.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
       try { a.ctx.close(); } catch { /* noop */ }
     }
     audioRef.current = null;
+    if (!mountedRef.current) return;
     setListening(false);
     setLiveName(null);
     const segs = segmentMelody(samplesRef.current);
@@ -41,23 +46,24 @@ export default function HumHarmony({ activeKey, onAudition, onCommitChords, onLo
   };
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; if (audioRef.current) stopMic(); };
+    return () => { mountedRef.current = false; stopMic(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const start = async () => {
     if (startingRef.current || audioRef.current) return; // double-click guard
     startingRef.current = true;
+    const generation = ++captureGeneration.current;
     setDenied(false);
     setPhrases(null);
     samplesRef.current = [];
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false } }); }
-    catch { setDenied(true); startingRef.current = false; return; }
+    catch { if (mountedRef.current && generation === captureGeneration.current) { setDenied(true); startingRef.current = false; } return; }
     // the Write room may have been left while the permission prompt sat
     // open — release the just-granted stream instead of leaking a hot mic
-    if (!mountedRef.current || audioRef.current) {
+    if (!mountedRef.current || generation !== captureGeneration.current || audioRef.current) {
       try { stream.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
-      startingRef.current = false;
+      if (generation === captureGeneration.current) startingRef.current = false;
       return;
     }
     let ctx;
@@ -73,12 +79,13 @@ export default function HumHarmony({ activeKey, onAudition, onCommitChords, onLo
     analyser.fftSize = 2048;
     src.connect(analyser);
     const buf = new Float32Array(analyser.fftSize);
-    const a = { ctx, stream, analyser, raf: 0 };
+    const a = { ctx, stream, analyser, raf: 0, timer: setTimeout(stopMic, 30000), started: performance.now() };
     audioRef.current = a;
     startingRef.current = false;
     setListening(true);
     const loop = () => {
-      if (!audioRef.current) return;
+      if (audioRef.current !== a) return;
+      if (samplesRef.current.length >= 1800 || performance.now() - a.started >= 30000) { stopMic(); return; }
       analyser.getFloatTimeDomainData(buf);
       const r = detectPitch(buf, ctx.sampleRate);
       if (r && r.clarity > 0.55) {
@@ -97,7 +104,7 @@ export default function HumHarmony({ activeKey, onAudition, onCommitChords, onLo
 
   return (
     <section style={{ marginTop: 20, borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
-      <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
+      <button onClick={() => { if (open && (audioRef.current || startingRef.current)) stopMic(); setOpen((v) => !v); }} aria-expanded={open}
         style={{ display: "flex", alignItems: "center", gap: 10, background: "transparent", border: 0, cursor: "pointer", padding: 0 }}>
         <ChevronDown size={15} style={{ color: C.faint, transform: open ? "none" : "rotate(-90deg)", transition: "transform 160ms ease" }} />
         <span className="kl-eyebrow">Hum-to-Harmony · melody first</span>
@@ -114,7 +121,7 @@ export default function HumHarmony({ activeKey, onAudition, onCommitChords, onLo
             ) : (
               <button className="bench-btn primary" onClick={start}><Mic size={14} /> hum a line</button>
             )}
-            {listening && <span className="kl-pulse" style={{ fontFamily: MONO, fontSize: 12, color: C.rootText }}>listening{liveName ? ` — ${liveName}` : ""} · breathe to split phrases</span>}
+            {listening && <span className="kl-pulse" style={{ fontFamily: MONO, fontSize: 12, color: C.rootText }}>listening{liveName ? ` — ${liveName}` : ""} · breathe to split phrases · stops after 30 seconds</span>}
             {denied && <span style={{ fontSize: 12, color: C.bassText }}>mic said no — check permissions</span>}
             {picked.length > 0 && (
               <>

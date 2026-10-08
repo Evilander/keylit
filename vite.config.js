@@ -1,10 +1,12 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import liveCorpus from "./vite-corpus.mjs";
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
+    liveCorpus(),
     react(),
     // Installable + offline: precache the app shell and fonts, runtime-cache
     // the Salamander samples so the piano still speaks on a plane. The
@@ -24,11 +26,18 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,woff2,png}"],
+        globPatterns: ["**/*.{js,css,html,svg,woff2,png}", "songbook/**/*.json"],
         // The personal corpus lives under public/ locally and lands in dist/;
         // it never deploys, and its FILENAMES must never leak into the
-        // precache manifest either. The songbook ships but is fetched lazily.
-        globIgnores: ["corpus/**", "songbook/**"],
+        // precache manifest either. The small public-domain songbook is
+        // precached so an installed app can reopen its charts offline.
+        globIgnores: [
+          "corpus/**",
+          // Berkeley Mono is licensed per seat and gets stripped from a public
+          // build (tools/check_publish.mjs). Workbox aborts its ENTIRE install if
+          // any precached URL 404s, so the manifest must not name these at all.
+          "fonts/BerkeleyMono-*.woff2",
+        ],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.origin === "https://tonejs.github.io",

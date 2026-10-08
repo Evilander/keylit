@@ -7,9 +7,13 @@
 // v2 (2026-07-15): { keylit: 2, songs, setlists, log, prefs, exportedAt }
 
 import { normalizeSetlist } from "./setlists.js";
+import { canonicalTuning } from "./tuning.js";
+import { resolveCapo } from "./theory.js";
 
 /** The only preference keys a backup may carry — nothing else crosses machines.
  *  theme.v1 stays listed so pre-migration backup files still restore. */
+export const BACKUP_SCOPE_NOTICE = "Backups include library songs, setlists, practice history and settings. They do not include Write drafts, legacy sketches, One Song history or voice memos. Copy your writing and download each memo separately before clearing any app data.";
+
 export const PREF_KEYS = [
   "keylit.theme.v2",
   "keylit.theme.v1",
@@ -29,7 +33,7 @@ export function buildBackup({ songs = [], setlists = [], log = [], prefs = {}, e
 // Rebuild each record as a fresh, whitelisted object (also sheds any
 // __proto__-shaped keys) instead of trusting the file's shapes.
 const str = (v) => (typeof v === "string" ? v : null);
-const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+const num = (v) => { const n = v == null || v === "" || typeof v === "boolean" ? NaN : Number(v); return Number.isFinite(n) ? n : null; };
 const boundedStr = (v, limit = 160) => typeof v === "string" && v.length > 0 && v.length <= limit ? v : null;
 
 // Sanity caps: a crafted "backup" shouldn't be able to balloon memory.
@@ -45,14 +49,18 @@ function cleanSong(s) {
     title: str(s.title) || "Untitled",
     album: str(s.album),
     albumOrder: num(s.albumOrder) ?? 9999,
+    albumYear: num(s.albumYear),
+    trackNumber: num(s.trackNumber),
     source: str(s.source) || "user",
     sourceUrl: str(s.sourceUrl),
     tuning: str(s.tuning) || "standard",
     tuningRaw: str(s.tuningRaw),
+    tuningId: canonicalTuning(str(s.tuningRaw) || str(s.tuning) || "standard").id,
+    tuningName: canonicalTuning(str(s.tuningRaw) || str(s.tuning) || "standard").name,
     tuningSource: str(s.tuningSource) || "meta",
     capo: num(s.capo),
     key: str(s.key),
-    format: s.format === "tab" ? "tab" : "chords",
+    format: ["tab", "mixed"].includes(s.format) ? s.format : "chords",
     transcriber: str(s.transcriber),
     fetchedAt: str(s.fetchedAt),
     body,
@@ -114,13 +122,16 @@ export function parseBackup(input) {
   return { ok: true, data: { keylit: 2, exportedAt: str(raw.exportedAt), songs, setlists, log, prefs } };
 }
 
-const slug = (s) => String(s || "").toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-const songSlug = (s) => `${slug(s.artist)}--${slug(s.title)}`;
+const slug = (s) => String(s || "").normalize("NFKC").toLowerCase().replace(/['’]/g, "").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "");
+const arrangementKey = (s) => JSON.stringify([
+  slug(s.artist), slug(s.title), s.format || "chords",
+  canonicalTuning(s.tuningRaw || s.tuning || "standard").id,
+  resolveCapo(s.body, s.capo), (s.body || "").replace(/\r\n/g, "\n").trim(),
+]);
 
 /**
  * Merge an incoming backup into the current library. Never destroys:
- * - songs dedupe by id, then by (artist, title) slug — the same song added
- *   on two machines gets two ids but stays one song
+ * - songs dedupe by id, then identical chart/setup; alternate arrangements stay
  * - setlists dedupe by id (an identical export re-imported is a no-op)
  * - practice log unions on (songKey, at), newest kept, capped
  * Returns { songs, setlists, log, report }.
@@ -129,13 +140,15 @@ export function mergeBackup(current, incoming, { logCap = 500 } = {}) {
   const report = { songsAdded: 0, songsSkipped: 0, setlistsAdded: 0, setlistsSkipped: 0, setlistNamesSkipped: [], logAdded: 0 };
 
   const songs = current.songs.slice();
-  const haveIds = new Set(songs.map((s) => s.id));
-  const haveSlugs = new Set(songs.map(songSlug));
+  const haveIds = new Map(songs.map((s) => [s.id, s]));
+  const haveArrangements = new Map(songs.map((s) => [arrangementKey(s), s]));
+  const remappedIds = new Map();
   for (const s of incoming.songs) {
-    if (haveIds.has(s.id) || haveSlugs.has(songSlug(s))) { report.songsSkipped++; continue; }
+    const existing = haveIds.get(s.id) || haveArrangements.get(arrangementKey(s));
+    if (existing) { remappedIds.set(s.id, existing.id); report.songsSkipped++; continue; }
     songs.push(s);
-    haveIds.add(s.id);
-    haveSlugs.add(songSlug(s));
+    haveIds.set(s.id, s);
+    haveArrangements.set(arrangementKey(s), s);
     report.songsAdded++;
   }
 
@@ -148,14 +161,20 @@ export function mergeBackup(current, incoming, { logCap = 500 } = {}) {
       report.setlistNamesSkipped.push((typeof local.name === "string" && local.name ? local.name : "Setlist").slice(0, 80));
       continue;
     }
-    setlists.push(sl);
+    const entries = sl.entries.map((entry) => {
+      const id = entry.source === "user" ? remappedIds.get(entry.id) : null;
+      return id ? { ...entry, id, songKey: entry.songKey === `user:${entry.id}` ? `user:${id}` : entry.songKey } : entry;
+    });
+    setlists.push({ ...sl, entries });
     haveSl.set(sl.id, sl);
     report.setlistsAdded++;
   }
 
   const seen = new Set(current.log.map((e) => `${e.songKey}@${e.at}`));
   const log = current.log.slice();
-  for (const e of incoming.log) {
+  for (const original of incoming.log) {
+    const id = original.songKey.startsWith("user:") ? remappedIds.get(original.songKey.slice(5)) : null;
+    const e = id ? { ...original, songKey: `user:${id}` } : original;
     const k = `${e.songKey}@${e.at}`;
     if (seen.has(k)) continue;
     seen.add(k);
