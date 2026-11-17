@@ -2,6 +2,7 @@
   "name": "keylit",
   "private": true,
   "version": "0.9.0",
+  "license": "MIT",
   "type": "module",
   "description": "Drop a guitar chord sheet, see it on a piano — lit keys, voice leading, a chord-move lab, and a capo advisor.",
   "author": "Tyler Eveland <j.tyler.eveland@gmail.com>",
